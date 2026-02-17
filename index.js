@@ -300,6 +300,8 @@ const defaultSettings = {
     maxMessagesPerExtraction: 20,
     responseLength: 1000,
     extractionPrompt: defaultExtractionPrompt,
+    consolidationStrategy: 'balanced',
+    consolidationPrompt: '',
     source: EXTRACTION_SOURCE.PROVIDER,
     fileName: DEFAULT_FILE_NAME,
     perChat: false,
@@ -2375,21 +2377,52 @@ async function undoConsolidation() {
     updateStatusDisplay();
 }
 
-const consolidationPrompt = `You are a memory consolidation assistant. Review the following character memories and consolidate them.
+const CONSOLIDATION_PRESETS = {
+    conservative: {
+        name: 'Conservative',
+        description: 'Only merge near-exact duplicates. Preserves everything else.',
+        prompt: `Merge ONLY near-exact duplicate memories. If two bullets say essentially the same thing, keep the more detailed version. Do NOT combine loosely related facts. Do NOT summarize. Preserve every distinct piece of information.`,
+    },
+    balanced: {
+        name: 'Balanced',
+        description: 'Merge duplicates and combine related facts.',
+        prompt: `Merge duplicate or near-duplicate memories into one. Combine closely related facts about the same event or topic. Preserve all unique information — do NOT discard distinct memories. Summarize in third person.`,
+    },
+    aggressive: {
+        name: 'Aggressive',
+        description: 'Compress heavily. Summarize themes. Minimize bullet count.',
+        prompt: `Aggressively consolidate these memories into the fewest possible entries. Group by theme or topic. Summarize rather than listing individual events. It's OK to lose minor details if the key facts are preserved. Aim for a compact overview.`,
+    },
+    custom: {
+        name: 'Custom',
+        description: 'Write your own consolidation prompt.',
+        prompt: '',
+    },
+};
+
+function buildConsolidationPrompt(memoriesText) {
+    const strategy = extension_settings[MODULE_NAME].consolidationStrategy || 'balanced';
+    let userPrompt;
+    if (strategy === 'custom') {
+        userPrompt = extension_settings[MODULE_NAME].consolidationPrompt || CONSOLIDATION_PRESETS.balanced.prompt;
+    } else {
+        userPrompt = CONSOLIDATION_PRESETS[strategy]?.prompt || CONSOLIDATION_PRESETS.balanced.prompt;
+    }
+    return `You are a memory consolidation assistant. Review the following character memories and consolidate them.
 
 RULES:
-1. Merge duplicate or near-duplicate memories into one.
-2. Combine closely related facts about the same event or topic.
-3. Preserve all unique information — do NOT discard distinct memories.
-4. Summarize in third person. Do NOT copy text verbatim from the input.
-5. Do NOT use emojis anywhere in the output.
-6. Each consolidated memory must be wrapped in <memory></memory> tags.
-7. Inside each <memory> block, use a markdown bulleted list (lines starting with "- ").
+${userPrompt}
+
+ADDITIONAL FORMAT RULES:
+1. Do NOT use emojis anywhere in the output.
+2. Each consolidated memory must be wrapped in <memory></memory> tags.
+3. Inside each <memory> block, use a markdown bulleted list (lines starting with "- ").
 
 MEMORIES TO CONSOLIDATE:
-{{memories}}
+${memoriesText}
 
 Output ONLY <memory> blocks. No headers, no commentary, no extra text.`;
+}
 
 async function consolidateMemories() {
     if (inApiCall) {
