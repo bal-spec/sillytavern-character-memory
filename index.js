@@ -2415,8 +2415,9 @@ ${userPrompt}
 
 ADDITIONAL FORMAT RULES:
 1. Do NOT use emojis anywhere in the output.
-2. Each consolidated memory must be wrapped in <memory></memory> tags.
-3. Inside each <memory> block, use a markdown bulleted list (lines starting with "- ").
+2. Do NOT copy text verbatim from the input — rephrase in third person.
+3. Each consolidated memory must be wrapped in <memory></memory> tags.
+4. Inside each <memory> block, use a markdown bulleted list (lines starting with "- ").
 
 MEMORIES TO CONSOLIDATE:
 ${memoriesText}
