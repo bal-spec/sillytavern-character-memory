@@ -2363,21 +2363,50 @@ async function deleteBlock(blockIndex) {
 
 // ============ Consolidation ============
 
-function buildConsolidationPreview(beforeBlocks, afterBlocks, beforeCount, afterCount) {
-    const renderSection = (title, blocks, count) => {
-        const cards = blocks.map(b => {
+function buildConsolidationDialog(beforeBlocks, beforeCount, consolidatedText) {
+    const renderBefore = (blocks) => {
+        return blocks.map(b => {
             const bullets = b.bullets.map(bullet => `<li>${escapeHtml(bullet)}</li>`).join('');
             return `<div class="charMemory_card">
                 <div class="charMemory_cardHeader"><strong>${escapeHtml(b.chat)}</strong> <span class="charMemory_cardDate">${escapeHtml(b.date)}</span></div>
                 <ul>${bullets}</ul>
             </div>`;
         }).join('');
-        return `<h3>${title} (${count} memories)</h3>${cards}`;
     };
-    return `<div style="display:flex;gap:1em;">
-        <div style="flex:1;overflow-y:auto;max-height:60vh;">${renderSection('Before', beforeBlocks, beforeCount)}</div>
-        <div style="flex:1;overflow-y:auto;max-height:60vh;">${renderSection('After', afterBlocks, afterCount)}</div>
+
+    const afterCount = countConsolidatedText(consolidatedText);
+
+    return `<div class="charMemory_consolidationDialog">
+        <div class="charMemory_consolidationStats" id="charMemory_consolidationStats">
+            Original: ${beforeCount} memories in ${beforeBlocks.length} blocks &rarr; Consolidated: <span id="charMemory_afterCount">${afterCount}</span> memories
+        </div>
+        <div class="charMemory_consolidationPanes">
+            <div class="charMemory_consolidationPane">
+                <h4>Original</h4>
+                <div class="charMemory_consolidationContent">${renderBefore(beforeBlocks)}</div>
+            </div>
+            <div class="charMemory_consolidationPane">
+                <h4>Consolidated <small>(editable)</small></h4>
+                <textarea id="charMemory_consolidationEditor" class="charMemory_consolidationEditor">${escapeHtml(consolidatedText)}</textarea>
+            </div>
+        </div>
+        <div class="charMemory_consolidationToolbar">
+            <select id="charMemory_consolidationDialogStrategy" class="text_pole" style="max-width:200px;">
+                ${Object.entries(CONSOLIDATION_PRESETS).filter(([k]) => k !== 'custom').map(([k, v]) =>
+                    `<option value="${k}">${escapeHtml(v.name)}</option>`
+                ).join('')}
+                <option value="custom">Custom</option>
+            </select>
+            <input type="button" id="charMemory_rerunConsolidation" class="menu_button" value="Re-run" title="Send original memories to the LLM again with current strategy" />
+            <input type="button" id="charMemory_undoRerun" class="menu_button" value="Undo" title="Revert to previous consolidated version" disabled />
+            <span id="charMemory_rerunSpinner" style="display:none;">Working...</span>
+        </div>
     </div>`;
+}
+
+function countConsolidatedText(text) {
+    const lines = text.split('\n').filter(l => l.trim().startsWith('- '));
+    return lines.length;
 }
 
 async function undoConsolidation() {

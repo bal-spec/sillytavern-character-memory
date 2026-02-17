@@ -365,3 +365,60 @@
     width: 0%;
     transition: width 0.3s;
 }
+
+/* Consolidation Dialog */
+.charMemory_consolidationDialog {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.charMemory_consolidationStats {
+    font-size: 0.9em;
+    padding: 6px 10px;
+    background: var(--SmartThemeBlurTintColor, rgba(0, 0, 0, 0.1));
+    border-radius: 6px;
+}
+
+.charMemory_consolidationPanes {
+    display: flex;
+    gap: 12px;
+}
+
+.charMemory_consolidationPane {
+    flex: 1;
+    min-width: 0;
+}
+
+.charMemory_consolidationPane h4 {
+    margin: 0 0 6px 0;
+}
+
+.charMemory_consolidationContent {
+    max-height: 50vh;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.charMemory_consolidationEditor {
+    width: 100%;
+    height: 50vh;
+    resize: vertical;
+    font-family: monospace;
+    font-size: 0.85em;
+    padding: 8px;
+    border-radius: 6px;
+    background: var(--SmartThemeBlurTintColor, rgba(0, 0, 0, 0.05));
+    color: var(--SmartThemeBodyColor);
+    border: 1px solid var(--SmartThemeBorderColor, rgba(255,255,255,0.1));
+}
+
+.charMemory_consolidationToolbar {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    padding-top: 6px;
+    border-top: 1px solid var(--SmartThemeBorderColor, rgba(255,255,255,0.1));
+}
