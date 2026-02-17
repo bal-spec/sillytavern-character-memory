@@ -499,6 +499,21 @@ function toggleProviderSettings(source) {
 }
 
 /**
+ * Update the consolidation strategy UI: show custom textarea or preset preview.
+ */
+function updateConsolidationStrategyUI() {
+    const strategy = extension_settings[MODULE_NAME].consolidationStrategy || 'balanced';
+    if (strategy === 'custom') {
+        $('#charMemory_consolidationPrompt').show().val(extension_settings[MODULE_NAME].consolidationPrompt || '');
+        $('#charMemory_consolidationPreview').hide();
+    } else {
+        $('#charMemory_consolidationPrompt').hide();
+        const preset = CONSOLIDATION_PRESETS[strategy];
+        $('#charMemory_consolidationPreview').show().text(preset ? preset.prompt : '');
+    }
+}
+
+/**
  * Populate the provider preset dropdown from PROVIDER_PRESETS.
  */
 function populateProviderDropdown() {
@@ -743,6 +758,8 @@ function loadSettings() {
     $('#charMemory_minCooldown').val(extension_settings[MODULE_NAME].minCooldownMinutes);
     $('#charMemory_minCooldownCounter').val(extension_settings[MODULE_NAME].minCooldownMinutes);
     $('#charMemory_extractionPrompt').val(extension_settings[MODULE_NAME].extractionPrompt);
+    $('#charMemory_consolidationStrategy').val(extension_settings[MODULE_NAME].consolidationStrategy || 'balanced');
+    updateConsolidationStrategyUI();
     $('#charMemory_source').val(extension_settings[MODULE_NAME].source);
     $('#charMemory_fileName').val(extension_settings[MODULE_NAME].fileName);
     $('#charMemory_verboseLog').prop('checked', extension_settings[MODULE_NAME].verboseLogging);
@@ -2751,6 +2768,17 @@ function setupListeners() {
         $('#charMemory_extractionPrompt').val(defaultExtractionPrompt);
         saveSettingsDebounced();
         toastr.info('Extraction prompt restored to default.', 'CharMemory');
+    });
+
+    $('#charMemory_consolidationStrategy').off('change').on('change', function () {
+        extension_settings[MODULE_NAME].consolidationStrategy = String($(this).val());
+        updateConsolidationStrategyUI();
+        saveSettingsDebounced();
+    });
+
+    $('#charMemory_consolidationPrompt').off('input').on('input', function () {
+        extension_settings[MODULE_NAME].consolidationPrompt = String($(this).val());
+        saveSettingsDebounced();
     });
 
     $('#charMemory_extractNow').off('click').on('click', function () {

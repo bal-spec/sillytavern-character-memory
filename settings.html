@@ -204,6 +204,22 @@
 
                     <hr class="charMemory_separator" />
 
+                    <div class="charMemory_promptSection">
+                        <label for="charMemory_consolidationStrategy">
+                            <small>Consolidation strategy</small>
+                        </label>
+                        <select id="charMemory_consolidationStrategy" class="text_pole">
+                            <option value="conservative">Conservative — only merge near-exact duplicates</option>
+                            <option value="balanced">Balanced — merge duplicates & related facts (default)</option>
+                            <option value="aggressive">Aggressive — compress heavily, summarize themes</option>
+                            <option value="custom">Custom prompt</option>
+                        </select>
+                        <textarea id="charMemory_consolidationPrompt" class="text_pole textarea_compact" rows="6" placeholder="Enter custom consolidation prompt..." style="display:none;"></textarea>
+                        <small id="charMemory_consolidationPreview" class="charMemory_helperText" style="font-style:italic;"></small>
+                    </div>
+
+                    <hr class="charMemory_separator" />
+
                     <div class="charMemory_statusRow">
                         <input type="button" id="charMemory_resetTracking" class="menu_button" value="Reset Extraction State" title="Reset extraction tracking for the current character's chats so all messages can be re-processed. Does not delete any memories." />
                         <small class="charMemory_helperText">Resets extraction tracking for the current character (active chat + batch state). Use before 'Extract Now' or 'Batch Extract' to re-process from the beginning. Does not affect other characters.</small>
