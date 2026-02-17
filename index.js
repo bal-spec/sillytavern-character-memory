@@ -2585,10 +2585,8 @@ async function consolidateMemories() {
     $('#charMemory_rerunConsolidation').off('click').on('click', async () => {
         if (inApiCall) return;
 
-        // Push current editor content to version stack
+        // Save current editor content before re-run
         const currentText = $('#charMemory_consolidationEditor').val();
-        versionStack.push(currentText);
-        $('#charMemory_undoRerun').prop('disabled', false);
 
         // Update strategy from dialog dropdown
         const dialogStrategy = $('#charMemory_consolidationDialogStrategy').val();
@@ -2599,13 +2597,18 @@ async function consolidateMemories() {
         // Run LLM
         $('#charMemory_rerunSpinner').show();
         $('#charMemory_rerunConsolidation').prop('disabled', true);
+        $('#charMemory_consolidationEditor').prop('disabled', true);
 
         const newResult = await runConsolidationLLM(memories);
 
         $('#charMemory_rerunSpinner').hide();
         $('#charMemory_rerunConsolidation').prop('disabled', false);
+        $('#charMemory_consolidationEditor').prop('disabled', false);
 
         if (newResult) {
+            // Only push to version stack on success
+            versionStack.push(currentText);
+            $('#charMemory_undoRerun').prop('disabled', false);
             $('#charMemory_consolidationEditor').val(newResult);
             $('#charMemory_afterCount').text(countConsolidatedText(newResult));
         }
@@ -2632,6 +2635,12 @@ async function consolidateMemories() {
     if (!confirmed) {
         logActivity('Consolidation cancelled by user');
         toastr.info('Consolidation cancelled.', 'CharMemory');
+        return;
+    }
+
+    // Guard against accepting while a re-run is still in flight
+    if (inApiCall) {
+        toastr.warning('Cannot save while a re-run is in progress.', 'CharMemory');
         return;
     }
 
