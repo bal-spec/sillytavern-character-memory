@@ -2471,42 +2471,25 @@ ${memoriesText}
 Output ONLY <memory> blocks. No headers, no commentary, no extra text.`;
 }
 
-async function consolidateMemories() {
-    if (inApiCall) {
-        toastr.warning('An API call is already in progress.', 'CharMemory');
-        return;
-    }
-
-    const content = await readMemories();
-    const memories = parseMemories(content);
-
-    if (memories.length < 2) {
-        toastr.info('Not enough memories to consolidate.', 'CharMemory');
-        return;
-    }
-
-    const beforeCount = countMemories(memories);
-    logActivity(`Consolidation started: ${beforeCount} memories in ${memories.length} blocks`);
-
+async function runConsolidationLLM(memories) {
     let memoriesText = memories.map((b, i) =>
         `[Block ${i + 1}]\n${b.bullets.map(bullet => `- ${bullet}`).join('\n')}`,
     ).join('\n\n');
 
-    // Truncate for WebLLM's smaller context window
     const isWebLlm = extension_settings[MODULE_NAME].source === EXTRACTION_SOURCE.WEBLLM;
     if (isWebLlm) {
-        const templateLength = consolidationPrompt.replace('{{memories}}', '').length;
-        const available = Math.max(WEBLLM_MAX_PROMPT_CHARS - templateLength, 1000);
+        const template = buildConsolidationPrompt('');
+        const available = Math.max(WEBLLM_MAX_PROMPT_CHARS - template.length, 1000);
         memoriesText = truncateText(memoriesText, available);
     }
 
-    let prompt = consolidationPrompt.replace('{{memories}}', memoriesText);
+    let prompt = buildConsolidationPrompt(memoriesText);
     prompt = substituteParamsExtended(prompt);
 
     try {
         inApiCall = true;
         const sourceLabel = getSourceLabel();
-        toastr.info(`Consolidating ${beforeCount} memories via ${sourceLabel}...`, 'CharMemory', { timeOut: 3000 });
+        toastr.info(`Consolidating via ${sourceLabel}...`, 'CharMemory', { timeOut: 3000 });
 
         const verbose = extension_settings[MODULE_NAME].verboseLogging;
         if (verbose) {
@@ -2532,10 +2515,11 @@ async function consolidateMemories() {
 
         if (!cleanResult) {
             logActivity('Consolidation returned empty result', 'warning');
-            toastr.warning('Consolidation returned empty result. Memories unchanged.', 'CharMemory');
-            return;
+            toastr.warning('Consolidation returned empty result.', 'CharMemory');
+            return null;
         }
 
+        // Parse into memory format, then serialize back to plain text for the editor
         const now = new Date();
         const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
@@ -2554,28 +2538,119 @@ async function consolidateMemories() {
             return { chat: 'consolidated', date: timestamp, bullets: bullets.length > 0 ? bullets : [entry] };
         });
 
-        const afterCount = countMemories(consolidated);
-        const previewHtml = buildConsolidationPreview(memories, consolidated, beforeCount, afterCount);
-        const confirmed = await callGenericPopup(previewHtml, POPUP_TYPE.CONFIRM, '', { wide: true, allowVerticalScrolling: true });
-        if (!confirmed) {
-            logActivity('Consolidation cancelled by user');
-            toastr.info('Consolidation cancelled.', 'CharMemory');
-            return;
-        }
-
-        consolidationBackup = content;
-        await writeMemories(serializeMemories(consolidated));
-        $('#charMemory_undoConsolidate').prop('disabled', false);
-        logActivity(`Consolidation complete: ${beforeCount} → ${afterCount} memories`, 'success');
-        toastr.success(`Consolidated ${beforeCount} → ${afterCount} memories.`, 'CharMemory');
-        updateStatusDisplay();
+        return serializeMemories(consolidated);
     } catch (err) {
         console.error(LOG_PREFIX, 'Consolidation failed:', err);
         logActivity(`Consolidation failed: ${err.message}`, 'error');
         toastr.error('Memory consolidation failed. Check console for details.', 'CharMemory');
+        return null;
     } finally {
         inApiCall = false;
     }
+}
+
+async function consolidateMemories() {
+    if (inApiCall) {
+        toastr.warning('An API call is already in progress.', 'CharMemory');
+        return;
+    }
+
+    const content = await readMemories();
+    const memories = parseMemories(content);
+
+    if (memories.length < 2) {
+        toastr.info('Not enough memories to consolidate.', 'CharMemory');
+        return;
+    }
+
+    const beforeCount = countMemories(memories);
+    logActivity(`Consolidation started: ${beforeCount} memories in ${memories.length} blocks`);
+
+    // Run initial consolidation
+    const initialResult = await runConsolidationLLM(memories);
+    if (!initialResult) return;
+
+    // Build and show the interactive dialog
+    const dialogHtml = buildConsolidationDialog(memories, beforeCount, initialResult);
+    const versionStack = [];
+
+    // Use CONFIRM popup so Accept/Cancel buttons are provided
+    const popup = callGenericPopup(dialogHtml, POPUP_TYPE.CONFIRM, '', { wide: true, allowVerticalScrolling: true });
+
+    // Set up the strategy dropdown to match current setting
+    const currentStrategy = extension_settings[MODULE_NAME].consolidationStrategy || 'balanced';
+    $('#charMemory_consolidationDialogStrategy').val(currentStrategy);
+
+    // Wire up re-run button
+    $('#charMemory_rerunConsolidation').off('click').on('click', async () => {
+        if (inApiCall) return;
+
+        // Push current editor content to version stack
+        const currentText = $('#charMemory_consolidationEditor').val();
+        versionStack.push(currentText);
+        $('#charMemory_undoRerun').prop('disabled', false);
+
+        // Update strategy from dialog dropdown
+        const dialogStrategy = $('#charMemory_consolidationDialogStrategy').val();
+        extension_settings[MODULE_NAME].consolidationStrategy = dialogStrategy;
+        updateConsolidationStrategyUI();
+        saveSettingsDebounced();
+
+        // Run LLM
+        $('#charMemory_rerunSpinner').show();
+        $('#charMemory_rerunConsolidation').prop('disabled', true);
+
+        const newResult = await runConsolidationLLM(memories);
+
+        $('#charMemory_rerunSpinner').hide();
+        $('#charMemory_rerunConsolidation').prop('disabled', false);
+
+        if (newResult) {
+            $('#charMemory_consolidationEditor').val(newResult);
+            $('#charMemory_afterCount').text(countConsolidatedText(newResult));
+        }
+    });
+
+    // Wire up undo button
+    $('#charMemory_undoRerun').off('click').on('click', () => {
+        if (versionStack.length === 0) return;
+        const previousText = versionStack.pop();
+        $('#charMemory_consolidationEditor').val(previousText);
+        $('#charMemory_afterCount').text(countConsolidatedText(previousText));
+        if (versionStack.length === 0) {
+            $('#charMemory_undoRerun').prop('disabled', true);
+        }
+    });
+
+    // Update count on editor change
+    $('#charMemory_consolidationEditor').off('input').on('input', function () {
+        $('#charMemory_afterCount').text(countConsolidatedText($(this).val()));
+    });
+
+    // Wait for user to accept or cancel
+    const confirmed = await popup;
+    if (!confirmed) {
+        logActivity('Consolidation cancelled by user');
+        toastr.info('Consolidation cancelled.', 'CharMemory');
+        return;
+    }
+
+    // Parse the editor content and save
+    const editedText = $('#charMemory_consolidationEditor').val();
+    const parsed = parseMemories(editedText);
+    if (parsed.length === 0) {
+        toastr.warning('Could not parse any memories from the edited text. Memories unchanged.', 'CharMemory');
+        return;
+    }
+
+    consolidationBackup = content;
+    await writeMemories(serializeMemories(parsed));
+    $('#charMemory_undoConsolidate').prop('disabled', false);
+
+    const afterCount = countMemories(parsed);
+    logActivity(`Consolidation complete: ${beforeCount} → ${afterCount} memories`, 'success');
+    toastr.success(`Consolidated ${beforeCount} → ${afterCount} memories.`, 'CharMemory');
+    updateStatusDisplay();
 }
 
 // ============ Slash Commands ============
