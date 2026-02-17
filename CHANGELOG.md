@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.0
+
+### New Features
+
+- **Consolidation strategy presets**: Choose between Conservative (only merge near-exact duplicates), Balanced (merge duplicates and related facts), Aggressive (compress heavily, summarize themes), or write a fully Custom consolidation prompt. The strategy dropdown is in Settings, and also available inside the consolidation dialog.
+- **Interactive consolidation dialog**: The consolidation preview is now an editable workspace. You can directly edit the consolidated text before saving, re-run consolidation with a different strategy, and undo re-runs to restore previous versions.
+- **Re-run with version history**: Each re-run saves the previous version. Click Undo to step back through versions. The version stack lives within the dialog session.
+
 ## 1.2.1
 
 ### Bug Fixes
