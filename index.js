@@ -2589,97 +2589,175 @@ async function consolidateMemories() {
     const beforeCount = countMemories(memories);
     logActivity(`Consolidation started: ${beforeCount} memories in ${memories.length} blocks`);
 
-    // Run initial consolidation
+    // Run initial consolidation — returns serialized text, parse to blocks
     const initialResult = await runConsolidationLLM(memories);
     if (!initialResult) return;
 
-    // Build and show the interactive dialog
-    const dialogHtml = buildConsolidationDialog(memories, beforeCount, initialResult);
+    let editorBlocks = parseMemories(initialResult);
     const versionStack = [];
 
-    // Use CONFIRM popup so Accept/Cancel buttons are provided
+    // Deep copy blocks array
+    const cloneBlocks = (blocks) => blocks.map(b => ({ ...b, bullets: [...b.bullets] }));
+
+    // Re-render the editor pane from editorBlocks
+    const refreshEditor = () => {
+        const renderEditableCards = (blocks) => {
+            return blocks.map((b, bi) => {
+                const bullets = b.bullets.map((bullet, bui) =>
+                    `<div class="charMemory_editorBulletRow" data-block="${bi}" data-bullet="${bui}">
+                        <span class="charMemory_editorDash">-</span>
+                        <input type="text" class="charMemory_editorBulletInput" value="${escapeHtml(bullet)}" data-block="${bi}" data-bullet="${bui}" />
+                        <button class="charMemory_editorDeleteBullet menu_button menu_button_icon" data-block="${bi}" data-bullet="${bui}" title="Delete memory"><i class="fa-solid fa-trash fa-xs"></i></button>
+                    </div>`
+                ).join('');
+                return `<div class="charMemory_card charMemory_editorCard" data-block="${bi}">
+                    <div class="charMemory_cardHeader">
+                        <span class="charMemory_cardTitle">${escapeHtml(b.chat)}</span>
+                        <span class="charMemory_cardTimestamp">${escapeHtml(b.date)}</span>
+                        <span class="charMemory_cardActions">
+                            <button class="charMemory_editorDeleteBlock menu_button menu_button_icon" data-block="${bi}" title="Delete block"><i class="fa-solid fa-trash"></i></button>
+                        </span>
+                    </div>
+                    <div class="charMemory_editorBullets">${bullets}</div>
+                    <button class="charMemory_editorAddBullet menu_button" data-block="${bi}"><i class="fa-solid fa-plus fa-xs"></i> Add memory</button>
+                </div>`;
+            }).join('');
+        };
+        $('#charMemory_editorPane').html(renderEditableCards(editorBlocks));
+        $('#charMemory_afterCount').text(countBlocksBullets(editorBlocks));
+    };
+
+    // Build and show the interactive dialog
+    const dialogHtml = buildConsolidationDialog(memories, beforeCount, editorBlocks);
     const popup = callGenericPopup(dialogHtml, POPUP_TYPE.CONFIRM, '', { wide: true, allowVerticalScrolling: true });
 
     // Set up the strategy dropdown to match current setting
     const currentStrategy = extension_settings[MODULE_NAME].consolidationStrategy || 'balanced';
     $('#charMemory_consolidationDialogStrategy').val(currentStrategy);
 
-    // Wire up re-run button
+    // === Event delegation for editor interactions ===
+
+    // Sync bullet input changes back to editorBlocks
+    $(document).off('input.charMemoryEditor').on('input.charMemoryEditor', '.charMemory_editorBulletInput', function () {
+        const bi = Number($(this).data('block'));
+        const bui = Number($(this).data('bullet'));
+        if (editorBlocks[bi]) {
+            editorBlocks[bi].bullets[bui] = $(this).val();
+        }
+    });
+
+    // Delete bullet
+    $(document).off('click.charMemoryEditorDelBullet').on('click.charMemoryEditorDelBullet', '.charMemory_editorDeleteBullet', function () {
+        const bi = Number($(this).data('block'));
+        const bui = Number($(this).data('bullet'));
+        if (editorBlocks[bi]) {
+            editorBlocks[bi].bullets.splice(bui, 1);
+            if (editorBlocks[bi].bullets.length === 0) {
+                editorBlocks.splice(bi, 1);
+            }
+            refreshEditor();
+        }
+    });
+
+    // Delete block
+    $(document).off('click.charMemoryEditorDelBlock').on('click.charMemoryEditorDelBlock', '.charMemory_editorDeleteBlock', function () {
+        const bi = Number($(this).data('block'));
+        editorBlocks.splice(bi, 1);
+        refreshEditor();
+    });
+
+    // Add bullet to block
+    $(document).off('click.charMemoryEditorAddBullet').on('click.charMemoryEditorAddBullet', '.charMemory_editorAddBullet', function () {
+        const bi = Number($(this).data('block'));
+        if (editorBlocks[bi]) {
+            editorBlocks[bi].bullets.push('');
+            refreshEditor();
+            $(`#charMemory_editorPane .charMemory_editorCard[data-block="${bi}"] .charMemory_editorBulletInput:last`).focus();
+        }
+    });
+
+    // Add new block
+    $(document).off('click.charMemoryEditorAddBlock').on('click.charMemoryEditorAddBlock', '#charMemory_editorAddBlock', function () {
+        const now = new Date();
+        const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+        editorBlocks.push({ chat: 'consolidated', date: timestamp, bullets: [''] });
+        refreshEditor();
+        $('#charMemory_editorPane .charMemory_editorCard:last .charMemory_editorBulletInput:last').focus();
+    });
+
+    // === Re-run button ===
     $('#charMemory_rerunConsolidation').off('click').on('click', async () => {
         if (inApiCall) return;
 
-        // Save current editor content before re-run
-        const currentText = $('#charMemory_consolidationEditor').val();
+        const currentBlocks = cloneBlocks(editorBlocks);
 
-        // Update strategy from dialog dropdown
         const dialogStrategy = $('#charMemory_consolidationDialogStrategy').val();
         extension_settings[MODULE_NAME].consolidationStrategy = dialogStrategy;
         updateConsolidationStrategyUI();
         saveSettingsDebounced();
 
-        // Run LLM
         $('#charMemory_rerunSpinner').show();
         $('#charMemory_rerunConsolidation').prop('disabled', true);
-        $('#charMemory_consolidationEditor').prop('disabled', true);
 
         const newResult = await runConsolidationLLM(memories);
 
         $('#charMemory_rerunSpinner').hide();
         $('#charMemory_rerunConsolidation').prop('disabled', false);
-        $('#charMemory_consolidationEditor').prop('disabled', false);
 
         if (newResult) {
-            // Only push to version stack on success
-            versionStack.push(currentText);
+            versionStack.push(currentBlocks);
             $('#charMemory_undoRerun').prop('disabled', false);
-            $('#charMemory_consolidationEditor').val(newResult);
-            $('#charMemory_afterCount').text(countConsolidatedText(newResult));
+            editorBlocks = parseMemories(newResult);
+            refreshEditor();
         }
     });
 
-    // Wire up undo button
+    // === Undo button ===
     $('#charMemory_undoRerun').off('click').on('click', () => {
         if (versionStack.length === 0) return;
-        const previousText = versionStack.pop();
-        $('#charMemory_consolidationEditor').val(previousText);
-        $('#charMemory_afterCount').text(countConsolidatedText(previousText));
+        editorBlocks = versionStack.pop();
+        refreshEditor();
         if (versionStack.length === 0) {
             $('#charMemory_undoRerun').prop('disabled', true);
         }
     });
 
-    // Update count on editor change
-    $('#charMemory_consolidationEditor').off('input').on('input', function () {
-        $('#charMemory_afterCount').text(countConsolidatedText($(this).val()));
-    });
-
-    // Wait for user to accept or cancel
+    // === Wait for Accept/Cancel ===
     const confirmed = await popup;
+
+    // Clean up event delegation
+    $(document).off('input.charMemoryEditor');
+    $(document).off('click.charMemoryEditorDelBullet');
+    $(document).off('click.charMemoryEditorDelBlock');
+    $(document).off('click.charMemoryEditorAddBullet');
+    $(document).off('click.charMemoryEditorAddBlock');
+
     if (!confirmed) {
         logActivity('Consolidation cancelled by user');
         toastr.info('Consolidation cancelled.', 'CharMemory');
         return;
     }
 
-    // Guard against accepting while a re-run is still in flight
     if (inApiCall) {
         toastr.warning('Cannot save while a re-run is in progress.', 'CharMemory');
         return;
     }
 
-    // Parse the editor content and save
-    const editedText = $('#charMemory_consolidationEditor').val();
-    const parsed = parseMemories(editedText);
-    if (parsed.length === 0) {
-        toastr.warning('Could not parse any memories from the edited text. Memories unchanged.', 'CharMemory');
+    // Filter out empty bullets and empty blocks before saving
+    const cleanBlocks = editorBlocks
+        .map(b => ({ ...b, bullets: b.bullets.filter(bullet => bullet.trim() !== '') }))
+        .filter(b => b.bullets.length > 0);
+
+    if (cleanBlocks.length === 0) {
+        toastr.warning('No memories to save. Memories unchanged.', 'CharMemory');
         return;
     }
 
     consolidationBackup = content;
-    await writeMemories(serializeMemories(parsed));
+    await writeMemories(serializeMemories(cleanBlocks));
     $('#charMemory_undoConsolidate').prop('disabled', false);
 
-    const afterCount = countMemories(parsed);
+    const afterCount = countMemories(cleanBlocks);
     logActivity(`Consolidation complete: ${beforeCount} → ${afterCount} memories`, 'success');
     toastr.success(`Consolidated ${beforeCount} → ${afterCount} memories.`, 'CharMemory');
     updateStatusDisplay();
