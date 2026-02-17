@@ -2363,6 +2363,29 @@ async function deleteBlock(blockIndex) {
 
 // ============ Consolidation ============
 
+function renderEditableCards(blocks) {
+    return blocks.map((b, bi) => {
+        const bullets = b.bullets.map((bullet, bui) =>
+            `<div class="charMemory_editorBulletRow" data-block="${bi}" data-bullet="${bui}">
+                <span class="charMemory_editorDash">-</span>
+                <input type="text" class="charMemory_editorBulletInput" value="${escapeHtml(bullet)}" data-block="${bi}" data-bullet="${bui}" />
+                <button class="charMemory_editorDeleteBullet menu_button menu_button_icon" data-block="${bi}" data-bullet="${bui}" title="Delete memory"><i class="fa-solid fa-trash fa-xs"></i></button>
+            </div>`
+        ).join('');
+        return `<div class="charMemory_card charMemory_editorCard" data-block="${bi}">
+            <div class="charMemory_cardHeader">
+                <span class="charMemory_cardTitle">${escapeHtml(b.chat)}</span>
+                <span class="charMemory_cardTimestamp">${escapeHtml(b.date)}</span>
+                <span class="charMemory_cardActions">
+                    <button class="charMemory_editorDeleteBlock menu_button menu_button_icon" data-block="${bi}" title="Delete block"><i class="fa-solid fa-trash"></i></button>
+                </span>
+            </div>
+            <div class="charMemory_editorBullets">${bullets}</div>
+            <button class="charMemory_editorAddBullet menu_button" data-block="${bi}"><i class="fa-solid fa-plus fa-xs"></i> Add memory</button>
+        </div>`;
+    }).join('');
+}
+
 function buildConsolidationDialog(beforeBlocks, beforeCount, consolidatedBlocks) {
     const renderReadOnlyCards = (blocks) => {
         return blocks.map(b => {
@@ -2370,29 +2393,6 @@ function buildConsolidationDialog(beforeBlocks, beforeCount, consolidatedBlocks)
             return `<div class="charMemory_card">
                 <div class="charMemory_cardHeader"><strong>${escapeHtml(b.chat)}</strong> <span class="charMemory_cardDate">${escapeHtml(b.date)}</span></div>
                 <ul>${bullets}</ul>
-            </div>`;
-        }).join('');
-    };
-
-    const renderEditableCards = (blocks) => {
-        return blocks.map((b, bi) => {
-            const bullets = b.bullets.map((bullet, bui) =>
-                `<div class="charMemory_editorBulletRow" data-block="${bi}" data-bullet="${bui}">
-                    <span class="charMemory_editorDash">-</span>
-                    <input type="text" class="charMemory_editorBulletInput" value="${escapeHtml(bullet)}" data-block="${bi}" data-bullet="${bui}" />
-                    <button class="charMemory_editorDeleteBullet menu_button menu_button_icon" data-block="${bi}" data-bullet="${bui}" title="Delete memory"><i class="fa-solid fa-trash fa-xs"></i></button>
-                </div>`
-            ).join('');
-            return `<div class="charMemory_card charMemory_editorCard" data-block="${bi}">
-                <div class="charMemory_cardHeader">
-                    <span class="charMemory_cardTitle">${escapeHtml(b.chat)}</span>
-                    <span class="charMemory_cardTimestamp">${escapeHtml(b.date)}</span>
-                    <span class="charMemory_cardActions">
-                        <button class="charMemory_editorDeleteBlock menu_button menu_button_icon" data-block="${bi}" title="Delete block"><i class="fa-solid fa-trash"></i></button>
-                    </span>
-                </div>
-                <div class="charMemory_editorBullets">${bullets}</div>
-                <button class="charMemory_editorAddBullet menu_button" data-block="${bi}"><i class="fa-solid fa-plus fa-xs"></i> Add memory</button>
             </div>`;
         }).join('');
     };
@@ -2601,28 +2601,6 @@ async function consolidateMemories() {
 
     // Re-render the editor pane from editorBlocks
     const refreshEditor = () => {
-        const renderEditableCards = (blocks) => {
-            return blocks.map((b, bi) => {
-                const bullets = b.bullets.map((bullet, bui) =>
-                    `<div class="charMemory_editorBulletRow" data-block="${bi}" data-bullet="${bui}">
-                        <span class="charMemory_editorDash">-</span>
-                        <input type="text" class="charMemory_editorBulletInput" value="${escapeHtml(bullet)}" data-block="${bi}" data-bullet="${bui}" />
-                        <button class="charMemory_editorDeleteBullet menu_button menu_button_icon" data-block="${bi}" data-bullet="${bui}" title="Delete memory"><i class="fa-solid fa-trash fa-xs"></i></button>
-                    </div>`
-                ).join('');
-                return `<div class="charMemory_card charMemory_editorCard" data-block="${bi}">
-                    <div class="charMemory_cardHeader">
-                        <span class="charMemory_cardTitle">${escapeHtml(b.chat)}</span>
-                        <span class="charMemory_cardTimestamp">${escapeHtml(b.date)}</span>
-                        <span class="charMemory_cardActions">
-                            <button class="charMemory_editorDeleteBlock menu_button menu_button_icon" data-block="${bi}" title="Delete block"><i class="fa-solid fa-trash"></i></button>
-                        </span>
-                    </div>
-                    <div class="charMemory_editorBullets">${bullets}</div>
-                    <button class="charMemory_editorAddBullet menu_button" data-block="${bi}"><i class="fa-solid fa-plus fa-xs"></i> Add memory</button>
-                </div>`;
-            }).join('');
-        };
         $('#charMemory_editorPane').html(renderEditableCards(editorBlocks));
         $('#charMemory_afterCount').text(countBlocksBullets(editorBlocks));
     };

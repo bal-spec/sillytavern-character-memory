@@ -4,9 +4,14 @@
 
 ### New Features
 
-- **Consolidation strategy presets**: Choose between Conservative (only merge near-exact duplicates), Balanced (merge duplicates and related facts), Aggressive (compress heavily, summarize themes), or write a fully Custom consolidation prompt. The strategy dropdown is in Settings, and also available inside the consolidation dialog.
-- **Interactive consolidation dialog**: The consolidation preview is now an editable workspace. You can directly edit the consolidated text before saving, re-run consolidation with a different strategy, and undo re-runs to restore previous versions.
+- **Consolidation strategy presets**: Choose between Conservative (only merge near-exact duplicates), Balanced (merge duplicates and related facts), Aggressive (compress heavily, summarize themes), or write a fully Custom consolidation prompt.
+- **Card-based consolidation editor**: Consolidated memories are shown as editable cards matching the original memories' formatting, instead of raw text with tags. Add, edit, and delete individual memories or entire blocks directly in the preview.
 - **Re-run with version history**: Each re-run saves the previous version. Click Undo to step back through versions. The version stack lives within the dialog session.
+
+### Improvements
+
+- **Tabbed panel layout**: Extension panel reorganized into tabs (Main, Consolidate, Batch Extract, Settings, Log) for better discoverability. Consolidation and batch extraction are now first-class tools with their own tabs.
+- **Consolidation config in context**: Strategy selection and custom prompt moved to the Consolidate tab, right where you use them, instead of buried in Settings.
 
 ## 1.2.1
 
