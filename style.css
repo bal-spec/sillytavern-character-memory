@@ -466,3 +466,8 @@
 .charMemory_editorCard {
     position: relative;
 }
+
+.charMemory_editorDisabled {
+    pointer-events: none;
+    opacity: 0.5;
+}

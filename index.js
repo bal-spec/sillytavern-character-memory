@@ -2194,9 +2194,12 @@ function updateDiagnosticsDisplay() {
 }
 
 function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+    return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 
 // ============ Memory Manager ============
@@ -2397,7 +2400,7 @@ function buildConsolidationDialog(beforeBlocks, beforeCount, consolidatedBlocks)
         }).join('');
     };
 
-    const afterCount = countBlocksBullets(consolidatedBlocks);
+    const afterCount = countMemories(consolidatedBlocks);
 
     return `<div class="charMemory_consolidationDialog">
         <div class="charMemory_consolidationStats" id="charMemory_consolidationStats">
@@ -2426,10 +2429,6 @@ function buildConsolidationDialog(beforeBlocks, beforeCount, consolidatedBlocks)
             </div>
         </div>
     </div>`;
-}
-
-function countBlocksBullets(blocks) {
-    return blocks.reduce((sum, b) => sum + b.bullets.length, 0);
 }
 
 async function undoConsolidation() {
@@ -2602,7 +2601,7 @@ async function consolidateMemories() {
     // Re-render the editor pane from editorBlocks
     const refreshEditor = () => {
         $('#charMemory_editorPane').html(renderEditableCards(editorBlocks));
-        $('#charMemory_afterCount').text(countBlocksBullets(editorBlocks));
+        $('#charMemory_afterCount').text(countMemories(editorBlocks));
     };
 
     // Build and show the interactive dialog
@@ -2676,11 +2675,13 @@ async function consolidateMemories() {
 
         $('#charMemory_rerunSpinner').show();
         $('#charMemory_rerunConsolidation').prop('disabled', true);
+        $('#charMemory_editorPane').addClass('charMemory_editorDisabled');
 
         const newResult = await runConsolidationLLM(memories);
 
         $('#charMemory_rerunSpinner').hide();
         $('#charMemory_rerunConsolidation').prop('disabled', false);
+        $('#charMemory_editorPane').removeClass('charMemory_editorDisabled');
 
         if (newResult) {
             versionStack.push(currentBlocks);
