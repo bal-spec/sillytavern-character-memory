@@ -2363,8 +2363,8 @@ async function deleteBlock(blockIndex) {
 
 // ============ Consolidation ============
 
-function buildConsolidationDialog(beforeBlocks, beforeCount, consolidatedText) {
-    const renderBefore = (blocks) => {
+function buildConsolidationDialog(beforeBlocks, beforeCount, consolidatedBlocks) {
+    const renderReadOnlyCards = (blocks) => {
         return blocks.map(b => {
             const bullets = b.bullets.map(bullet => `<li>${escapeHtml(bullet)}</li>`).join('');
             return `<div class="charMemory_card">
@@ -2374,21 +2374,34 @@ function buildConsolidationDialog(beforeBlocks, beforeCount, consolidatedText) {
         }).join('');
     };
 
-    const afterCount = countConsolidatedText(consolidatedText);
+    const renderEditableCards = (blocks) => {
+        return blocks.map((b, bi) => {
+            const bullets = b.bullets.map((bullet, bui) =>
+                `<div class="charMemory_editorBulletRow" data-block="${bi}" data-bullet="${bui}">
+                    <span class="charMemory_editorDash">-</span>
+                    <input type="text" class="charMemory_editorBulletInput" value="${escapeHtml(bullet)}" data-block="${bi}" data-bullet="${bui}" />
+                    <button class="charMemory_editorDeleteBullet menu_button menu_button_icon" data-block="${bi}" data-bullet="${bui}" title="Delete memory"><i class="fa-solid fa-trash fa-xs"></i></button>
+                </div>`
+            ).join('');
+            return `<div class="charMemory_card charMemory_editorCard" data-block="${bi}">
+                <div class="charMemory_cardHeader">
+                    <span class="charMemory_cardTitle">${escapeHtml(b.chat)}</span>
+                    <span class="charMemory_cardTimestamp">${escapeHtml(b.date)}</span>
+                    <span class="charMemory_cardActions">
+                        <button class="charMemory_editorDeleteBlock menu_button menu_button_icon" data-block="${bi}" title="Delete block"><i class="fa-solid fa-trash"></i></button>
+                    </span>
+                </div>
+                <div class="charMemory_editorBullets">${bullets}</div>
+                <button class="charMemory_editorAddBullet menu_button" data-block="${bi}"><i class="fa-solid fa-plus fa-xs"></i> Add memory</button>
+            </div>`;
+        }).join('');
+    };
+
+    const afterCount = countBlocksBullets(consolidatedBlocks);
 
     return `<div class="charMemory_consolidationDialog">
         <div class="charMemory_consolidationStats" id="charMemory_consolidationStats">
             Original: ${beforeCount} memories in ${beforeBlocks.length} blocks &rarr; Consolidated: <span id="charMemory_afterCount">${afterCount}</span> memories
-        </div>
-        <div class="charMemory_consolidationPanes">
-            <div class="charMemory_consolidationPane">
-                <h4>Original</h4>
-                <div class="charMemory_consolidationContent">${renderBefore(beforeBlocks)}</div>
-            </div>
-            <div class="charMemory_consolidationPane">
-                <h4>Consolidated <small>(editable)</small></h4>
-                <textarea id="charMemory_consolidationEditor" class="charMemory_consolidationEditor">${escapeHtml(consolidatedText)}</textarea>
-            </div>
         </div>
         <div class="charMemory_consolidationToolbar">
             <select id="charMemory_consolidationDialogStrategy" class="text_pole" style="max-width:200px;">
@@ -2401,12 +2414,22 @@ function buildConsolidationDialog(beforeBlocks, beforeCount, consolidatedText) {
             <input type="button" id="charMemory_undoRerun" class="menu_button" value="Undo" title="Revert to previous consolidated version" disabled />
             <span id="charMemory_rerunSpinner" style="display:none;">Working...</span>
         </div>
+        <div class="charMemory_consolidationPanes">
+            <div class="charMemory_consolidationPane">
+                <h4>Original</h4>
+                <div class="charMemory_consolidationContent">${renderReadOnlyCards(beforeBlocks)}</div>
+            </div>
+            <div class="charMemory_consolidationPane">
+                <h4>Consolidated</h4>
+                <div class="charMemory_consolidationContent" id="charMemory_editorPane">${renderEditableCards(consolidatedBlocks)}</div>
+                <button class="charMemory_editorAddBlock menu_button" id="charMemory_editorAddBlock"><i class="fa-solid fa-plus fa-xs"></i> Add Block</button>
+            </div>
+        </div>
     </div>`;
 }
 
-function countConsolidatedText(text) {
-    const lines = text.split('\n').filter(l => l.trim().startsWith('- '));
-    return lines.length;
+function countBlocksBullets(blocks) {
+    return blocks.reduce((sum, b) => sum + b.bullets.length, 0);
 }
 
 async function undoConsolidation() {
@@ -2967,7 +2990,7 @@ function setupListeners() {
     $('#charMemory_consolidate').off('click').on('click', () => consolidateMemories());
     $('#charMemory_undoConsolidate').off('click').on('click', () => undoConsolidation());
 
-    // Tab switching for Activity, Diagnostics & Batch panels
+    // Tab switching for top-level panel tabs
     $('.charMemory_tab').off('click').on('click', function () {
         const tab = $(this).data('tab');
         $('.charMemory_tab').removeClass('active');
