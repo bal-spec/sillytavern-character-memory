@@ -216,6 +216,13 @@
     padding: 10px 12px;
 }
 
+.charMemory_card ul {
+    margin: 0;
+    padding-left: 1.2em;
+    font-size: 0.85em;
+    list-style-type: disc;
+}
+
 .charMemory_cardHeader {
     display: flex;
     align-items: center;
@@ -465,6 +472,23 @@
 
 .charMemory_editorCard {
     position: relative;
+}
+
+.charMemory_promptDisclosure {
+    margin-top: 4px;
+}
+
+.charMemory_promptDisclosure summary {
+    cursor: pointer;
+    opacity: 0.7;
+}
+
+.charMemory_promptDisclosure summary:hover {
+    opacity: 1;
+}
+
+.charMemory_promptDisclosure textarea {
+    margin-top: 4px;
 }
 
 .charMemory_editorDisabled {

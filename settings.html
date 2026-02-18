@@ -67,10 +67,15 @@
                         <option value="conservative">Conservative — only merge near-exact duplicates</option>
                         <option value="balanced">Balanced — merge duplicates & related facts (default)</option>
                         <option value="aggressive">Aggressive — compress heavily, summarize themes</option>
-                        <option value="custom">Custom prompt</option>
                     </select>
-                    <textarea id="charMemory_consolidationPrompt" class="text_pole textarea_compact" rows="6" placeholder="Enter custom consolidation prompt..." style="display:none;"></textarea>
                     <small id="charMemory_consolidationPreview" class="charMemory_helperText" style="font-style:italic;"></small>
+                    <details class="charMemory_promptDisclosure" id="charMemory_promptDisclosure">
+                        <summary><small>Show prompt</small></summary>
+                        <textarea id="charMemory_consolidationPrompt" class="text_pole textarea_compact" rows="6" placeholder="Edit the consolidation prompt for this strategy..."></textarea>
+                        <div class="charMemory_buttonRow">
+                            <input type="button" id="charMemory_restorePresetDefault" class="menu_button" value="Restore Default" title="Reset this preset's prompt to its built-in default" style="display:none;" />
+                        </div>
+                    </details>
                 </div>
                 <div class="charMemory_buttonRow">
                     <input type="button" id="charMemory_consolidate" class="menu_button" value="Consolidate" title="Use the LLM to merge duplicate and related memories into fewer, cleaner entries" />

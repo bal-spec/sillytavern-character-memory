@@ -2963,8 +2963,24 @@ function setupListeners() {
         saveSettingsDebounced();
     });
 
+    // Consolidation prompt editing — save override for current strategy
     $('#charMemory_consolidationPrompt').off('input').on('input', function () {
-        extension_settings[MODULE_NAME].consolidationPrompt = String($(this).val());
+        const strategy = extension_settings[MODULE_NAME].consolidationStrategy || 'balanced';
+        if (!extension_settings[MODULE_NAME].consolidationPrompts) {
+            extension_settings[MODULE_NAME].consolidationPrompts = {};
+        }
+        extension_settings[MODULE_NAME].consolidationPrompts[strategy] = $(this).val();
+        $('#charMemory_restorePresetDefault').show();
+        saveSettingsDebounced();
+    });
+
+    // Restore preset default prompt
+    $('#charMemory_restorePresetDefault').off('click').on('click', function () {
+        const strategy = extension_settings[MODULE_NAME].consolidationStrategy || 'balanced';
+        if (extension_settings[MODULE_NAME].consolidationPrompts) {
+            delete extension_settings[MODULE_NAME].consolidationPrompts[strategy];
+        }
+        updateConsolidationStrategyUI();
         saveSettingsDebounced();
     });
 
