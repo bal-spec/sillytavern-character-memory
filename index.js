@@ -71,22 +71,38 @@ function logActivity(message, type = 'info') {
 
 function updateActivityLogDisplay() {
     const $container = $('#charMemory_activityLog');
-    if (!$container.length) return;
+    if ($container.length) {
+        if (activityLog.length === 0) {
+            $container.html('<div class="charMemory_diagEmpty">No activity yet.</div>');
+        } else {
+            const html = activityLog.map(entry => {
+                const typeClass = `charMemory_log_${entry.type}`;
+                const isVerbose = entry.message.includes('\n');
+                const msgHtml = isVerbose
+                    ? `<details><summary>${escapeHtml(entry.message.split('\n')[0])}</summary><pre class="charMemory_logVerbose">${escapeHtml(entry.message)}</pre></details>`
+                    : escapeHtml(entry.message);
+                return `<div class="charMemory_logEntry ${typeClass}"><span class="charMemory_logTime">${entry.timestamp}</span> ${msgHtml}</div>`;
+            }).join('');
+            $container.html(html);
+        }
+    }
+
+    // Update mini-log (last 3 entries, first line only)
+    const $miniLog = $('#charMemory_miniLogContent');
+    if (!$miniLog.length) return;
 
     if (activityLog.length === 0) {
-        $container.html('<div class="charMemory_diagEmpty">No activity yet.</div>');
+        $miniLog.html('<div class="charMemory_diagEmpty charMemory_miniLogEmpty">No activity yet.</div>');
         return;
     }
 
-    const html = activityLog.map(entry => {
+    const miniEntries = activityLog.slice(0, 3);
+    const miniHtml = miniEntries.map(entry => {
         const typeClass = `charMemory_log_${entry.type}`;
-        const isVerbose = entry.message.includes('\n');
-        const msgHtml = isVerbose
-            ? `<details><summary>${escapeHtml(entry.message.split('\n')[0])}</summary><pre class="charMemory_logVerbose">${escapeHtml(entry.message)}</pre></details>`
-            : escapeHtml(entry.message);
-        return `<div class="charMemory_logEntry ${typeClass}"><span class="charMemory_logTime">${entry.timestamp}</span> ${msgHtml}</div>`;
+        const msgText = entry.message.split('\n')[0];
+        return `<div class="charMemory_logEntry ${typeClass}"><span class="charMemory_logTime">${entry.timestamp}</span> ${escapeHtml(msgText)}</div>`;
     }).join('');
-    $container.html(html);
+    $miniLog.html(miniHtml);
 }
 
 const defaultExtractionPrompt = `You are a memory extraction assistant. Read the recent chat messages and identify the most significant facts, events, and developments worth remembering long-term.
@@ -3178,6 +3194,11 @@ function setupListeners() {
         a.download = `charMemory-log-${new Date().toISOString().slice(0, 19).replace(/:/g, '')}.txt`;
         a.click();
         URL.revokeObjectURL(url);
+    });
+
+    // Mini activity log expand/collapse
+    $('#charMemory_miniLog').off('click').on('click', function () {
+        $(this).toggleClass('charMemory_miniLog--expanded');
     });
 
     // Batch Extract tab
