@@ -4,7 +4,7 @@
 
 ### New Features
 
-- **Consolidation strategy presets**: Choose between Conservative (only merge near-exact duplicates), Balanced (merge duplicates and related facts), Aggressive (compress heavily, summarize themes), or write a fully Custom consolidation prompt.
+- **Consolidation strategy presets**: Choose between Conservative (only merge near-exact duplicates), Balanced (merge duplicates and related facts), or Aggressive (compress heavily, summarize themes). Each preset's prompt is viewable and editable.
 - **Card-based consolidation editor**: Consolidated memories are shown as editable cards matching the original memories' formatting, instead of raw text with tags. Add, edit, and delete individual memories or entire blocks directly in the preview.
 - **Re-run with version history**: Each re-run saves the previous version. Click Undo to step back through versions. The version stack lives within the dialog session.
 

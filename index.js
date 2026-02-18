@@ -376,8 +376,8 @@ function parseMemories(content) {
         // Extract chat and date attributes
         const chatMatch = attrs.match(/chat="([^"]*)"/);
         const dateMatch = attrs.match(/date="([^"]*)"/);
-        const chat = chatMatch ? chatMatch[1] : 'unknown';
-        const date = dateMatch ? dateMatch[1] : '';
+        const chat = chatMatch ? unescapeAttr(chatMatch[1]) : 'unknown';
+        const date = dateMatch ? unescapeAttr(dateMatch[1]) : '';
 
         // Extract bullets (lines starting with "- ")
         const bullets = body.split('\n')
@@ -408,10 +408,18 @@ function countMemories(blocks) {
  * @param {{chat: string, date: string, bullets: string[]}[]} blocks
  * @returns {string}
  */
+function escapeAttr(text) {
+    return String(text).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+}
+
+function unescapeAttr(text) {
+    return String(text).replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+}
+
 function serializeMemories(blocks) {
     return blocks.map(b => {
         const bulletsText = b.bullets.map(bullet => `- ${bullet}`).join('\n');
-        return `<memory chat="${b.chat}" date="${b.date}">\n${bulletsText}\n</memory>`;
+        return `<memory chat="${escapeAttr(b.chat)}" date="${escapeAttr(b.date)}">\n${bulletsText}\n</memory>`;
     }).join('\n\n');
 }
 
@@ -2397,6 +2405,20 @@ async function deleteBlock(blockIndex) {
 
 // ============ Consolidation ============
 
+/**
+ * Re-index editingSet after a block is removed via splice.
+ * Indices above the removed position shift down by one.
+ */
+function reindexEditingSet(editingSet, removedIndex) {
+    const updated = new Set();
+    for (const idx of editingSet) {
+        if (idx < removedIndex) updated.add(idx);
+        else if (idx > removedIndex) updated.add(idx - 1);
+    }
+    editingSet.clear();
+    for (const idx of updated) editingSet.add(idx);
+}
+
 function renderConsolidatedCards(blocks, editingSet) {
     return blocks.map((b, bi) => {
         const isEditing = editingSet.has(bi);
@@ -2703,7 +2725,7 @@ async function consolidateMemories() {
             editorBlocks[bi].bullets.splice(bui, 1);
             if (editorBlocks[bi].bullets.length === 0) {
                 editorBlocks.splice(bi, 1);
-                editingSet.delete(bi);
+                reindexEditingSet(editingSet, bi);
             }
             refreshEditor();
         }
@@ -2713,7 +2735,7 @@ async function consolidateMemories() {
     $(document).off('click.charMemoryEditorDelBlock').on('click.charMemoryEditorDelBlock', '.charMemory_editorDeleteBlock', function () {
         const bi = Number($(this).data('block'));
         editorBlocks.splice(bi, 1);
-        editingSet.delete(bi);
+        reindexEditingSet(editingSet, bi);
         refreshEditor();
     });
 
@@ -2825,6 +2847,7 @@ async function consolidateMemories() {
     if (!confirmed) {
         logActivity('Consolidation cancelled by user');
         toastr.info('Consolidation cancelled.', 'CharMemory');
+        updateConsolidationStrategyUI();
         return;
     }
 
@@ -2851,6 +2874,7 @@ async function consolidateMemories() {
     logActivity(`Consolidation complete: ${beforeCount} → ${afterCount} memories`, 'success');
     toastr.success(`Consolidated ${beforeCount} → ${afterCount} memories.`, 'CharMemory');
     updateStatusDisplay();
+    updateConsolidationStrategyUI();
 }
 
 // ============ Slash Commands ============
