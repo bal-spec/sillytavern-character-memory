@@ -742,6 +742,20 @@ function loadSettings() {
         saveSettingsDebounced();
     }
 
+    // Migrate old consolidationPrompt to new per-preset system
+    if (extension_settings[MODULE_NAME].consolidationPrompt) {
+        const oldPrompt = extension_settings[MODULE_NAME].consolidationPrompt;
+        const oldStrategy = extension_settings[MODULE_NAME].consolidationStrategy || 'balanced';
+        if (!extension_settings[MODULE_NAME].consolidationPrompts) {
+            extension_settings[MODULE_NAME].consolidationPrompts = {};
+        }
+        if (!extension_settings[MODULE_NAME].consolidationPrompts[oldStrategy]) {
+            extension_settings[MODULE_NAME].consolidationPrompts[oldStrategy] = oldPrompt;
+        }
+        delete extension_settings[MODULE_NAME].consolidationPrompt;
+        saveSettingsDebounced();
+    }
+
     // Migrate NanoGPT source → provider system
     if (extension_settings[MODULE_NAME].source === 'nanogpt') {
         extension_settings[MODULE_NAME].source = EXTRACTION_SOURCE.PROVIDER;
