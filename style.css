@@ -474,6 +474,39 @@
     position: relative;
 }
 
+.charMemory_editorCard--editing {
+    border: 1px solid var(--SmartThemeBorderColor, rgba(255,255,255,0.15));
+}
+
+.charMemory_editorToggleEdit {
+    opacity: 0.5;
+}
+
+.charMemory_editorToggleEdit:hover {
+    opacity: 1;
+}
+
+.charMemory_editorThemeInput {
+    flex: 1;
+    min-width: 0;
+    padding: 2px 6px;
+    font-weight: bold;
+    font-size: 0.95em;
+    background: var(--SmartThemeBlurTintColor, rgba(0, 0, 0, 0.05));
+    color: var(--SmartThemeBodyColor);
+    border: 1px solid transparent;
+    border-radius: 4px;
+}
+
+.charMemory_editorThemeInput:focus {
+    border-color: var(--SmartThemeBorderColor, rgba(255,255,255,0.2));
+    outline: none;
+}
+
+.charMemory_editorAddBlock--hidden {
+    display: none;
+}
+
 .charMemory_promptDisclosure {
     margin-top: 4px;
 }

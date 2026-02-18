@@ -2367,30 +2367,46 @@ async function deleteBlock(blockIndex) {
 
 // ============ Consolidation ============
 
-function renderEditableCards(blocks) {
+function renderConsolidatedCards(blocks, editingSet) {
     return blocks.map((b, bi) => {
-        const bullets = b.bullets.map((bullet, bui) =>
-            `<div class="charMemory_editorBulletRow" data-block="${bi}" data-bullet="${bui}">
-                <span class="charMemory_editorDash">-</span>
-                <input type="text" class="charMemory_editorBulletInput" value="${escapeHtml(bullet)}" data-block="${bi}" data-bullet="${bui}" />
-                <button class="charMemory_editorDeleteBullet menu_button menu_button_icon" data-block="${bi}" data-bullet="${bui}" title="Delete memory"><i class="fa-solid fa-trash fa-xs"></i></button>
-            </div>`
-        ).join('');
-        return `<div class="charMemory_card charMemory_editorCard" data-block="${bi}">
-            <div class="charMemory_cardHeader">
-                <span class="charMemory_cardTitle">${escapeHtml(b.chat)}</span>
-                <span class="charMemory_cardTimestamp">${escapeHtml(b.date)}</span>
-                <span class="charMemory_cardActions">
-                    <button class="charMemory_editorDeleteBlock menu_button menu_button_icon" data-block="${bi}" title="Delete block"><i class="fa-solid fa-trash"></i></button>
-                </span>
-            </div>
-            <div class="charMemory_editorBullets">${bullets}</div>
-            <button class="charMemory_editorAddBullet menu_button" data-block="${bi}"><i class="fa-solid fa-plus fa-xs"></i> Add memory</button>
-        </div>`;
+        const isEditing = editingSet.has(bi);
+        const themeLabel = `${bi + 1}. ${b.chat}`;
+
+        if (isEditing) {
+            const bullets = b.bullets.map((bullet, bui) =>
+                `<div class="charMemory_editorBulletRow" data-block="${bi}" data-bullet="${bui}">
+                    <span class="charMemory_editorDash">-</span>
+                    <input type="text" class="charMemory_editorBulletInput" value="${escapeHtml(bullet)}" data-block="${bi}" data-bullet="${bui}" />
+                    <button class="charMemory_editorDeleteBullet menu_button menu_button_icon" data-block="${bi}" data-bullet="${bui}" title="Delete memory"><i class="fa-solid fa-trash fa-xs"></i></button>
+                </div>`
+            ).join('');
+            return `<div class="charMemory_card charMemory_editorCard charMemory_editorCard--editing" data-block="${bi}">
+                <div class="charMemory_cardHeader">
+                    <input type="text" class="charMemory_editorThemeInput" value="${escapeHtml(b.chat)}" data-block="${bi}" />
+                    <span class="charMemory_cardActions">
+                        <button class="charMemory_editorToggleEdit menu_button menu_button_icon" data-block="${bi}" title="Done editing"><i class="fa-solid fa-check"></i></button>
+                        <button class="charMemory_editorDeleteBlock menu_button menu_button_icon" data-block="${bi}" title="Delete block"><i class="fa-solid fa-trash"></i></button>
+                    </span>
+                </div>
+                <div class="charMemory_editorBullets">${bullets}</div>
+                <button class="charMemory_editorAddBullet menu_button" data-block="${bi}"><i class="fa-solid fa-plus fa-xs"></i> Add memory</button>
+            </div>`;
+        } else {
+            const bullets = b.bullets.map(bullet => `<li>${escapeHtml(bullet)}</li>`).join('');
+            return `<div class="charMemory_card charMemory_editorCard" data-block="${bi}">
+                <div class="charMemory_cardHeader">
+                    <strong>${escapeHtml(themeLabel)}</strong>
+                    <span class="charMemory_cardActions">
+                        <button class="charMemory_editorToggleEdit menu_button menu_button_icon" data-block="${bi}" title="Edit block"><i class="fa-solid fa-pencil"></i></button>
+                    </span>
+                </div>
+                <ul>${bullets}</ul>
+            </div>`;
+        }
     }).join('');
 }
 
-function buildConsolidationDialog(beforeBlocks, beforeCount, consolidatedBlocks) {
+function buildConsolidationDialog(beforeBlocks, beforeCount, consolidatedBlocks, editingSet) {
     const renderReadOnlyCards = (blocks) => {
         return blocks.map(b => {
             const bullets = b.bullets.map(bullet => `<li>${escapeHtml(bullet)}</li>`).join('');
@@ -2402,6 +2418,7 @@ function buildConsolidationDialog(beforeBlocks, beforeCount, consolidatedBlocks)
     };
 
     const afterCount = countMemories(consolidatedBlocks);
+    const hasEditing = editingSet.size > 0;
 
     return `<div class="charMemory_consolidationDialog">
         <div class="charMemory_consolidationStats" id="charMemory_consolidationStats">
@@ -2409,24 +2426,30 @@ function buildConsolidationDialog(beforeBlocks, beforeCount, consolidatedBlocks)
         </div>
         <div class="charMemory_consolidationToolbar">
             <select id="charMemory_consolidationDialogStrategy" class="text_pole" style="max-width:200px;">
-                ${Object.entries(CONSOLIDATION_PRESETS).filter(([k]) => k !== 'custom').map(([k, v]) =>
+                ${Object.entries(CONSOLIDATION_PRESETS).map(([k, v]) =>
                     `<option value="${k}">${escapeHtml(v.name)}</option>`
                 ).join('')}
-                <option value="custom">Custom</option>
             </select>
+            <details class="charMemory_promptDisclosure charMemory_promptDisclosure--dialog">
+                <summary><small>Show prompt</small></summary>
+                <textarea id="charMemory_dialogPrompt" class="text_pole textarea_compact" rows="4" placeholder="Edit prompt for this strategy..."></textarea>
+                <div class="charMemory_buttonRow">
+                    <input type="button" id="charMemory_dialogRestoreDefault" class="menu_button" value="Restore Default" style="display:none;" />
+                </div>
+            </details>
             <input type="button" id="charMemory_rerunConsolidation" class="menu_button" value="Re-run" title="Send original memories to the LLM again with current strategy" />
             <input type="button" id="charMemory_undoRerun" class="menu_button" value="Undo" title="Revert to previous consolidated version" disabled />
             <span id="charMemory_rerunSpinner" style="display:none;">Working...</span>
         </div>
         <div class="charMemory_consolidationPanes">
             <div class="charMemory_consolidationPane">
-                <h4>Original</h4>
+                <h4>Original Memories</h4>
                 <div class="charMemory_consolidationContent">${renderReadOnlyCards(beforeBlocks)}</div>
             </div>
             <div class="charMemory_consolidationPane">
-                <h4>Consolidated</h4>
-                <div class="charMemory_consolidationContent" id="charMemory_editorPane">${renderEditableCards(consolidatedBlocks)}</div>
-                <button class="charMemory_editorAddBlock menu_button" id="charMemory_editorAddBlock"><i class="fa-solid fa-plus fa-xs"></i> Add Block</button>
+                <h4>Consolidated Memories</h4>
+                <div class="charMemory_consolidationContent" id="charMemory_editorPane">${renderConsolidatedCards(consolidatedBlocks, editingSet)}</div>
+                <button class="charMemory_editorAddBlock menu_button ${hasEditing ? '' : 'charMemory_editorAddBlock--hidden'}" id="charMemory_editorAddBlock"><i class="fa-solid fa-plus fa-xs"></i> Add Block</button>
             </div>
         </div>
     </div>`;
@@ -2588,25 +2611,42 @@ async function consolidateMemories() {
 
     let editorBlocks = parseMemories(initialResult);
     const versionStack = [];
+    const editingSet = new Set();
 
     // Deep copy blocks array
     const cloneBlocks = (blocks) => blocks.map(b => ({ ...b, bullets: [...b.bullets] }));
 
     // Re-render the editor pane from editorBlocks
     const refreshEditor = () => {
-        $('#charMemory_editorPane').html(renderEditableCards(editorBlocks));
+        $('#charMemory_editorPane').html(renderConsolidatedCards(editorBlocks, editingSet));
         $('#charMemory_afterCount').text(countMemories(editorBlocks));
+        $('#charMemory_editorAddBlock').toggleClass('charMemory_editorAddBlock--hidden', editingSet.size === 0);
     };
 
     // Build and show the interactive dialog
-    const dialogHtml = buildConsolidationDialog(memories, beforeCount, editorBlocks);
+    const dialogHtml = buildConsolidationDialog(memories, beforeCount, editorBlocks, editingSet);
     const popup = callGenericPopup(dialogHtml, POPUP_TYPE.CONFIRM, '', { wide: true, allowVerticalScrolling: true });
 
-    // Set up the strategy dropdown to match current setting
+    // Set up the strategy dropdown and prompt viewer to match current setting
     const currentStrategy = extension_settings[MODULE_NAME].consolidationStrategy || 'balanced';
     $('#charMemory_consolidationDialogStrategy').val(currentStrategy);
+    const overrides = extension_settings[MODULE_NAME].consolidationPrompts || {};
+    const currentPrompt = overrides[currentStrategy] || CONSOLIDATION_PRESETS[currentStrategy]?.prompt || '';
+    $('#charMemory_dialogPrompt').val(currentPrompt);
+    $('#charMemory_dialogRestoreDefault').toggle(!!overrides[currentStrategy]);
 
     // === Event delegation for editor interactions ===
+
+    // Toggle edit mode per block
+    $(document).off('click.charMemoryEditorToggle').on('click.charMemoryEditorToggle', '.charMemory_editorToggleEdit', function () {
+        const bi = Number($(this).data('block'));
+        if (editingSet.has(bi)) {
+            editingSet.delete(bi);
+        } else {
+            editingSet.add(bi);
+        }
+        refreshEditor();
+    });
 
     // Sync bullet input changes back to editorBlocks
     $(document).off('input.charMemoryEditor').on('input.charMemoryEditor', '.charMemory_editorBulletInput', function () {
@@ -2614,6 +2654,14 @@ async function consolidateMemories() {
         const bui = Number($(this).data('bullet'));
         if (editorBlocks[bi]) {
             editorBlocks[bi].bullets[bui] = $(this).val();
+        }
+    });
+
+    // Sync theme input changes back to editorBlocks
+    $(document).off('input.charMemoryEditorTheme').on('input.charMemoryEditorTheme', '.charMemory_editorThemeInput', function () {
+        const bi = Number($(this).data('block'));
+        if (editorBlocks[bi]) {
+            editorBlocks[bi].chat = $(this).val();
         }
     });
 
@@ -2625,6 +2673,7 @@ async function consolidateMemories() {
             editorBlocks[bi].bullets.splice(bui, 1);
             if (editorBlocks[bi].bullets.length === 0) {
                 editorBlocks.splice(bi, 1);
+                editingSet.delete(bi);
             }
             refreshEditor();
         }
@@ -2634,6 +2683,7 @@ async function consolidateMemories() {
     $(document).off('click.charMemoryEditorDelBlock').on('click.charMemoryEditorDelBlock', '.charMemory_editorDeleteBlock', function () {
         const bi = Number($(this).data('block'));
         editorBlocks.splice(bi, 1);
+        editingSet.delete(bi);
         refreshEditor();
     });
 
@@ -2651,9 +2701,42 @@ async function consolidateMemories() {
     $(document).off('click.charMemoryEditorAddBlock').on('click.charMemoryEditorAddBlock', '#charMemory_editorAddBlock', function () {
         const now = new Date();
         const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-        editorBlocks.push({ chat: 'consolidated', date: timestamp, bullets: [''] });
+        const newIdx = editorBlocks.length;
+        editorBlocks.push({ chat: 'New Group', date: timestamp, bullets: [''] });
+        editingSet.add(newIdx);
         refreshEditor();
         $('#charMemory_editorPane .charMemory_editorCard:last .charMemory_editorBulletInput:last').focus();
+    });
+
+    // === Dialog prompt handlers ===
+    $('#charMemory_dialogPrompt').off('input').on('input', function () {
+        const strategy = $('#charMemory_consolidationDialogStrategy').val();
+        if (!extension_settings[MODULE_NAME].consolidationPrompts) {
+            extension_settings[MODULE_NAME].consolidationPrompts = {};
+        }
+        extension_settings[MODULE_NAME].consolidationPrompts[strategy] = $(this).val();
+        $('#charMemory_dialogRestoreDefault').show();
+        saveSettingsDebounced();
+    });
+
+    $('#charMemory_dialogRestoreDefault').off('click').on('click', function () {
+        const strategy = $('#charMemory_consolidationDialogStrategy').val();
+        if (extension_settings[MODULE_NAME].consolidationPrompts) {
+            delete extension_settings[MODULE_NAME].consolidationPrompts[strategy];
+        }
+        const preset = CONSOLIDATION_PRESETS[strategy];
+        $('#charMemory_dialogPrompt').val(preset?.prompt || '');
+        $('#charMemory_dialogRestoreDefault').hide();
+        saveSettingsDebounced();
+    });
+
+    $('#charMemory_consolidationDialogStrategy').off('change').on('change', function () {
+        const strategy = $(this).val();
+        const dlgOverrides = extension_settings[MODULE_NAME].consolidationPrompts || {};
+        const prompt = dlgOverrides[strategy] || CONSOLIDATION_PRESETS[strategy]?.prompt || '';
+        const isCustomized = !!dlgOverrides[strategy];
+        $('#charMemory_dialogPrompt').val(prompt);
+        $('#charMemory_dialogRestoreDefault').toggle(isCustomized);
     });
 
     // === Re-run button ===
@@ -2681,6 +2764,7 @@ async function consolidateMemories() {
             versionStack.push(currentBlocks);
             $('#charMemory_undoRerun').prop('disabled', false);
             editorBlocks = parseMemories(newResult);
+            editingSet.clear();
             refreshEditor();
         }
     });
@@ -2689,6 +2773,7 @@ async function consolidateMemories() {
     $('#charMemory_undoRerun').off('click').on('click', () => {
         if (versionStack.length === 0) return;
         editorBlocks = versionStack.pop();
+        editingSet.clear();
         refreshEditor();
         if (versionStack.length === 0) {
             $('#charMemory_undoRerun').prop('disabled', true);
@@ -2699,7 +2784,9 @@ async function consolidateMemories() {
     const confirmed = await popup;
 
     // Clean up event delegation
+    $(document).off('click.charMemoryEditorToggle');
     $(document).off('input.charMemoryEditor');
+    $(document).off('input.charMemoryEditorTheme');
     $(document).off('click.charMemoryEditorDelBullet');
     $(document).off('click.charMemoryEditorDelBlock');
     $(document).off('click.charMemoryEditorAddBullet');
