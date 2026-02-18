@@ -2657,8 +2657,17 @@ async function consolidateMemories() {
     const beforeCount = countMemories(memories);
     logActivity(`Consolidation started: ${beforeCount} memories in ${memories.length} blocks`);
 
+    // Show busy state on button
+    const $btn = $('#charMemory_consolidate');
+    $btn.val('Consolidating…').prop('disabled', true);
+
     // Run initial consolidation — returns serialized text, parse to blocks
-    const initialResult = await runConsolidationLLM(memories);
+    let initialResult;
+    try {
+        initialResult = await runConsolidationLLM(memories);
+    } finally {
+        $btn.val('Consolidate').prop('disabled', false);
+    }
     if (!initialResult) return;
 
     let editorBlocks = parseMemories(initialResult);
