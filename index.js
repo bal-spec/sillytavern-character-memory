@@ -3243,10 +3243,7 @@ function setupListeners() {
         URL.revokeObjectURL(url);
     });
 
-    // Mini activity log expand/collapse
-    $('#charMemory_miniLog').off('click').on('click', function () {
-        $(this).toggleClass('charMemory_miniLog--expanded');
-    });
+
 
     // Batch Extract tab
     $('#charMemory_batchRefresh').off('click').on('click', loadBatchChatList);
