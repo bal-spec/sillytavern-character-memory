@@ -37,13 +37,16 @@
 
             <!-- Main tab (default) -->
             <div class="charMemory_tabContent" id="charMemory_tabMain">
+                <div class="charMemory_sectionHeader">
+                    <small><b>Memory Extraction</b></small>
+                    <label class="checkbox_label" for="charMemory_enabled" title="When enabled, memories are extracted automatically after a set number of new messages">
+                        <input type="checkbox" id="charMemory_enabled" />
+                        <small>Automatic</small>
+                    </label>
+                </div>
                 <div class="charMemory_buttonRow">
                     <input type="button" id="charMemory_extractNow" class="menu_button" value="Extract Now" title="Extract memories from unprocessed messages. If all messages have been processed, use 'Reset Extraction State' first to re-read from the beginning." />
                     <input type="button" id="charMemory_manageMemories" class="menu_button" value="View / Edit" title="Browse, edit, and delete individual stored memories" />
-                    <label class="checkbox_label" for="charMemory_enabled" title="When enabled, memories are extracted automatically after a set number of new messages">
-                        <input type="checkbox" id="charMemory_enabled" />
-                        <small>Auto</small>
-                    </label>
                 </div>
             </div>
 
@@ -80,17 +83,17 @@
                     <input type="button" id="charMemory_batchExtract" class="menu_button" value="Extract Selected" title="Run extraction on all selected chats" disabled />
                     <input type="button" id="charMemory_batchStop" class="menu_button" value="Stop" title="Cancel batch extraction" style="display:none;" />
                 </div>
-                <div class="charMemory_batchSelectRow">
+                <div id="charMemory_batchProgress" class="charMemory_batchProgress" style="display:none;">
+                    <div class="charMemory_batchProgressText"></div>
+                    <div class="charMemory_batchProgressBar"><div class="charMemory_batchProgressFill"></div></div>
+                </div>
+                <div class="charMemory_sectionHeader">
+                    <small><b title="Chat files attached to this character. Select which ones to extract memories from.">Character Attachments</b></small>
                     <label class="checkbox_label">
                         <input type="checkbox" id="charMemory_batchSelectAll" />
                         <small>Select all</small>
                     </label>
                 </div>
-                <div id="charMemory_batchProgress" class="charMemory_batchProgress" style="display:none;">
-                    <div class="charMemory_batchProgressText"></div>
-                    <div class="charMemory_batchProgressBar"><div class="charMemory_batchProgressFill"></div></div>
-                </div>
-                <small><b title="Chat files attached to this character. Select which ones to extract memories from.">Character Attachments</b></small>
                 <div id="charMemory_batchChatList" class="charMemory_batchChatList">
                     <div class="charMemory_diagEmpty">Click "Refresh" to load chats.</div>
                 </div>
