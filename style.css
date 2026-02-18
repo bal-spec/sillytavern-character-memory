@@ -531,11 +531,14 @@
     opacity: 0.5;
 }
 
-/* Mini Activity Log */
+/* Activity Log — always visible */
 .charMemory_miniLog {
     border-top: 1px solid var(--SmartThemeBorderColor, rgba(255,255,255,0.1));
     margin-top: 8px;
     padding-top: 4px;
+}
+
+.charMemory_miniLogContent {
     font-size: 0.8em;
     font-family: monospace;
     max-height: 60px;
@@ -544,8 +547,8 @@
     transition: max-height 0.2s ease;
 }
 
-.charMemory_miniLog:hover,
-.charMemory_miniLog.charMemory_miniLog--expanded {
+.charMemory_miniLogContent:hover,
+.charMemory_miniLog.charMemory_miniLog--expanded .charMemory_miniLogContent {
     max-height: 200px;
     overflow-y: auto;
 }
@@ -554,4 +557,19 @@
     padding: 2px 0;
     font-size: 0.9em;
     opacity: 0.5;
+}
+
+/* Bottom Diagnostics — always visible */
+.charMemory_bottomDiagnostics {
+    border-top: 1px solid var(--SmartThemeBorderColor, rgba(255,255,255,0.1));
+    margin-top: 8px;
+    padding-top: 4px;
+}
+
+.charMemory_bottomDiagnostics .charMemory_buttonRow {
+    align-items: center;
+}
+
+.charMemory_bottomDiagnostics .charMemory_diagnosticsContent {
+    max-height: 300px;
 }

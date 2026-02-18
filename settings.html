@@ -48,13 +48,6 @@
                     <input type="button" id="charMemory_extractNow" class="menu_button" value="Extract Now" title="Extract memories from unprocessed messages. If all messages have been processed, use 'Reset Extraction State' first to re-read from the beginning." />
                     <input type="button" id="charMemory_manageMemories" class="menu_button" value="View / Edit" title="Browse, edit, and delete individual stored memories" />
                 </div>
-                <hr class="charMemory_separator" />
-                <div class="charMemory_buttonRow">
-                    <input type="button" id="charMemory_refreshDiag" class="menu_button" value="Refresh Diagnostics" title="Capture current diagnostics (lorebook entries, extension prompts, memory file status)" />
-                </div>
-                <div id="charMemory_diagnosticsContent" class="charMemory_diagnosticsContent">
-                    <div class="charMemory_diagEmpty">Click "Refresh Diagnostics" after a generation to see diagnostics.</div>
-                </div>
             </div>
 
             <!-- Consolidate tab -->
@@ -288,10 +281,22 @@
                 </div>
             </div>
 
-            <!-- Persistent mini activity log — always visible -->
+            <!-- Activity Log — always visible -->
             <div class="charMemory_miniLog" id="charMemory_miniLog">
+                <small><b>Activity Log</b></small>
                 <div class="charMemory_miniLogContent" id="charMemory_miniLogContent">
                     <div class="charMemory_diagEmpty charMemory_miniLogEmpty">No activity yet.</div>
+                </div>
+            </div>
+
+            <!-- Diagnostics — always visible at bottom -->
+            <div class="charMemory_bottomDiagnostics">
+                <div class="charMemory_buttonRow">
+                    <small><b>Diagnostics</b></small>
+                    <input type="button" id="charMemory_refreshDiag" class="menu_button" value="Refresh" title="Capture current diagnostics (lorebook entries, extension prompts, memory file status)" />
+                </div>
+                <div id="charMemory_diagnosticsContent" class="charMemory_diagnosticsContent">
+                    <div class="charMemory_diagEmpty">Click "Refresh" after a generation to see diagnostics.</div>
                 </div>
             </div>
 
