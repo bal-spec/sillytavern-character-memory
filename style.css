@@ -208,6 +208,7 @@
     max-height: 60vh;
     overflow-y: auto;
     padding: 4px;
+    text-align: left;
 }
 
 .charMemory_card {
