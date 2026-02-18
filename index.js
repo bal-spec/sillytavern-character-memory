@@ -2478,7 +2478,7 @@ ${userPrompt}
 ADDITIONAL FORMAT RULES:
 1. Do NOT use emojis anywhere in the output.
 2. Do NOT copy text verbatim from the input — rephrase in third person.
-3. Each consolidated memory must be wrapped in <memory></memory> tags.
+3. Group memories by theme. Each group is wrapped in <memory chat="Theme Name"></memory> tags where "Theme Name" is a short descriptive label (e.g. "Relationship History", "Character Background", "Key Events").
 4. Inside each <memory> block, use a markdown bulleted list (lines starting with "- ").
 
 MEMORIES TO CONSOLIDATE:
@@ -2539,19 +2539,19 @@ async function runConsolidationLLM(memories) {
         const now = new Date();
         const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
-        const consolidationRegex = /<memory>([\s\S]*?)<\/memory>/gi;
+        const consolidationRegex = /<memory(?:\s+chat="([^"]*)")?>([\s\S]*?)<\/memory>/gi;
         const consolidationMatches = [...cleanResult.matchAll(consolidationRegex)];
         const rawEntries = consolidationMatches.length > 0
-            ? consolidationMatches.map(m => m[1].trim()).filter(Boolean)
-            : [cleanResult.trim()].filter(Boolean);
+            ? consolidationMatches.map(m => ({ theme: m[1] || 'Consolidated', content: m[2].trim() })).filter(e => e.content)
+            : [{ theme: 'Consolidated', content: cleanResult.trim() }].filter(e => e.content);
 
         const consolidated = rawEntries.map(entry => {
-            const bullets = entry.split('\n')
+            const bullets = entry.content.split('\n')
                 .map(l => l.trim())
                 .filter(l => l.startsWith('- '))
                 .map(l => l.slice(2).trim())
                 .filter(Boolean);
-            return { chat: 'consolidated', date: timestamp, bullets: bullets.length > 0 ? bullets : [entry] };
+            return { chat: entry.theme, date: timestamp, bullets: bullets.length > 0 ? bullets : [entry.content] };
         });
 
         return serializeMemories(consolidated);
