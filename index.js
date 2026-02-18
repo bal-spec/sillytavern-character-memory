@@ -301,7 +301,7 @@ const defaultSettings = {
     responseLength: 1000,
     extractionPrompt: defaultExtractionPrompt,
     consolidationStrategy: 'balanced',
-    consolidationPrompt: '',
+    consolidationPrompts: {},
     source: EXTRACTION_SOURCE.PROVIDER,
     fileName: DEFAULT_FILE_NAME,
     perChat: false,
@@ -503,14 +503,15 @@ function toggleProviderSettings(source) {
  */
 function updateConsolidationStrategyUI() {
     const strategy = extension_settings[MODULE_NAME].consolidationStrategy || 'balanced';
-    if (strategy === 'custom') {
-        $('#charMemory_consolidationPrompt').show().val(extension_settings[MODULE_NAME].consolidationPrompt || '');
-        $('#charMemory_consolidationPreview').hide();
-    } else {
-        $('#charMemory_consolidationPrompt').hide();
-        const preset = CONSOLIDATION_PRESETS[strategy];
-        $('#charMemory_consolidationPreview').show().text(preset ? preset.prompt : '');
-    }
+    const overrides = extension_settings[MODULE_NAME].consolidationPrompts || {};
+    const currentPrompt = overrides[strategy] || CONSOLIDATION_PRESETS[strategy]?.prompt || '';
+    const isCustomized = !!overrides[strategy];
+
+    $('#charMemory_consolidationPrompt').val(currentPrompt);
+    $('#charMemory_restorePresetDefault').toggle(isCustomized);
+
+    const previewText = isCustomized ? `${CONSOLIDATION_PRESETS[strategy]?.name} (customized)` : CONSOLIDATION_PRESETS[strategy]?.description || '';
+    $('#charMemory_consolidationPreview').text(previewText);
 }
 
 /**
@@ -2461,21 +2462,14 @@ const CONSOLIDATION_PRESETS = {
         description: 'Compress heavily. Summarize themes. Minimize bullet count.',
         prompt: `Aggressively consolidate these memories into the fewest possible entries. Group by theme or topic. Summarize rather than listing individual events. It's OK to lose minor details if the key facts are preserved. Aim for a compact overview.`,
     },
-    custom: {
-        name: 'Custom',
-        description: 'Write your own consolidation prompt.',
-        prompt: '',
-    },
 };
 
 function buildConsolidationPrompt(memoriesText) {
     const strategy = extension_settings[MODULE_NAME].consolidationStrategy || 'balanced';
-    let userPrompt;
-    if (strategy === 'custom') {
-        userPrompt = extension_settings[MODULE_NAME].consolidationPrompt || CONSOLIDATION_PRESETS.balanced.prompt;
-    } else {
-        userPrompt = CONSOLIDATION_PRESETS[strategy]?.prompt || CONSOLIDATION_PRESETS.balanced.prompt;
-    }
+    const overrides = extension_settings[MODULE_NAME].consolidationPrompts || {};
+    const userPrompt = overrides[strategy]
+        || CONSOLIDATION_PRESETS[strategy]?.prompt
+        || CONSOLIDATION_PRESETS.balanced.prompt;
     return `You are a memory consolidation assistant. Review the following character memories and consolidate them.
 
 RULES:
