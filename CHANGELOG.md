@@ -10,12 +10,15 @@
 
 ### Improvements
 
-- **Tabbed panel layout**: Extension panel reorganized into tabs (Main, Consolidate, Batch Extract, Settings, Log) for better discoverability. Consolidation and batch extraction are now first-class tools with their own tabs.
+- **Tabbed panel layout**: Extension panel reorganized into tabs (Main, Consolidate, Batch Extraction, Settings, Log) for better discoverability. Consolidation and batch extraction are now first-class tools with their own tabs.
 - **Consolidation config in context**: Strategy selection and custom prompt moved to the Consolidate tab, right where you use them, instead of buried in Settings.
 - **Read-only consolidation preview**: Consolidated memories now display as clean read-only cards by default, matching the original memories pane. Click the pencil icon on any block to enter edit mode for that block.
 - **Themed block headers**: The LLM now groups consolidated memories by theme (e.g., "Relationship History", "Key Events"). Theme names are editable.
 - **Editable strategy presets**: Each consolidation strategy (Conservative, Balanced, Aggressive) now has an expandable prompt viewer. Customize any preset's prompt and save it — with Restore Default to revert.
-- **Persistent activity log**: A compact activity log is always visible at the bottom of the panel, regardless of which tab is active. Click to expand.
+- **Consolidation busy indicator**: The Consolidate button shows "Consolidating…" and disables during LLM processing.
+- **Persistent activity log**: A scrollable, resizable activity log is always visible at the bottom of the panel, regardless of which tab is active.
+- **Always-visible diagnostics**: Diagnostics moved from the Main tab to a permanent pane at the panel bottom with its own Refresh button.
+- **Cleaner panel layout**: Main tab shows "Memory Extraction" heading with automatic extraction toggle. Batch Extraction tab has "Character Attachments" header above the chat list.
 
 ## 1.2.1
 
