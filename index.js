@@ -139,6 +139,7 @@ WHAT TO EXTRACT — ask for each item: "Would {{char}} bring this up unprompted 
 - Significant events and their outcomes (not the step-by-step process)
 - Skills, possessions, or status changes
 - Emotional turning points
+- Dates and times when mentioned or clearly implied in the conversation
 
 DO NOT EXTRACT:
 - Anything already described in the CHARACTER CARD above — traits, profession, appearance, personality, habits, preferences, or abilities that are baseline knowledge. This includes rephrasing card traits as discoveries (e.g. if the card says "exhibitionist", do not write "she admitted that being watched turns her on")
@@ -315,6 +316,7 @@ const defaultSettings = {
     interval: 20,
     maxMessagesPerExtraction: 20,
     responseLength: 1000,
+    mergeChunks: false,
     extractionPrompt: defaultExtractionPrompt,
     consolidationStrategy: 'balanced',
     consolidationPrompts: {},
@@ -787,6 +789,7 @@ function loadSettings() {
 
     // Bind UI elements to settings
     $('#charMemory_enabled').prop('checked', extension_settings[MODULE_NAME].enabled);
+    $('#charMemory_mergeChunks').prop('checked', extension_settings[MODULE_NAME].mergeChunks);
     $('#charMemory_perChat').prop('checked', extension_settings[MODULE_NAME].perChat);
     $('#charMemory_interval').val(extension_settings[MODULE_NAME].interval);
     $('#charMemory_intervalCounter').val(extension_settings[MODULE_NAME].interval);
@@ -1825,8 +1828,8 @@ async function extractMemories({
             chunksProcessed++;
         }
 
-        // Merge blocks with the same chat ID + date (from multi-chunk extraction)
-        if (chunksProcessed > 1 && totalMemories > 0) {
+        // Merge blocks with the same chat ID (from multi-chunk extraction)
+        if (chunksProcessed > 1 && totalMemories > 0 && extension_settings[MODULE_NAME].mergeChunks) {
             const allBlocks = parseMemories(await readMemories());
             const merged = mergeMemoryBlocks(allBlocks);
             if (merged.length < allBlocks.length) {
@@ -3194,6 +3197,11 @@ function setupListeners() {
     $('#charMemory_fileName').off('input').on('input', function () {
         const val = String($(this).val()).trim();
         extension_settings[MODULE_NAME].fileName = val;
+        saveSettingsDebounced();
+    });
+
+    $('#charMemory_mergeChunks').off('change').on('change', function () {
+        extension_settings[MODULE_NAME].mergeChunks = !!$(this).prop('checked');
         saveSettingsDebounced();
     });
 
