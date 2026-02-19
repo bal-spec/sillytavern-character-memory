@@ -46,8 +46,8 @@
     border-radius: 4px;
     padding: 4px 8px;
     font-size: 0.85em;
-    flex: 1 1 0;
-    min-width: 0;
+    flex: 1 1 auto;
+    min-width: 80px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -66,13 +66,14 @@
 /* Tabs */
 .charMemory_tabs {
     display: flex;
+    flex-wrap: wrap;
     gap: 0;
     margin-bottom: 6px;
     border-bottom: 1px solid var(--SmartThemeBorderColor, rgba(128, 128, 128, 0.2));
 }
 
 .charMemory_tab {
-    padding: 6px 14px;
+    padding: 6px 10px;
     font-size: 0.85em;
     background: none;
     border: none;
@@ -81,6 +82,7 @@
     opacity: 0.6;
     color: var(--SmartThemeBodyColor, #ccc);
     transition: opacity 0.15s, border-color 0.15s;
+    white-space: nowrap;
 }
 
 .charMemory_tab:hover {
@@ -125,6 +127,8 @@
 .charMemory_diagnosticsContent {
     max-height: 400px;
     overflow-y: auto;
+    overflow-x: hidden;
+    word-break: break-word;
 }
 
 .charMemory_diagTimestamp {
@@ -551,9 +555,11 @@
     font-family: monospace;
     height: 60px;
     overflow-y: auto;
+    overflow-x: hidden;
     resize: vertical;
     min-height: 30px;
     max-height: 400px;
+    word-break: break-word;
 }
 
 .charMemory_miniLogEmpty {
