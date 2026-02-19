@@ -19,6 +19,8 @@
 - **Persistent activity log**: A scrollable, resizable activity log is always visible at the bottom of the panel, regardless of which tab is active.
 - **Always-visible diagnostics**: Diagnostics moved from the Main tab to a permanent pane at the panel bottom with its own Refresh button.
 - **Cleaner panel layout**: Main tab shows "Memory Extraction" heading with automatic extraction toggle. Batch Extraction tab has "Character Attachments" header above the chat list.
+- **Optional chunk merging**: Multi-chunk extractions no longer merge into a single block by default. This keeps blocks smaller for long chats, making consolidation viable for memory-dense characters. Enable "Merge extraction chunks" in Settings to restore the old behavior.
+- **Date/time extraction**: The default extraction prompt now encourages capturing dates and times when mentioned in conversation, adding temporal context to memories.
 
 ## 1.2.1
 
