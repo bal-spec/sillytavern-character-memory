@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.4.0
+
+### New Features
+
+- **Group chat support**: CharMemory now works in group chats. Each group member gets their own memory file, extracted individually. The extraction prompt includes participant context so the LLM knows who is speaking and can attribute memories to the correct character.
+- **Per-character memory manager for groups**: View/Edit in group chats shows per-character sections, each with their own cards, edit and delete controls.
+- **Group-aware consolidation**: Consolidation in group chats shows a character picker — select which character's memories to consolidate.
+- **Pin memory in group chats**: The bookmark button on group messages routes the pinned memory to the correct character's file based on the message sender.
+- **Per-character filename config for groups**: Each group member can have a custom memory filename configured in Settings.
+- **Reverse chronological memory display**: View/Edit now shows newest memory blocks first, so recent extractions appear at the top.
+
+### Improvements
+
+- **Unified code architecture**: All 1:1 and group chat code paths merged behind a single `getMemoryTargets()` abstraction. This eliminated 11 duplicate functions and reduced the codebase by ~400 lines. A 1:1 chat is internally treated as a group with one member.
+- **Per-chat memories extended to groups**: When "Separate memories per chat" is enabled, group chat members also get per-chat memory files.
+- **Context-aware settings**: Settings panel shows only the relevant section for the current chat type (1:1 or group).
+- **Resolved filename display**: Settings now shows the resolved memory filename for the current character.
+- **Reset extraction in groups**: Reset Extraction State clears memory files and tracking for all group members, not just the active character.
+- **Narrow viewport layout**: Button row splits into two rows on narrow viewports (iPad landscape and similar).
+
 ## 1.3.0
 
 ### New Features

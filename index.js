@@ -2626,7 +2626,8 @@ async function showMemoryManager() {
                 </div>`;
         }
 
-        for (let bi = 0; bi < target.blocks.length; bi++) {
+        // Display newest blocks first (reverse chronological) while preserving original indices
+        for (let bi = target.blocks.length - 1; bi >= 0; bi--) {
             const b = target.blocks[bi];
             const chatLabel = b.chat.length > 16 ? b.chat.slice(0, 16) + '...' : b.chat;
             html += `<div class="charMemory_card" data-block="${bi}" data-avatar="${escapeAttr(target.avatar)}" data-filename="${escapeAttr(target.fileName)}">

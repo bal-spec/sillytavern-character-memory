@@ -19,6 +19,7 @@ These memory files are then vectorized by **Vector Storage** (a standard extensi
 - **Visible**: Memories stored as a plain markdown file in character Data Bank — fully viewable and editable
 - **Per-bullet management**: Browse, edit, or delete individual memory bullets from the Memory Manager
 - **Consolidation**: Merge duplicate and related memories with preview before applying and one-click undo
+- **Group chat support**: Works in group chats — each member gets their own memory file, extracted and managed individually
 - **Scoped**: Memories are per-character by default, with optional per-chat isolation
 - **Non-destructive**: Only appends, never overwrites existing memories
 - **Multiple LLM sources**: Dedicated connection to an LLM provider via API (recommended), WebLLM (browser-local), or the Main LLM provider in use for the chat
@@ -158,7 +159,7 @@ You can follow either extraction in real time in the **Activity Log** (Tools & D
 
 ### Step 4: View Your Memories
 
-Click **View / Edit** to open the Memory Manager. Your extracted memories appear as cards grouped by extraction, showing the chat name and timestamp. Each bullet has its own edit and delete buttons.
+Click **View / Edit** to open the Memory Manager. Your extracted memories appear as cards grouped by extraction, showing the chat name and timestamp, with the newest blocks first. Each bullet has its own edit and delete buttons.
 
 ![Memory Manager showing 7 extracted memories with edit and delete controls](images/06-memory-manager.png)
 
@@ -222,6 +223,47 @@ Manually saves a message as a memory with no LLM involved. Opens an edit dialog 
 
 ---
 
+## Group Chats
+
+CharMemory works in group chats with no extra setup. Each group member gets their own memory file, and extraction handles all members in a single pass.
+
+### How It Works
+
+When extraction fires in a group chat — whether automatically or via Extract Now — CharMemory processes each chunk of messages once per group member. For each member, it:
+
+1. Reads that character's existing memories
+2. Builds an extraction prompt that includes the character card and a participant list so the LLM knows who is speaking
+3. Sends the chunk to the LLM
+4. Appends any new memories to that character's file
+
+Progress shows which character is being processed (e.g., "Alice (2/6)").
+
+### Viewing and Editing Group Memories
+
+Click **View / Edit** in a group chat and you'll see per-character sections, each with their own memory cards. Edit and delete controls work the same as in 1:1 — they target the correct character's file based on which section the button is in.
+
+Newest memory blocks appear first (reverse chronological) in both 1:1 and group chats.
+
+### Consolidation in Groups
+
+The Consolidate button in a group chat shows a character picker — select which character's memories to consolidate. Consolidation works on one character at a time to keep the preview manageable. Undo restores that character's previous memories.
+
+### Pin Memory in Groups
+
+The bookmark button on a group message routes the pinned memory to the correct character's file based on the message sender. If the sender can't be matched to a group member (e.g., a narrator message), it goes to the first member.
+
+### Per-Character Filenames
+
+By default, each group member's memory file is auto-named from their character name (e.g., `Alice-memories.md`). You can configure custom filenames per character in Settings when a group chat is active.
+
+### Reset and Clear in Groups
+
+**Reset Extraction State** in a group chat clears tracking for all group members, not just one.
+
+**Clear All Memories** deletes memory files for all group members in the current group.
+
+---
+
 ## Other Features
 
 ### Batch Extraction
@@ -252,9 +294,9 @@ If batch extraction of a long chat produces too few memories, try:
 
 Two reset options are available in Settings:
 
-**Reset Extraction State** resets the extraction tracking for the current character — both the active chat and all batch extraction state. After resetting, the extension treats all messages as unprocessed. This is useful when you want to re-extract from the beginning, perhaps after changing the extraction prompt or switching to a better model. It does **not** delete any memories.
+**Reset Extraction State** resets the extraction tracking for the current character — both the active chat and all batch extraction state. After resetting, the extension treats all messages as unprocessed. This is useful when you want to re-extract from the beginning, perhaps after changing the extraction prompt or switching to a better model. It does **not** delete any memories. In group chats, this resets tracking for all group members.
 
-**Clear All Memories** deletes the memory file and resets all extraction tracking. In default mode (not per-chat), the memory file contains memories from **all** of that character's chats, so this clears everything. This cannot be undone.
+**Clear All Memories** deletes the memory file and resets all extraction tracking. In default mode (not per-chat), the memory file contains memories from **all** of that character's chats, so this clears everything. This cannot be undone. In group chats, this deletes memory files for all group members.
 
 ### Consolidation
 
@@ -268,11 +310,15 @@ Consolidation is always manual — it never runs automatically. Before any chang
 
 **Back up your memory file before consolidating**, especially if you have a large number of memories. The undo is session-only — if you close SillyTavern, the backup is lost. To back up: open the character's Data Bank (paperclip icon) and download the memory file.
 
+In group chats, consolidation shows a character picker — select which character's memories to consolidate. See [Group Chats](#group-chats) for details.
+
 Results vary depending on the model used and the size of the memory file. Review the preview carefully before applying.
 
 ### Per-Chat Memories
 
 By default, all chats for a character share one memory file. Enable **Separate memories per chat** in Settings → Storage to give each conversation its own file. This is useful when the same character appears in different scenarios or timelines that shouldn't share context.
+
+This also works in group chats — each group member gets a separate per-chat memory file.
 
 ### Custom File Names
 
@@ -508,13 +554,13 @@ After converting existing files or making manual edits, **purge vectors and reve
 
 The extension listens for `CHARACTER_MESSAGE_RENDERED` events and counts character messages. When the interval is reached and cooldown has elapsed, it:
 
-1. Collects unprocessed messages in chunks (up to "Messages per LLM call" per chunk)
-2. Strips non-diegetic content (code blocks, markdown tables, `<details>` sections, HTML tags) from messages before sending
-3. Reads the existing memory file from character Data Bank
-4. Sends both to the LLM with an extraction prompt (existing memories are clearly bounded with markers to prevent contamination)
-5. If the LLM returns new `<memory>` blocks with bullets, appends them with chat ID and timestamp metadata
-6. If it returns `NO_NEW_MEMORIES`, skips the update
-7. Advances the extraction pointer and repeats for the next chunk until all unprocessed messages are covered
+1. Determines **memory targets** — in a 1:1 chat, this is one character; in a group chat, one per active group member
+2. Collects unprocessed messages in chunks (up to "Messages per LLM call" per chunk)
+3. Strips non-diegetic content (code blocks, markdown tables, `<details>` sections, HTML tags) from messages before sending
+4. For each chunk, loops through every target: reads that character's existing memories, sends both to the LLM with an extraction prompt, and appends any new `<memory>` blocks to that character's file
+5. In group chats, the extraction prompt includes a participant list so the LLM can attribute memories correctly
+6. If the LLM returns `NO_NEW_MEMORIES` for a target, skips the update for that character
+7. Advances the extraction pointer after each chunk completes (shared across all targets)
 8. Optionally merges memory blocks from the same chat into a single block (off by default — enable "Merge extraction chunks" in Settings)
 9. Users can optionally consolidate memories manually using the Consolidate button (with preview and undo)
 
