@@ -2866,6 +2866,10 @@ function escapeHtml(text) {
 // ============ Memory Manager ============
 
 async function showMemoryManager() {
+    if (isGroupChat()) {
+        return showGroupMemoryManager();
+    }
+
     const content = await readMemories();
     const blocks = parseMemories(content);
 
@@ -2928,6 +2932,216 @@ async function showMemoryManager() {
         $(document).off('click.charMemoryManager');
         $(document).off('click.charMemoryDelete');
         $(document).off('click.charMemoryDeleteBlock');
+    });
+}
+
+/**
+ * Group-aware memory manager. Shows memories organized by character,
+ * with edits/deletes routed to each character's own Data Bank file.
+ */
+async function showGroupMemoryManager() {
+    const members = getGroupMembers();
+    if (members.length === 0) {
+        callGenericPopup('No group members found.', POPUP_TYPE.TEXT);
+        return;
+    }
+
+    // Load all members' memories in parallel
+    const memberData = await Promise.all(members.map(async (member) => {
+        const fileName = getMemoryFileNameForCharacter(member.name, member.avatar);
+        const content = await readMemoriesForCharacter(member.avatar, fileName);
+        const blocks = parseMemories(content || '');
+        return { ...member, fileName, blocks };
+    }));
+
+    const totalBlocks = memberData.reduce((sum, m) => sum + m.blocks.length, 0);
+    if (totalBlocks === 0) {
+        callGenericPopup('No memories yet for any group member.', POPUP_TYPE.TEXT);
+        return;
+    }
+
+    let html = '<div class="charMemory_manager">';
+    for (const member of memberData) {
+        if (member.blocks.length === 0) continue;
+        const memCount = member.blocks.reduce((sum, b) => sum + b.bullets.length, 0);
+        html += `<div class="charMemory_groupSection" data-avatar="${escapeHtml(member.avatar)}" data-filename="${escapeHtml(member.fileName)}">
+            <div style="font-weight:bold;font-size:0.95em;margin:8px 0 4px;border-bottom:1px solid var(--SmartThemeBorderColor, rgba(128,128,128,0.2));padding-bottom:4px;">
+                ${escapeHtml(member.name)} <small style="opacity:0.5;">(${memCount} memories)</small>
+            </div>`;
+        for (let bi = 0; bi < member.blocks.length; bi++) {
+            const b = member.blocks[bi];
+            const chatLabel = b.chat.length > 16 ? b.chat.slice(0, 16) + '...' : b.chat;
+            html += `<div class="charMemory_card" data-block="${bi}" data-avatar="${escapeHtml(member.avatar)}" data-filename="${escapeHtml(member.fileName)}">
+                <div class="charMemory_cardHeader">
+                    <span class="charMemory_cardTitle">${escapeHtml(chatLabel)}</span>
+                    <span class="charMemory_cardTimestamp">${escapeHtml(b.date)}</span>
+                    <span class="charMemory_cardActions">
+                        <button class="charMemory_deleteBlockBtn menu_button menu_button_icon" data-block="${bi}" data-avatar="${escapeHtml(member.avatar)}" data-filename="${escapeHtml(member.fileName)}" title="Delete all memories from this block"><i class="fa-solid fa-trash"></i></button>
+                    </span>
+                </div>
+                <div class="charMemory_cardBullets">`;
+            for (let bui = 0; bui < b.bullets.length; bui++) {
+                html += `<div class="charMemory_bulletRow" data-block="${bi}" data-bullet="${bui}">
+                    <span class="charMemory_bulletText">- ${escapeHtml(b.bullets[bui])}</span>
+                    <span class="charMemory_bulletActions">
+                        <button class="charMemory_editBtn menu_button menu_button_icon" data-block="${bi}" data-bullet="${bui}" data-avatar="${escapeHtml(member.avatar)}" data-filename="${escapeHtml(member.fileName)}" title="Edit"><i class="fa-solid fa-pencil"></i></button>
+                        <button class="charMemory_deleteBtn menu_button menu_button_icon" data-block="${bi}" data-bullet="${bui}" data-avatar="${escapeHtml(member.avatar)}" data-filename="${escapeHtml(member.fileName)}" title="Delete"><i class="fa-solid fa-trash"></i></button>
+                    </span>
+                </div>`;
+            }
+            html += '</div></div>';
+        }
+        html += '</div>';
+    }
+    html += '</div>';
+
+    const popup = callGenericPopup(html, POPUP_TYPE.TEXT, '', { wide: true, allowVerticalScrolling: true });
+
+    // Wire up event handlers — group versions pass avatar+fileName
+    $(document).off('click.charMemoryManager').on('click.charMemoryManager', '.charMemory_editBtn', async function (e) {
+        e.stopPropagation();
+        const blockIdx = Number($(this).data('block'));
+        const bulletIdx = Number($(this).data('bullet'));
+        const avatar = $(this).data('avatar');
+        const fileName = $(this).data('filename');
+        if (avatar && fileName) {
+            await editGroupMemory(blockIdx, bulletIdx, avatar, fileName);
+        } else {
+            await editMemory(blockIdx, bulletIdx);
+        }
+    });
+
+    $(document).off('click.charMemoryDelete').on('click.charMemoryDelete', '.charMemory_deleteBtn', async function (e) {
+        e.stopPropagation();
+        const blockIdx = Number($(this).data('block'));
+        const bulletIdx = Number($(this).data('bullet'));
+        const avatar = $(this).data('avatar');
+        const fileName = $(this).data('filename');
+        if (avatar && fileName) {
+            await deleteGroupMemory(blockIdx, bulletIdx, avatar, fileName);
+        } else {
+            await deleteMemory(blockIdx, bulletIdx);
+        }
+    });
+
+    $(document).off('click.charMemoryDeleteBlock').on('click.charMemoryDeleteBlock', '.charMemory_deleteBlockBtn', async function (e) {
+        e.stopPropagation();
+        const blockIdx = Number($(this).data('block'));
+        const avatar = $(this).data('avatar');
+        const fileName = $(this).data('filename');
+        if (avatar && fileName) {
+            await deleteGroupBlock(blockIdx, avatar, fileName);
+        } else {
+            await deleteBlock(blockIdx);
+        }
+    });
+
+    popup.finally(() => {
+        $(document).off('click.charMemoryManager');
+        $(document).off('click.charMemoryDelete');
+        $(document).off('click.charMemoryDeleteBlock');
+    });
+}
+
+async function editGroupMemory(blockIndex, bulletIndex, avatar, fileName) {
+    const content = await readMemoriesForCharacter(avatar, fileName);
+    const blocks = parseMemories(content);
+
+    if (blockIndex < 0 || blockIndex >= blocks.length) return;
+    const block = blocks[blockIndex];
+    if (bulletIndex < 0 || bulletIndex >= block.bullets.length) return;
+
+    const edited = await callGenericPopup('Edit memory:', POPUP_TYPE.INPUT, block.bullets[bulletIndex], { rows: 3 });
+    if (edited === null || edited === false) return;
+
+    const newText = String(edited).trim();
+    block.bullets[bulletIndex] = newText;
+    await writeMemoriesForCharacter(serializeMemories(blocks), avatar, fileName);
+    toastr.success('Memory updated.', 'CharMemory');
+
+    const $section = $(`.charMemory_groupSection[data-avatar="${avatar}"]`);
+    const $row = $section.find(`.charMemory_bulletRow[data-block="${blockIndex}"][data-bullet="${bulletIndex}"]`);
+    $row.find('.charMemory_bulletText').text('- ' + newText);
+}
+
+async function deleteGroupMemory(blockIndex, bulletIndex, avatar, fileName) {
+    const content = await readMemoriesForCharacter(avatar, fileName);
+    const blocks = parseMemories(content);
+
+    if (blockIndex < 0 || blockIndex >= blocks.length) return;
+    const block = blocks[blockIndex];
+    if (bulletIndex < 0 || bulletIndex >= block.bullets.length) return;
+
+    const confirm = await callGenericPopup(`Delete this memory?\n\n- ${block.bullets[bulletIndex]}`, POPUP_TYPE.CONFIRM);
+    if (!confirm) return;
+
+    block.bullets.splice(bulletIndex, 1);
+    if (block.bullets.length === 0) {
+        blocks.splice(blockIndex, 1);
+    }
+
+    await writeMemoriesForCharacter(serializeMemories(blocks), avatar, fileName);
+    toastr.success('Memory deleted.', 'CharMemory');
+
+    const $section = $(`.charMemory_groupSection[data-avatar="${avatar}"]`);
+    const $row = $section.find(`.charMemory_bulletRow[data-block="${blockIndex}"][data-bullet="${bulletIndex}"]`);
+    const $card = $row.closest('.charMemory_card');
+    $row.remove();
+
+    if ($card.find('.charMemory_bulletRow').length === 0) {
+        $card.remove();
+    }
+    if ($section.find('.charMemory_card').length === 0) {
+        $section.remove();
+    }
+    if ($('.charMemory_manager .charMemory_card').length === 0) {
+        $('.charMemory_manager').html('<div style="text-align:center;padding:1em;">No memories yet.</div>');
+    }
+
+    reindexGroupSection($section);
+}
+
+async function deleteGroupBlock(blockIndex, avatar, fileName) {
+    const content = await readMemoriesForCharacter(avatar, fileName);
+    const blocks = parseMemories(content);
+
+    if (blockIndex < 0 || blockIndex >= blocks.length) return;
+    const block = blocks[blockIndex];
+
+    const confirm = await callGenericPopup(`Delete all ${block.bullets.length} memories from this block?`, POPUP_TYPE.CONFIRM);
+    if (!confirm) return;
+
+    blocks.splice(blockIndex, 1);
+    await writeMemoriesForCharacter(serializeMemories(blocks), avatar, fileName);
+    toastr.success('Block deleted.', 'CharMemory');
+
+    const $section = $(`.charMemory_groupSection[data-avatar="${avatar}"]`);
+    $section.find(`.charMemory_card[data-block="${blockIndex}"]`).remove();
+
+    if ($section.find('.charMemory_card').length === 0) {
+        $section.remove();
+    }
+    if ($('.charMemory_manager .charMemory_card').length === 0) {
+        $('.charMemory_manager').html('<div style="text-align:center;padding:1em;">No memories yet.</div>');
+    }
+
+    reindexGroupSection($section);
+}
+
+/**
+ * Re-index block numbers within a single character's section after deletion.
+ */
+function reindexGroupSection($section) {
+    if (!$section || !$section.length) return;
+    const avatar = $section.data('avatar');
+    const fileName = $section.data('filename');
+    $section.find('.charMemory_card').each(function (ci) {
+        $(this).attr('data-block', ci);
+        $(this).find('.charMemory_deleteBlockBtn').attr('data-block', ci);
+        $(this).find('.charMemory_bulletRow').each(function (ri) {
+            $(this).attr('data-block', ci).attr('data-bullet', ri);
+            $(this).find('.charMemory_editBtn, .charMemory_deleteBtn').attr('data-block', ci).attr('data-bullet', ri);
+        });
     });
 }
 
