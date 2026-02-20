@@ -887,7 +887,17 @@ function updateStatusDisplay() {
     // Stats bar: cooldown timer
     updateCooldownDisplay();
     startCooldownTimer();
+    updateChatTypeVisibility();
     updateGroupMembersList();
+}
+
+/**
+ * Show/hide the 1:1 and Group Chat settings sections based on current chat type.
+ */
+function updateChatTypeVisibility() {
+    const group = isGroupChat();
+    $('#charMemory_section1v1').toggle(!group);
+    $('#charMemory_sectionGroup').toggle(group);
 }
 
 /**
