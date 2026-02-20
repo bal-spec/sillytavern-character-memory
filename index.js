@@ -1065,16 +1065,30 @@ function getMemoryFileNameForCharacter(charName, avatar) {
         if (override) return override;
     }
 
+    const perChat = extension_settings[MODULE_NAME]?.perChat;
+    const context = getContext();
+    const chatId = context.chatId || 'default';
+
     // 2. Auto-detect existing memory file in character's Data Bank
     if (avatar) {
         ensureCharacterAttachments(avatar);
-        const existing = extension_settings.character_attachments[avatar]
-            .find(a => a.name && a.name.endsWith('-memories.md'));
-        if (existing) return existing.name;
+        const attachments = extension_settings.character_attachments[avatar];
+        if (perChat) {
+            // Look for a per-chat file matching this chat ID first
+            const perChatFile = attachments.find(a => a.name && a.name.includes(`-chat${chatId}-`) && a.name.endsWith('-memories.md'));
+            if (perChatFile) return perChatFile.name;
+        } else {
+            // Look for a shared (non-per-chat) memory file
+            const existing = attachments.find(a => a.name && a.name.endsWith('-memories.md') && !a.name.includes('-chat'));
+            if (existing) return existing.name;
+        }
     }
 
     // 3. Fall back to auto-generated name
     const safeName = charName.replace(/[^a-zA-Z0-9_-]/g, '_');
+    if (perChat) {
+        return `${safeName}-chat${chatId}-memories.md`;
+    }
     return `${safeName}-memories.md`;
 }
 

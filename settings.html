@@ -174,18 +174,18 @@
                         </div>
                     </div>
 
+                    <div class="charMemory_statusRow">
+                        <label class="checkbox_label" for="charMemory_perChat" title="When enabled, each chat gets its own memory file. When disabled, all chats for a character share one file. Applies to both 1:1 and group chats.">
+                            <input type="checkbox" id="charMemory_perChat" />
+                            <span>Separate memories per chat</span>
+                        </label>
+                        <small class="charMemory_helperText">Each conversation gets its own memory file instead of sharing one per character. Applies to both 1:1 and group chats.</small>
+                    </div>
+
                     <!-- Section 4: 1:1 Chat (hidden in group chats) -->
                     <div id="charMemory_section1v1">
                         <hr class="charMemory_separator" />
                         <small><b>1:1 Chat</b></small>
-
-                        <div class="charMemory_statusRow">
-                            <label class="checkbox_label" for="charMemory_perChat" title="When enabled, each chat gets its own memory file. When disabled, all chats for a character share one file.">
-                                <input type="checkbox" id="charMemory_perChat" />
-                                <span>Separate memories per chat</span>
-                            </label>
-                            <small class="charMemory_helperText">Each conversation gets its own memory file instead of sharing one per character.</small>
-                        </div>
 
                         <div class="charMemory_statusRow">
                             <label for="charMemory_fileName" title="Override the auto-generated file name. Leave blank to use the default (based on character name).">
