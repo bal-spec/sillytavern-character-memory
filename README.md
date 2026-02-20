@@ -346,6 +346,9 @@ Setting this too low (e.g., 10) gives the LLM too little context — it extracts
 **Max response length** (default: 1000 tokens, range: 100–4000)
 Token limit for the LLM's response per chunk. Most models produce well-formed output within 1000 tokens. **Reasoning/thinking models** (like GLM-4.7 on NVIDIA) need significantly more — their internal reasoning consumes tokens before producing the actual output. If you're using a thinking model and getting empty extractions, increase this to 2000–3000.
 
+**Merge extraction chunks** (default: off)
+When a chat has more unprocessed messages than the chunk size, extraction runs in multiple passes. With this off (default), each chunk's memories are stored as separate blocks — keeping them small and manageable for consolidation. With this on, blocks from the same chat are merged into one. Disable this for long chats (hundreds of messages) where consolidation would be valuable — large merged blocks can exceed the consolidation LLM's capacity.
+
 ### How the Settings Interact
 
 The three main sliders — **Extract after every N messages** (interval), **Minimum wait between extractions** (cooldown), and **Messages per LLM call** (chunk size) — work together:
@@ -452,7 +455,7 @@ Each extraction produces a `<memory>` block with chat attribution and timestampe
 **Key details:**
 - Each block is wrapped in `<memory>` tags with `chat` (the chat filename) and `date` (extraction timestamp) attributes
 - Bullets start with `- ` (dash space) — this is the only recognized format
-- Multiple blocks from the same chat are automatically merged by the extension
+- Multiple blocks from the same chat can optionally be merged (see "Merge extraction chunks" in Settings). This is off by default to keep blocks smaller for consolidation
 - The file is append-only during normal operation — new extractions add blocks at the end
 - Old files using the `## Memory N` heading format are auto-migrated on first read
 
@@ -512,7 +515,7 @@ The extension listens for `CHARACTER_MESSAGE_RENDERED` events and counts charact
 5. If the LLM returns new `<memory>` blocks with bullets, appends them with chat ID and timestamp metadata
 6. If it returns `NO_NEW_MEMORIES`, skips the update
 7. Advances the extraction pointer and repeats for the next chunk until all unprocessed messages are covered
-8. Merges memory blocks from the same chat into a single block
+8. Optionally merges memory blocks from the same chat into a single block (off by default — enable "Merge extraction chunks" in Settings)
 9. Users can optionally consolidate memories manually using the Consolidate button (with preview and undo)
 
 ### Revectorization

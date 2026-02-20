@@ -73,22 +73,38 @@ function logActivity(message, type = 'info') {
 
 function updateActivityLogDisplay() {
     const $container = $('#charMemory_activityLog');
-    if (!$container.length) return;
+    if ($container.length) {
+        if (activityLog.length === 0) {
+            $container.html('<div class="charMemory_diagEmpty">No activity yet.</div>');
+        } else {
+            const html = activityLog.map(entry => {
+                const typeClass = `charMemory_log_${entry.type}`;
+                const isVerbose = entry.message.includes('\n');
+                const msgHtml = isVerbose
+                    ? `<details><summary>${escapeHtml(entry.message.split('\n')[0])}</summary><pre class="charMemory_logVerbose">${escapeHtml(entry.message)}</pre></details>`
+                    : escapeHtml(entry.message);
+                return `<div class="charMemory_logEntry ${typeClass}"><span class="charMemory_logTime">${entry.timestamp}</span> ${msgHtml}</div>`;
+            }).join('');
+            $container.html(html);
+        }
+    }
+
+    // Update mini-log (last 3 entries, first line only)
+    const $miniLog = $('#charMemory_miniLogContent');
+    if (!$miniLog.length) return;
 
     if (activityLog.length === 0) {
-        $container.html('<div class="charMemory_diagEmpty">No activity yet.</div>');
+        $miniLog.html('<div class="charMemory_diagEmpty charMemory_miniLogEmpty">No activity yet.</div>');
         return;
     }
 
-    const html = activityLog.map(entry => {
+    const miniEntries = activityLog.slice(0, 3);
+    const miniHtml = miniEntries.map(entry => {
         const typeClass = `charMemory_log_${entry.type}`;
-        const isVerbose = entry.message.includes('\n');
-        const msgHtml = isVerbose
-            ? `<details><summary>${escapeHtml(entry.message.split('\n')[0])}</summary><pre class="charMemory_logVerbose">${escapeHtml(entry.message)}</pre></details>`
-            : escapeHtml(entry.message);
-        return `<div class="charMemory_logEntry ${typeClass}"><span class="charMemory_logTime">${entry.timestamp}</span> ${msgHtml}</div>`;
+        const msgText = entry.message.split('\n')[0];
+        return `<div class="charMemory_logEntry ${typeClass}"><span class="charMemory_logTime">${entry.timestamp}</span> ${escapeHtml(msgText)}</div>`;
     }).join('');
-    $container.html(html);
+    $miniLog.html(miniHtml);
 }
 
 const defaultExtractionPrompt = `You are a memory extraction assistant. Read the recent chat messages and identify the most significant facts, events, and developments worth remembering long-term.
@@ -125,6 +141,7 @@ WHAT TO EXTRACT — ask for each item: "Would {{char}} bring this up unprompted 
 - Significant events and their outcomes (not the step-by-step process)
 - Skills, possessions, or status changes
 - Emotional turning points
+- Dates and times when mentioned or clearly implied in the conversation
 
 DO NOT EXTRACT:
 - Anything already described in the CHARACTER CARD above — traits, profession, appearance, personality, habits, preferences, or abilities that are baseline knowledge. This includes rephrasing card traits as discoveries (e.g. if the card says "exhibitionist", do not write "she admitted that being watched turns her on")
@@ -356,7 +373,10 @@ const defaultSettings = {
     interval: 20,
     maxMessagesPerExtraction: 20,
     responseLength: 1000,
+    mergeChunks: false,
     extractionPrompt: defaultExtractionPrompt,
+    consolidationStrategy: 'balanced',
+    consolidationPrompts: {},
     source: EXTRACTION_SOURCE.PROVIDER,
     fileName: DEFAULT_FILE_NAME,
     perChat: false,
@@ -418,8 +438,8 @@ function parseMemories(content) {
         // Extract chat and date attributes
         const chatMatch = attrs.match(/chat="([^"]*)"/);
         const dateMatch = attrs.match(/date="([^"]*)"/);
-        const chat = chatMatch ? chatMatch[1] : 'unknown';
-        const date = dateMatch ? dateMatch[1] : '';
+        const chat = chatMatch ? unescapeAttr(chatMatch[1]) : 'unknown';
+        const date = dateMatch ? unescapeAttr(dateMatch[1]) : '';
 
         // Extract bullets (lines starting with "- ")
         const bullets = body.split('\n')
@@ -450,10 +470,18 @@ function countMemories(blocks) {
  * @param {{chat: string, date: string, bullets: string[]}[]} blocks
  * @returns {string}
  */
+function escapeAttr(text) {
+    return String(text).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+}
+
+function unescapeAttr(text) {
+    return String(text).replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+}
+
 function serializeMemories(blocks) {
     return blocks.map(b => {
         const bulletsText = b.bullets.map(bullet => `- ${bullet}`).join('\n');
-        return `<memory chat="${b.chat}" date="${b.date}">\n${bulletsText}\n</memory>`;
+        return `<memory chat="${escapeAttr(b.chat)}" date="${escapeAttr(b.date)}">\n${bulletsText}\n</memory>`;
     }).join('\n\n');
 }
 
@@ -554,6 +582,22 @@ function toggleProviderSettings(source) {
     if (isProvider) {
         updateProviderUI();
     }
+}
+
+/**
+ * Update the consolidation strategy UI: show custom textarea or preset preview.
+ */
+function updateConsolidationStrategyUI() {
+    const strategy = extension_settings[MODULE_NAME].consolidationStrategy || 'balanced';
+    const overrides = extension_settings[MODULE_NAME].consolidationPrompts || {};
+    const currentPrompt = overrides[strategy] || CONSOLIDATION_PRESETS[strategy]?.prompt || '';
+    const isCustomized = !!overrides[strategy];
+
+    $('#charMemory_consolidationPrompt').val(currentPrompt);
+    $('#charMemory_restorePresetDefault').toggle(isCustomized);
+
+    const previewText = isCustomized ? `${CONSOLIDATION_PRESETS[strategy]?.name} (customized)` : CONSOLIDATION_PRESETS[strategy]?.description || '';
+    $('#charMemory_consolidationPreview').text(previewText);
 }
 
 /**
@@ -768,6 +812,20 @@ function loadSettings() {
         saveSettingsDebounced();
     }
 
+    // Migrate old consolidationPrompt to new per-preset system
+    if (extension_settings[MODULE_NAME].consolidationPrompt) {
+        const oldPrompt = extension_settings[MODULE_NAME].consolidationPrompt;
+        const oldStrategy = extension_settings[MODULE_NAME].consolidationStrategy || 'balanced';
+        if (!extension_settings[MODULE_NAME].consolidationPrompts) {
+            extension_settings[MODULE_NAME].consolidationPrompts = {};
+        }
+        if (!extension_settings[MODULE_NAME].consolidationPrompts[oldStrategy]) {
+            extension_settings[MODULE_NAME].consolidationPrompts[oldStrategy] = oldPrompt;
+        }
+        delete extension_settings[MODULE_NAME].consolidationPrompt;
+        saveSettingsDebounced();
+    }
+
     // Migrate NanoGPT source → provider system
     if (extension_settings[MODULE_NAME].source === 'nanogpt') {
         extension_settings[MODULE_NAME].source = EXTRACTION_SOURCE.PROVIDER;
@@ -791,6 +849,7 @@ function loadSettings() {
 
     // Bind UI elements to settings
     $('#charMemory_enabled').prop('checked', extension_settings[MODULE_NAME].enabled);
+    $('#charMemory_mergeChunks').prop('checked', extension_settings[MODULE_NAME].mergeChunks);
     $('#charMemory_perChat').prop('checked', extension_settings[MODULE_NAME].perChat);
     $('#charMemory_interval').val(extension_settings[MODULE_NAME].interval);
     $('#charMemory_intervalCounter').val(extension_settings[MODULE_NAME].interval);
@@ -803,6 +862,8 @@ function loadSettings() {
     $('#charMemory_extractionPrompt').val(extension_settings[MODULE_NAME].extractionPrompt);
     $('#charMemory_groupMode').val(extension_settings[MODULE_NAME].groupExtractionMode);
     $('#charMemory_groupExtractionPrompt').val(extension_settings[MODULE_NAME].groupExtractionPrompt);
+    $('#charMemory_consolidationStrategy').val(extension_settings[MODULE_NAME].consolidationStrategy || 'balanced');
+    updateConsolidationStrategyUI();
     $('#charMemory_source').val(extension_settings[MODULE_NAME].source);
     $('#charMemory_fileName').val(extension_settings[MODULE_NAME].fileName);
     $('#charMemory_verboseLog').prop('checked', extension_settings[MODULE_NAME].verboseLogging);
@@ -2366,8 +2427,8 @@ async function extractMemories({
             chunksProcessed++;
         }
 
-        // Merge blocks with the same chat ID + date (from multi-chunk extraction)
-        if (chunksProcessed > 1 && totalMemories > 0) {
+        // Merge blocks with the same chat ID (from multi-chunk extraction)
+        if (chunksProcessed > 1 && totalMemories > 0 && extension_settings[MODULE_NAME].mergeChunks) {
             const allBlocks = parseMemories(await readMemories());
             const merged = mergeMemoryBlocks(allBlocks);
             if (merged.length < allBlocks.length) {
@@ -2794,9 +2855,12 @@ function updateDiagnosticsDisplay() {
 }
 
 function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+    return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 
 // ============ Memory Manager ============
@@ -2963,20 +3027,105 @@ async function deleteBlock(blockIndex) {
 
 // ============ Consolidation ============
 
-function buildConsolidationPreview(beforeBlocks, afterBlocks, beforeCount, afterCount) {
-    const renderSection = (title, blocks, count) => {
-        const cards = blocks.map(b => {
+/**
+ * Re-index editingSet after a block is removed via splice.
+ * Indices above the removed position shift down by one.
+ */
+function reindexEditingSet(editingSet, removedIndex) {
+    const updated = new Set();
+    for (const idx of editingSet) {
+        if (idx < removedIndex) updated.add(idx);
+        else if (idx > removedIndex) updated.add(idx - 1);
+    }
+    editingSet.clear();
+    for (const idx of updated) editingSet.add(idx);
+}
+
+function renderConsolidatedCards(blocks, editingSet) {
+    return blocks.map((b, bi) => {
+        const isEditing = editingSet.has(bi);
+        const themeLabel = `${bi + 1}. ${b.chat}`;
+
+        if (isEditing) {
+            const bullets = b.bullets.map((bullet, bui) =>
+                `<div class="charMemory_editorBulletRow" data-block="${bi}" data-bullet="${bui}">
+                    <span class="charMemory_editorDash">-</span>
+                    <input type="text" class="charMemory_editorBulletInput" value="${escapeHtml(bullet)}" data-block="${bi}" data-bullet="${bui}" />
+                    <button class="charMemory_editorDeleteBullet menu_button menu_button_icon" data-block="${bi}" data-bullet="${bui}" title="Delete memory"><i class="fa-solid fa-trash fa-xs"></i></button>
+                </div>`
+            ).join('');
+            return `<div class="charMemory_card charMemory_editorCard charMemory_editorCard--editing" data-block="${bi}">
+                <div class="charMemory_cardHeader">
+                    <input type="text" class="charMemory_editorThemeInput" value="${escapeHtml(b.chat)}" data-block="${bi}" />
+                    <span class="charMemory_cardActions">
+                        <button class="charMemory_editorToggleEdit menu_button menu_button_icon" data-block="${bi}" title="Done editing"><i class="fa-solid fa-check"></i></button>
+                        <button class="charMemory_editorDeleteBlock menu_button menu_button_icon" data-block="${bi}" title="Delete block"><i class="fa-solid fa-trash"></i></button>
+                    </span>
+                </div>
+                <div class="charMemory_editorBullets">${bullets}</div>
+                <button class="charMemory_editorAddBullet menu_button" data-block="${bi}"><i class="fa-solid fa-plus fa-xs"></i> Add memory</button>
+            </div>`;
+        } else {
+            const bullets = b.bullets.map(bullet => `<li>${escapeHtml(bullet)}</li>`).join('');
+            return `<div class="charMemory_card charMemory_editorCard" data-block="${bi}">
+                <div class="charMemory_cardHeader">
+                    <strong>${escapeHtml(themeLabel)}</strong>
+                    <span class="charMemory_cardActions">
+                        <button class="charMemory_editorToggleEdit menu_button menu_button_icon" data-block="${bi}" title="Edit block"><i class="fa-solid fa-pencil"></i></button>
+                    </span>
+                </div>
+                <ul>${bullets}</ul>
+            </div>`;
+        }
+    }).join('');
+}
+
+function buildConsolidationDialog(beforeBlocks, beforeCount, consolidatedBlocks, editingSet) {
+    const renderReadOnlyCards = (blocks) => {
+        return blocks.map(b => {
             const bullets = b.bullets.map(bullet => `<li>${escapeHtml(bullet)}</li>`).join('');
             return `<div class="charMemory_card">
                 <div class="charMemory_cardHeader"><strong>${escapeHtml(b.chat)}</strong> <span class="charMemory_cardDate">${escapeHtml(b.date)}</span></div>
                 <ul>${bullets}</ul>
             </div>`;
         }).join('');
-        return `<h3>${title} (${count} memories)</h3>${cards}`;
     };
-    return `<div style="display:flex;gap:1em;">
-        <div style="flex:1;overflow-y:auto;max-height:60vh;">${renderSection('Before', beforeBlocks, beforeCount)}</div>
-        <div style="flex:1;overflow-y:auto;max-height:60vh;">${renderSection('After', afterBlocks, afterCount)}</div>
+
+    const afterCount = countMemories(consolidatedBlocks);
+    const hasEditing = editingSet.size > 0;
+
+    return `<div class="charMemory_consolidationDialog">
+        <div class="charMemory_consolidationStats" id="charMemory_consolidationStats">
+            Original: ${beforeCount} memories in ${beforeBlocks.length} blocks &rarr; Consolidated: <span id="charMemory_afterCount">${afterCount}</span> memories
+        </div>
+        <div class="charMemory_consolidationToolbar">
+            <select id="charMemory_consolidationDialogStrategy" class="text_pole" style="max-width:200px;">
+                ${Object.entries(CONSOLIDATION_PRESETS).map(([k, v]) =>
+                    `<option value="${k}">${escapeHtml(v.name)}</option>`
+                ).join('')}
+            </select>
+            <details class="charMemory_promptDisclosure charMemory_promptDisclosure--dialog">
+                <summary><small>Show prompt</small></summary>
+                <textarea id="charMemory_dialogPrompt" class="text_pole textarea_compact" rows="4" placeholder="Edit prompt for this strategy..."></textarea>
+                <div class="charMemory_buttonRow">
+                    <input type="button" id="charMemory_dialogRestoreDefault" class="menu_button" value="Restore Default" style="display:none;" />
+                </div>
+            </details>
+            <input type="button" id="charMemory_rerunConsolidation" class="menu_button" value="Re-run" title="Send original memories to the LLM again with current strategy" />
+            <input type="button" id="charMemory_undoRerun" class="menu_button" value="Undo" title="Revert to previous consolidated version" disabled />
+            <span id="charMemory_rerunSpinner" style="display:none;">Working...</span>
+        </div>
+        <div class="charMemory_consolidationPanes">
+            <div class="charMemory_consolidationPane">
+                <h4>Original Memories</h4>
+                <div class="charMemory_consolidationContent">${renderReadOnlyCards(beforeBlocks)}</div>
+            </div>
+            <div class="charMemory_consolidationPane">
+                <h4>Consolidated Memories</h4>
+                <div class="charMemory_consolidationContent" id="charMemory_editorPane">${renderConsolidatedCards(consolidatedBlocks, editingSet)}</div>
+                <button class="charMemory_editorAddBlock menu_button ${hasEditing ? '' : 'charMemory_editorAddBlock--hidden'}" id="charMemory_editorAddBlock"><i class="fa-solid fa-plus fa-xs"></i> Add Block</button>
+            </div>
+        </div>
     </div>`;
 }
 
@@ -2994,58 +3143,66 @@ async function undoConsolidation() {
     updateStatusDisplay();
 }
 
-const consolidationPrompt = `You are a memory consolidation assistant. Review the following character memories and consolidate them.
+const CONSOLIDATION_PRESETS = {
+    conservative: {
+        name: 'Conservative',
+        description: 'Only merge near-exact duplicates. Preserves everything else.',
+        prompt: `Merge ONLY near-exact duplicate memories. If two bullets say essentially the same thing, keep the more detailed version. Do NOT combine loosely related facts. Do NOT summarize. Preserve every distinct piece of information.`,
+    },
+    balanced: {
+        name: 'Balanced',
+        description: 'Merge duplicates and combine related facts.',
+        prompt: `Merge duplicate or near-duplicate memories into one. Combine closely related facts about the same event or topic. Preserve all unique information — do NOT discard distinct memories. Summarize in third person.`,
+    },
+    aggressive: {
+        name: 'Aggressive',
+        description: 'Compress heavily. Summarize themes. Minimize bullet count.',
+        prompt: `Aggressively consolidate these memories into the fewest possible entries. Group by theme or topic. Summarize rather than listing individual events. It's OK to lose minor details if the key facts are preserved. Aim for a compact overview.`,
+    },
+};
+
+function buildConsolidationPrompt(memoriesText) {
+    const strategy = extension_settings[MODULE_NAME].consolidationStrategy || 'balanced';
+    const overrides = extension_settings[MODULE_NAME].consolidationPrompts || {};
+    const userPrompt = overrides[strategy]
+        || CONSOLIDATION_PRESETS[strategy]?.prompt
+        || CONSOLIDATION_PRESETS.balanced.prompt;
+    return `You are a memory consolidation assistant. Review the following character memories and consolidate them.
 
 RULES:
-1. Merge duplicate or near-duplicate memories into one.
-2. Combine closely related facts about the same event or topic.
-3. Preserve all unique information — do NOT discard distinct memories.
-4. Summarize in third person. Do NOT copy text verbatim from the input.
-5. Do NOT use emojis anywhere in the output.
-6. Each consolidated memory must be wrapped in <memory></memory> tags.
-7. Inside each <memory> block, use a markdown bulleted list (lines starting with "- ").
+${userPrompt}
+
+ADDITIONAL FORMAT RULES:
+1. Do NOT use emojis anywhere in the output.
+2. Do NOT copy text verbatim from the input — rephrase in third person.
+3. Group memories by theme. Each group is wrapped in <memory chat="Theme Name"></memory> tags where "Theme Name" is a short descriptive label (e.g. "Relationship History", "Character Background", "Key Events").
+4. Inside each <memory> block, use a markdown bulleted list (lines starting with "- ").
 
 MEMORIES TO CONSOLIDATE:
-{{memories}}
+${memoriesText}
 
 Output ONLY <memory> blocks. No headers, no commentary, no extra text.`;
+}
 
-async function consolidateMemories() {
-    if (inApiCall) {
-        toastr.warning('An API call is already in progress.', 'CharMemory');
-        return;
-    }
-
-    const content = await readMemories();
-    const memories = parseMemories(content);
-
-    if (memories.length < 2) {
-        toastr.info('Not enough memories to consolidate.', 'CharMemory');
-        return;
-    }
-
-    const beforeCount = countMemories(memories);
-    logActivity(`Consolidation started: ${beforeCount} memories in ${memories.length} blocks`);
-
+async function runConsolidationLLM(memories) {
     let memoriesText = memories.map((b, i) =>
         `[Block ${i + 1}]\n${b.bullets.map(bullet => `- ${bullet}`).join('\n')}`,
     ).join('\n\n');
 
-    // Truncate for WebLLM's smaller context window
     const isWebLlm = extension_settings[MODULE_NAME].source === EXTRACTION_SOURCE.WEBLLM;
     if (isWebLlm) {
-        const templateLength = consolidationPrompt.replace('{{memories}}', '').length;
-        const available = Math.max(WEBLLM_MAX_PROMPT_CHARS - templateLength, 1000);
+        const template = buildConsolidationPrompt('');
+        const available = Math.max(WEBLLM_MAX_PROMPT_CHARS - template.length, 1000);
         memoriesText = truncateText(memoriesText, available);
     }
 
-    let prompt = consolidationPrompt.replace('{{memories}}', memoriesText);
+    let prompt = buildConsolidationPrompt(memoriesText);
     prompt = substituteParamsExtended(prompt);
 
     try {
         inApiCall = true;
         const sourceLabel = getSourceLabel();
-        toastr.info(`Consolidating ${beforeCount} memories via ${sourceLabel}...`, 'CharMemory', { timeOut: 3000 });
+        toastr.info(`Consolidating via ${sourceLabel}...`, 'CharMemory', { timeOut: 3000 });
 
         const verbose = extension_settings[MODULE_NAME].verboseLogging;
         if (verbose) {
@@ -3071,50 +3228,284 @@ async function consolidateMemories() {
 
         if (!cleanResult) {
             logActivity('Consolidation returned empty result', 'warning');
-            toastr.warning('Consolidation returned empty result. Memories unchanged.', 'CharMemory');
-            return;
+            toastr.warning('Consolidation returned empty result.', 'CharMemory');
+            return null;
         }
 
+        // Parse into memory format, then serialize back to plain text for the editor
         const now = new Date();
         const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
-        const consolidationRegex = /<memory>([\s\S]*?)<\/memory>/gi;
+        const consolidationRegex = /<memory(?:\s+chat="([^"]*)")?>([\s\S]*?)<\/memory>/gi;
         const consolidationMatches = [...cleanResult.matchAll(consolidationRegex)];
         const rawEntries = consolidationMatches.length > 0
-            ? consolidationMatches.map(m => m[1].trim()).filter(Boolean)
-            : [cleanResult.trim()].filter(Boolean);
+            ? consolidationMatches.map(m => ({ theme: m[1] || 'Consolidated', content: m[2].trim() })).filter(e => e.content)
+            : [{ theme: 'Consolidated', content: cleanResult.trim() }].filter(e => e.content);
 
         const consolidated = rawEntries.map(entry => {
-            const bullets = entry.split('\n')
+            const bullets = entry.content.split('\n')
                 .map(l => l.trim())
                 .filter(l => l.startsWith('- '))
                 .map(l => l.slice(2).trim())
                 .filter(Boolean);
-            return { chat: 'consolidated', date: timestamp, bullets: bullets.length > 0 ? bullets : [entry] };
+            return { chat: entry.theme, date: timestamp, bullets: bullets.length > 0 ? bullets : [entry.content] };
         });
 
-        const afterCount = countMemories(consolidated);
-        const previewHtml = buildConsolidationPreview(memories, consolidated, beforeCount, afterCount);
-        const confirmed = await callGenericPopup(previewHtml, POPUP_TYPE.CONFIRM, '', { wide: true, allowVerticalScrolling: true });
-        if (!confirmed) {
-            logActivity('Consolidation cancelled by user');
-            toastr.info('Consolidation cancelled.', 'CharMemory');
-            return;
-        }
-
-        consolidationBackup = content;
-        await writeMemories(serializeMemories(consolidated));
-        $('#charMemory_undoConsolidate').prop('disabled', false);
-        logActivity(`Consolidation complete: ${beforeCount} → ${afterCount} memories`, 'success');
-        toastr.success(`Consolidated ${beforeCount} → ${afterCount} memories.`, 'CharMemory');
-        updateStatusDisplay();
+        return serializeMemories(consolidated);
     } catch (err) {
         console.error(LOG_PREFIX, 'Consolidation failed:', err);
         logActivity(`Consolidation failed: ${err.message}`, 'error');
         toastr.error('Memory consolidation failed. Check console for details.', 'CharMemory');
+        return null;
     } finally {
         inApiCall = false;
     }
+}
+
+async function consolidateMemories() {
+    if (inApiCall) {
+        toastr.warning('An API call is already in progress.', 'CharMemory');
+        return;
+    }
+
+    const content = await readMemories();
+    const memories = parseMemories(content);
+
+    if (memories.length < 2) {
+        toastr.info('Not enough memories to consolidate.', 'CharMemory');
+        return;
+    }
+
+    const beforeCount = countMemories(memories);
+    logActivity(`Consolidation started: ${beforeCount} memories in ${memories.length} blocks`);
+
+    // Show busy state on button
+    const $btn = $('#charMemory_consolidate');
+    $btn.val('Consolidating…').prop('disabled', true);
+
+    // Run initial consolidation — returns serialized text, parse to blocks
+    let initialResult;
+    try {
+        initialResult = await runConsolidationLLM(memories);
+    } finally {
+        $btn.val('Consolidate').prop('disabled', false);
+    }
+    if (!initialResult) return;
+
+    let editorBlocks = parseMemories(initialResult);
+    const versionStack = [];
+    const editingSet = new Set();
+
+    // Deep copy blocks array
+    const cloneBlocks = (blocks) => blocks.map(b => ({ ...b, bullets: [...b.bullets] }));
+
+    // Re-render the editor pane from editorBlocks
+    const refreshEditor = () => {
+        $('#charMemory_editorPane').html(renderConsolidatedCards(editorBlocks, editingSet));
+        $('#charMemory_afterCount').text(countMemories(editorBlocks));
+        $('#charMemory_editorAddBlock').toggleClass('charMemory_editorAddBlock--hidden', editingSet.size === 0);
+    };
+
+    // Build and show the interactive dialog
+    const dialogHtml = buildConsolidationDialog(memories, beforeCount, editorBlocks, editingSet);
+    const popup = callGenericPopup(dialogHtml, POPUP_TYPE.CONFIRM, '', { wide: true, allowVerticalScrolling: true });
+
+    // Set up the strategy dropdown and prompt viewer to match current setting
+    const currentStrategy = extension_settings[MODULE_NAME].consolidationStrategy || 'balanced';
+    $('#charMemory_consolidationDialogStrategy').val(currentStrategy);
+    const overrides = extension_settings[MODULE_NAME].consolidationPrompts || {};
+    const currentPrompt = overrides[currentStrategy] || CONSOLIDATION_PRESETS[currentStrategy]?.prompt || '';
+    $('#charMemory_dialogPrompt').val(currentPrompt);
+    $('#charMemory_dialogRestoreDefault').toggle(!!overrides[currentStrategy]);
+
+    // === Event delegation for editor interactions ===
+
+    // Toggle edit mode per block
+    $(document).off('click.charMemoryEditorToggle').on('click.charMemoryEditorToggle', '.charMemory_editorToggleEdit', function () {
+        const bi = Number($(this).data('block'));
+        if (editingSet.has(bi)) {
+            editingSet.delete(bi);
+        } else {
+            editingSet.add(bi);
+        }
+        refreshEditor();
+    });
+
+    // Sync bullet input changes back to editorBlocks
+    $(document).off('input.charMemoryEditor').on('input.charMemoryEditor', '.charMemory_editorBulletInput', function () {
+        const bi = Number($(this).data('block'));
+        const bui = Number($(this).data('bullet'));
+        if (editorBlocks[bi]) {
+            editorBlocks[bi].bullets[bui] = $(this).val();
+        }
+    });
+
+    // Sync theme input changes back to editorBlocks
+    $(document).off('input.charMemoryEditorTheme').on('input.charMemoryEditorTheme', '.charMemory_editorThemeInput', function () {
+        const bi = Number($(this).data('block'));
+        if (editorBlocks[bi]) {
+            editorBlocks[bi].chat = $(this).val();
+        }
+    });
+
+    // Delete bullet
+    $(document).off('click.charMemoryEditorDelBullet').on('click.charMemoryEditorDelBullet', '.charMemory_editorDeleteBullet', function () {
+        const bi = Number($(this).data('block'));
+        const bui = Number($(this).data('bullet'));
+        if (editorBlocks[bi]) {
+            editorBlocks[bi].bullets.splice(bui, 1);
+            if (editorBlocks[bi].bullets.length === 0) {
+                editorBlocks.splice(bi, 1);
+                reindexEditingSet(editingSet, bi);
+            }
+            refreshEditor();
+        }
+    });
+
+    // Delete block
+    $(document).off('click.charMemoryEditorDelBlock').on('click.charMemoryEditorDelBlock', '.charMemory_editorDeleteBlock', function () {
+        const bi = Number($(this).data('block'));
+        editorBlocks.splice(bi, 1);
+        reindexEditingSet(editingSet, bi);
+        refreshEditor();
+    });
+
+    // Add bullet to block
+    $(document).off('click.charMemoryEditorAddBullet').on('click.charMemoryEditorAddBullet', '.charMemory_editorAddBullet', function () {
+        const bi = Number($(this).data('block'));
+        if (editorBlocks[bi]) {
+            editorBlocks[bi].bullets.push('');
+            refreshEditor();
+            $(`#charMemory_editorPane .charMemory_editorCard[data-block="${bi}"] .charMemory_editorBulletInput:last`).focus();
+        }
+    });
+
+    // Add new block
+    $(document).off('click.charMemoryEditorAddBlock').on('click.charMemoryEditorAddBlock', '#charMemory_editorAddBlock', function () {
+        const now = new Date();
+        const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+        const newIdx = editorBlocks.length;
+        editorBlocks.push({ chat: 'New Group', date: timestamp, bullets: [''] });
+        editingSet.add(newIdx);
+        refreshEditor();
+        $('#charMemory_editorPane .charMemory_editorCard:last .charMemory_editorBulletInput:last').focus();
+    });
+
+    // === Dialog prompt handlers ===
+    $('#charMemory_dialogPrompt').off('input').on('input', function () {
+        const strategy = $('#charMemory_consolidationDialogStrategy').val();
+        if (!extension_settings[MODULE_NAME].consolidationPrompts) {
+            extension_settings[MODULE_NAME].consolidationPrompts = {};
+        }
+        extension_settings[MODULE_NAME].consolidationPrompts[strategy] = $(this).val();
+        $('#charMemory_dialogRestoreDefault').show();
+        saveSettingsDebounced();
+    });
+
+    $('#charMemory_dialogRestoreDefault').off('click').on('click', function () {
+        const strategy = $('#charMemory_consolidationDialogStrategy').val();
+        if (extension_settings[MODULE_NAME].consolidationPrompts) {
+            delete extension_settings[MODULE_NAME].consolidationPrompts[strategy];
+        }
+        const preset = CONSOLIDATION_PRESETS[strategy];
+        $('#charMemory_dialogPrompt').val(preset?.prompt || '');
+        $('#charMemory_dialogRestoreDefault').hide();
+        saveSettingsDebounced();
+    });
+
+    $('#charMemory_consolidationDialogStrategy').off('change').on('change', function () {
+        const strategy = $(this).val();
+        const dlgOverrides = extension_settings[MODULE_NAME].consolidationPrompts || {};
+        const prompt = dlgOverrides[strategy] || CONSOLIDATION_PRESETS[strategy]?.prompt || '';
+        const isCustomized = !!dlgOverrides[strategy];
+        $('#charMemory_dialogPrompt').val(prompt);
+        $('#charMemory_dialogRestoreDefault').toggle(isCustomized);
+    });
+
+    // === Re-run button ===
+    $('#charMemory_rerunConsolidation').off('click').on('click', async () => {
+        if (inApiCall) return;
+
+        const currentBlocks = cloneBlocks(editorBlocks);
+
+        const dialogStrategy = $('#charMemory_consolidationDialogStrategy').val();
+        extension_settings[MODULE_NAME].consolidationStrategy = dialogStrategy;
+        updateConsolidationStrategyUI();
+        saveSettingsDebounced();
+
+        $('#charMemory_rerunSpinner').show();
+        $('#charMemory_rerunConsolidation').prop('disabled', true);
+        $('#charMemory_editorPane').addClass('charMemory_editorDisabled');
+
+        const newResult = await runConsolidationLLM(memories);
+
+        $('#charMemory_rerunSpinner').hide();
+        $('#charMemory_rerunConsolidation').prop('disabled', false);
+        $('#charMemory_editorPane').removeClass('charMemory_editorDisabled');
+
+        if (newResult) {
+            versionStack.push(currentBlocks);
+            $('#charMemory_undoRerun').prop('disabled', false);
+            editorBlocks = parseMemories(newResult);
+            editingSet.clear();
+            refreshEditor();
+        }
+    });
+
+    // === Undo button ===
+    $('#charMemory_undoRerun').off('click').on('click', () => {
+        if (versionStack.length === 0) return;
+        editorBlocks = versionStack.pop();
+        editingSet.clear();
+        refreshEditor();
+        if (versionStack.length === 0) {
+            $('#charMemory_undoRerun').prop('disabled', true);
+        }
+    });
+
+    // === Wait for Accept/Cancel ===
+    const confirmed = await popup;
+
+    // Clean up event delegation
+    $(document).off('click.charMemoryEditorToggle');
+    $(document).off('input.charMemoryEditor');
+    $(document).off('input.charMemoryEditorTheme');
+    $(document).off('click.charMemoryEditorDelBullet');
+    $(document).off('click.charMemoryEditorDelBlock');
+    $(document).off('click.charMemoryEditorAddBullet');
+    $(document).off('click.charMemoryEditorAddBlock');
+
+    if (!confirmed) {
+        logActivity('Consolidation cancelled by user');
+        toastr.info('Consolidation cancelled.', 'CharMemory');
+        updateConsolidationStrategyUI();
+        return;
+    }
+
+    if (inApiCall) {
+        toastr.warning('Cannot save while a re-run is in progress.', 'CharMemory');
+        return;
+    }
+
+    // Filter out empty bullets and empty blocks before saving
+    const cleanBlocks = editorBlocks
+        .map(b => ({ ...b, bullets: b.bullets.filter(bullet => bullet.trim() !== '') }))
+        .filter(b => b.bullets.length > 0);
+
+    if (cleanBlocks.length === 0) {
+        toastr.warning('No memories to save. Memories unchanged.', 'CharMemory');
+        return;
+    }
+
+    consolidationBackup = content;
+    await writeMemories(serializeMemories(cleanBlocks));
+    $('#charMemory_undoConsolidate').prop('disabled', false);
+
+    const afterCount = countMemories(cleanBlocks);
+    logActivity(`Consolidation complete: ${beforeCount} → ${afterCount} memories`, 'success');
+    toastr.success(`Consolidated ${beforeCount} → ${afterCount} memories.`, 'CharMemory');
+    updateStatusDisplay();
+    updateConsolidationStrategyUI();
 }
 
 // ============ Slash Commands ============
@@ -3370,6 +3761,33 @@ function setupListeners() {
         saveSettingsDebounced();
     });
 
+    $('#charMemory_consolidationStrategy').off('change').on('change', function () {
+        extension_settings[MODULE_NAME].consolidationStrategy = String($(this).val());
+        updateConsolidationStrategyUI();
+        saveSettingsDebounced();
+    });
+
+    // Consolidation prompt editing — save override for current strategy
+    $('#charMemory_consolidationPrompt').off('input').on('input', function () {
+        const strategy = extension_settings[MODULE_NAME].consolidationStrategy || 'balanced';
+        if (!extension_settings[MODULE_NAME].consolidationPrompts) {
+            extension_settings[MODULE_NAME].consolidationPrompts = {};
+        }
+        extension_settings[MODULE_NAME].consolidationPrompts[strategy] = $(this).val();
+        $('#charMemory_restorePresetDefault').show();
+        saveSettingsDebounced();
+    });
+
+    // Restore preset default prompt
+    $('#charMemory_restorePresetDefault').off('click').on('click', function () {
+        const strategy = extension_settings[MODULE_NAME].consolidationStrategy || 'balanced';
+        if (extension_settings[MODULE_NAME].consolidationPrompts) {
+            delete extension_settings[MODULE_NAME].consolidationPrompts[strategy];
+        }
+        updateConsolidationStrategyUI();
+        saveSettingsDebounced();
+    });
+
     $('#charMemory_extractNow').off('click').on('click', function () {
         extractMemories({ force: true });
     });
@@ -3433,6 +3851,11 @@ function setupListeners() {
         saveSettingsDebounced();
     });
 
+    $('#charMemory_mergeChunks').off('change').on('change', function () {
+        extension_settings[MODULE_NAME].mergeChunks = !!$(this).prop('checked');
+        saveSettingsDebounced();
+    });
+
     $('#charMemory_perChat').off('change').on('change', function () {
         extension_settings[MODULE_NAME].perChat = !!$(this).prop('checked');
         saveSettingsDebounced();
@@ -3443,7 +3866,7 @@ function setupListeners() {
     $('#charMemory_consolidate').off('click').on('click', () => consolidateMemories());
     $('#charMemory_undoConsolidate').off('click').on('click', () => undoConsolidation());
 
-    // Tab switching for Activity, Diagnostics & Batch panels
+    // Tab switching for top-level panel tabs
     $('.charMemory_tab').off('click').on('click', function () {
         const tab = $(this).data('tab');
         $('.charMemory_tab').removeClass('active');
@@ -3478,6 +3901,8 @@ function setupListeners() {
         a.click();
         URL.revokeObjectURL(url);
     });
+
+
 
     // Batch Extract tab
     $('#charMemory_batchRefresh').off('click').on('click', loadBatchChatList);

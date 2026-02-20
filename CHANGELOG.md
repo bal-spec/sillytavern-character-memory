@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.3.0
+
+### New Features
+
+- **Consolidation strategy presets**: Choose between Conservative (only merge near-exact duplicates), Balanced (merge duplicates and related facts), or Aggressive (compress heavily, summarize themes). Each preset's prompt is viewable and editable.
+- **Card-based consolidation editor**: Consolidated memories are shown as editable cards matching the original memories' formatting, instead of raw text with tags. Add, edit, and delete individual memories or entire blocks directly in the preview.
+- **Re-run with version history**: Each re-run saves the previous version. Click Undo to step back through versions. The version stack lives within the dialog session.
+
+### Improvements
+
+- **Tabbed panel layout**: Extension panel reorganized into tabs (Main, Consolidate, Batch Extraction, Settings, Log) for better discoverability. Consolidation and batch extraction are now first-class tools with their own tabs.
+- **Consolidation config in context**: Strategy selection and custom prompt moved to the Consolidate tab, right where you use them, instead of buried in Settings.
+- **Read-only consolidation preview**: Consolidated memories now display as clean read-only cards by default, matching the original memories pane. Click the pencil icon on any block to enter edit mode for that block.
+- **Themed block headers**: The LLM now groups consolidated memories by theme (e.g., "Relationship History", "Key Events"). Theme names are editable.
+- **Editable strategy presets**: Each consolidation strategy (Conservative, Balanced, Aggressive) now has an expandable prompt viewer. Customize any preset's prompt and save it — with Restore Default to revert.
+- **Consolidation busy indicator**: The Consolidate button shows "Consolidating…" and disables during LLM processing.
+- **Persistent activity log**: A scrollable, resizable activity log is always visible at the bottom of the panel, regardless of which tab is active.
+- **Always-visible diagnostics**: Diagnostics moved from the Main tab to a permanent pane at the panel bottom with its own Refresh button.
+- **Cleaner panel layout**: Main tab shows "Memory Extraction" heading with automatic extraction toggle. Batch Extraction tab has "Character Attachments" header above the chat list.
+- **Optional chunk merging**: Multi-chunk extractions no longer merge into a single block by default. This keeps blocks smaller for long chats, making consolidation viable for memory-dense characters. Enable "Merge extraction chunks" in Settings to restore the old behavior.
+- **Date/time extraction**: The default extraction prompt now encourages capturing dates and times when mentioned in conversation, adding temporal context to memories.
+
 ## 1.2.1
 
 ### Bug Fixes
