@@ -889,6 +889,12 @@ function updateStatusDisplay() {
     startCooldownTimer();
     updateChatTypeVisibility();
     updateGroupMembersList();
+
+    // Show resolved filename for 1:1 chats
+    if (!isGroupChat()) {
+        const charName = getCharacterName();
+        $('#charMemory_resolvedFileName').text(charName ? getMemoryFileName() : '—');
+    }
 }
 
 /**
