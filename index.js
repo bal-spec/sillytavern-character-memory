@@ -889,54 +889,33 @@ let cooldownTimerInterval = null;
 function updateStatusDisplay() {
     ensureMetadata();
 
+    const targets = getMemoryTargets();
+
     // Stats bar: file name
-    if (isGroupChat()) {
-        const members = getGroupMembers();
-        const label = `Group (${members.length} characters)`;
-        $('#charMemory_statFile').text(label).attr('title', members.map(m => m.name).join(', '));
+    if (targets.length > 1) {
+        const label = `Group (${targets.length} characters)`;
+        $('#charMemory_statFile').text(label).attr('title', targets.map(t => t.name).join(', '));
+    } else if (targets.length === 1) {
+        $('#charMemory_statFile').text(targets[0].fileName).attr('title', targets[0].fileName);
     } else {
-        const charName = getCharacterName();
-        if (charName) {
-            const fileName = getMemoryFileName();
-            $('#charMemory_statFile').text(fileName).attr('title', fileName);
-        } else {
-            $('#charMemory_statFile').text('No character').attr('title', 'No character selected');
-        }
+        $('#charMemory_statFile').text('No character').attr('title', 'No character selected');
     }
 
-    // Stats bar: memory count (total bullets, async)
-    if (isGroupChat()) {
-        // Sum memories across all group members
-        const members = getGroupMembers();
+    // Stats bar: memory count (total bullets across all targets, async)
+    if (targets.length === 0) {
+        $('#charMemory_statCount').text('0 memories');
+    } else {
         let totalCount = 0;
         let loaded = 0;
-        if (members.length === 0) {
-            $('#charMemory_statCount').text('0 memories');
-        } else {
-            for (const member of members) {
-                const memFileName = getMemoryFileNameForCharacter(member.name, member.avatar);
-                readMemoriesForCharacter(member.avatar, memFileName).then(content => {
-                    const blocks = parseMemories(content || '');
-                    totalCount += countMemories(blocks);
-                    loaded++;
-                    if (loaded === members.length) {
-                        $('#charMemory_statCount').text(`${totalCount} memor${totalCount === 1 ? 'y' : 'ies'}`);
-                    }
-                }).catch(() => { loaded++; });
-            }
-        }
-    } else {
-        const attachment = findMemoryAttachment();
-        if (attachment) {
-            getFileAttachment(attachment.url).then(content => {
+        for (const target of targets) {
+            readMemoriesForCharacter(target.avatar, target.fileName).then(content => {
                 const blocks = parseMemories(content || '');
-                const count = countMemories(blocks);
-                $('#charMemory_statCount').text(`${count} memor${count === 1 ? 'y' : 'ies'}`);
-            }).catch(() => {
-                $('#charMemory_statCount').text('? memories');
-            });
-        } else {
-            $('#charMemory_statCount').text('0 memories');
+                totalCount += countMemories(blocks);
+                loaded++;
+                if (loaded === targets.length) {
+                    $('#charMemory_statCount').text(`${totalCount} memor${totalCount === 1 ? 'y' : 'ies'}`);
+                }
+            }).catch(() => { loaded++; });
         }
     }
 
@@ -975,28 +954,22 @@ function updateGroupMembersList() {
     const $container = $('#charMemory_groupMembersList');
     if (!$container.length) return;
 
-    if (!isGroupChat()) {
+    const targets = getMemoryTargets();
+    if (targets.length <= 1) {
         $container.html('<small class="charMemory_helperText">Open a group chat to see members.</small>');
         return;
     }
 
-    const members = getGroupMembers();
-    if (members.length === 0) {
-        $container.html('<small class="charMemory_helperText">No active members in this group.</small>');
-        return;
-    }
-
-    const rows = members.map(member => {
-        const resolved = getMemoryFileNameForCharacter(member.name, member.avatar);
-        const override = extension_settings[MODULE_NAME]?.characterFileNames?.[member.avatar] || '';
+    const rows = targets.map(target => {
+        const override = extension_settings[MODULE_NAME]?.characterFileNames?.[target.avatar] || '';
         return `<div class="charMemory_groupMemberRow">
-            <span class="charMemory_groupMemberName">${escapeHtml(member.name)}</span>
+            <span class="charMemory_groupMemberName">${escapeHtml(target.name)}</span>
             <input type="text" class="text_pole charMemory_groupMemberFile"
-                   data-avatar="${escapeHtml(member.avatar)}"
-                   data-charname="${escapeHtml(member.name)}"
+                   data-avatar="${escapeHtml(target.avatar)}"
+                   data-charname="${escapeHtml(target.name)}"
                    value="${escapeHtml(override)}"
-                   placeholder="${escapeHtml(resolved)}"
-                   title="Current file: ${escapeHtml(resolved)}" />
+                   placeholder="${escapeHtml(target.fileName)}"
+                   title="Current file: ${escapeHtml(target.fileName)}" />
         </div>`;
     }).join('');
 
@@ -1037,22 +1010,6 @@ function getCharacterName() {
     return context.name2 || characters[this_chid]?.name || 'Character';
 }
 
-/**
- * Get the character card text (description + personality) for the current character.
- * @returns {string} Combined card text, or empty string if unavailable.
- */
-function getCharacterCardText() {
-    const character = characters[this_chid];
-    if (!character) return '';
-
-    const parts = [];
-    const desc = character.data?.description || character.description || '';
-    const pers = character.data?.personality || character.personality || '';
-    if (desc.trim()) parts.push(desc.trim());
-    if (pers.trim()) parts.push(pers.trim());
-    return parts.join('\n\n');
-}
-
 // ============ Group Chat Helpers ============
 
 /**
@@ -1081,6 +1038,31 @@ function getGroupMembers() {
             return char ? { name: char.name, avatar, charIndex } : null;
         })
         .filter(Boolean);
+}
+
+/**
+ * Get unified memory targets for the current chat context.
+ * In group chats, returns one target per active NPC character.
+ * In 1:1 chats, returns a single-element array for the active character.
+ * @returns {{name: string, avatar: string, charIndex: number, fileName: string}[]}
+ */
+function getMemoryTargets() {
+    if (isGroupChat()) {
+        return getGroupMembers().map(m => ({
+            name: m.name,
+            avatar: m.avatar,
+            charIndex: m.charIndex,
+            fileName: getMemoryFileNameForCharacter(m.name, m.avatar),
+        }));
+    }
+    const char = characters[this_chid];
+    if (!char) return [];
+    return [{
+        name: char.name,
+        avatar: char.avatar,
+        charIndex: this_chid,
+        fileName: getMemoryFileName(),
+    }];
 }
 
 /**
@@ -1181,7 +1163,17 @@ async function readMemoriesForCharacter(avatar, fileName) {
     const attachment = findMemoryAttachmentForCharacter(avatar, fileName);
     if (!attachment) return '';
     try {
-        return (await getFileAttachment(attachment.url)) || '';
+        let content = (await getFileAttachment(attachment.url)) || '';
+
+        // Auto-migrate flat text to structured format
+        const migrated = migrateMemoriesIfNeeded(content);
+        if (migrated !== content) {
+            console.log(LOG_PREFIX, `Migrating memories to structured format for ${avatar}`);
+            await writeMemoriesForCharacter(migrated, avatar, fileName);
+            return migrated;
+        }
+
+        return content;
     } catch (err) {
         console.error(LOG_PREFIX, `Failed to read memories for ${avatar}:`, err);
         return '';
@@ -1219,60 +1211,6 @@ async function writeMemoriesForCharacter(content, avatar, fileName) {
         created: Date.now(),
     });
     saveSettingsDebounced();
-}
-
-// ============ Data Bank Operations (1:1 Chat) ============
-
-/**
- * Find the char-memories.md attachment in character Data Bank.
- * @returns {object|null} The attachment object or null.
- */
-function findMemoryAttachment() {
-    const attachments = getDataBankAttachmentsForSource('character');
-    return attachments.find(a => a.name === getMemoryFileName()) || null;
-}
-
-/**
- * Read existing memories from the Data Bank file.
- * @returns {Promise<string>} The file content or empty string.
- */
-async function readMemories() {
-    const attachment = findMemoryAttachment();
-    if (!attachment) return '';
-
-    try {
-        let content = await getFileAttachment(attachment.url);
-        content = content || '';
-
-        // Auto-migrate flat text to structured format
-        const migrated = migrateMemoriesIfNeeded(content);
-        if (migrated !== content) {
-            console.log(LOG_PREFIX, 'Migrating memories to structured format');
-            await writeMemories(migrated);
-            return migrated;
-        }
-
-        return content;
-    } catch (err) {
-        console.error(LOG_PREFIX, 'Failed to read memories file:', err);
-        return '';
-    }
-}
-
-/**
- * Write memories to the Data Bank file (delete old, upload new).
- * @param {string} content The full content to write.
- */
-async function writeMemories(content) {
-    // Delete existing file if present
-    const existing = findMemoryAttachment();
-    if (existing) {
-        await deleteAttachment(existing, 'character', () => {}, false);
-    }
-
-    // Upload new file
-    const file = new File([content], getMemoryFileName(), { type: 'text/plain' });
-    await uploadFileAttachmentToServer(file, 'character');
 }
 
 /**
@@ -1888,69 +1826,55 @@ function truncateText(text, maxChars) {
  * @param {string} recentMessages Formatted recent messages.
  * @returns {string} The final prompt.
  */
-function buildExtractionPrompt(existingMemories, recentMessages) {
-    const charName = getCharacterName() || '{{char}}';
-    let prompt = extension_settings[MODULE_NAME].extractionPrompt;
+/**
+ * Build extraction prompt for a specific target character.
+ * Selects 1:1 vs group prompt template based on whether there are multiple targets.
+ * @param {{name: string, charIndex: number}} target The character to extract for.
+ * @param {string} existingMemories Current memories for this character.
+ * @param {string} recentMessages Formatted recent messages.
+ * @param {{name: string}[]} allTargets All memory targets (length > 1 = group).
+ * @returns {string} The completed prompt.
+ */
+function buildExtractionPrompt(target, existingMemories, recentMessages, allTargets) {
+    const charName = target.name || '{{char}}';
+    const isGroup = allTargets.length > 1;
+    let prompt = isGroup
+        ? extension_settings[MODULE_NAME].groupExtractionPrompt
+        : extension_settings[MODULE_NAME].extractionPrompt;
     const isWebLlm = extension_settings[MODULE_NAME].source === EXTRACTION_SOURCE.WEBLLM;
 
     let memories = existingMemories || '(none yet)';
     let messages = recentMessages;
-    const charCard = getCharacterCardText() || '(not available)';
+    const charCard = getCharacterCardTextFor(target.charIndex) || '(not available)';
 
-    // Truncate content for WebLLM's smaller context window
-    if (isWebLlm) {
+    // Truncate content for WebLLM's smaller context window (1:1 only)
+    if (isWebLlm && !isGroup) {
         const templateLength = prompt.replace(/\{\{charName\}\}/g, charName)
             .replace(/\{\{charCard\}\}/g, '')
             .replace(/\{\{existingMemories\}\}/g, '')
             .replace(/\{\{recentMessages\}\}/g, '').length;
         const available = Math.max(WEBLLM_MAX_PROMPT_CHARS - templateLength, 1000);
-        // Give 1/3 to existing memories, 2/3 to recent messages
         const memoriesBudget = Math.floor(available / 3);
         const messagesBudget = available - memoriesBudget;
         memories = truncateText(memories, memoriesBudget);
         messages = truncateText(messages, messagesBudget);
     }
 
-    // Do our custom replacements first
     prompt = prompt.replace(/\{\{charName\}\}/g, charName);
     prompt = prompt.replace(/\{\{charCard\}\}/g, charCard);
     prompt = prompt.replace(/\{\{existingMemories\}\}/g, memories);
     prompt = prompt.replace(/\{\{recentMessages\}\}/g, messages);
 
-    // Then let ST handle {{char}}, {{user}}, etc.
-    prompt = substituteParamsExtended(prompt);
-
-    return prompt;
-}
-
-/**
- * Build extraction prompt for a specific group chat character.
- * @param {string} charName Name of the character to extract memories for.
- * @param {number} charIndex Index into characters array.
- * @param {string} existingMemories Current memories for this character.
- * @param {string} recentMessages Formatted recent group chat messages.
- * @param {{name: string}[]} allMembers All group members (for participants list).
- * @returns {string} The completed prompt.
- */
-function buildGroupExtractionPrompt(charName, charIndex, existingMemories, recentMessages, allMembers) {
-    let prompt = extension_settings[MODULE_NAME].groupExtractionPrompt;
-    const memories = existingMemories || '(none yet)';
-    const charCard = getCharacterCardTextFor(charIndex) || '(not available)';
-
-    // Build participants list (everyone except the target character)
-    const context = getContext();
-    const userName = context.name1 || 'User';
-    const otherNames = allMembers
-        .filter(m => m.name !== charName)
-        .map(m => m.name);
-    otherNames.unshift(`${userName} (user)`);
-    const participants = otherNames.join(', ');
-
-    prompt = prompt.replace(/\{\{charName\}\}/g, charName);
-    prompt = prompt.replace(/\{\{charCard\}\}/g, charCard);
-    prompt = prompt.replace(/\{\{existingMemories\}\}/g, memories);
-    prompt = prompt.replace(/\{\{recentMessages\}\}/g, recentMessages);
-    prompt = prompt.replace(/\{\{participants\}\}/g, participants);
+    // Group-only: inject participants list (everyone except the target character)
+    if (isGroup) {
+        const context = getContext();
+        const userName = context.name1 || 'User';
+        const otherNames = allTargets
+            .filter(t => t.name !== charName)
+            .map(t => t.name);
+        otherNames.unshift(`${userName} (user)`);
+        prompt = prompt.replace(/\{\{participants\}\}/g, otherNames.join(', '));
+    }
 
     // Let ST handle {{char}}, {{user}}, etc.
     prompt = substituteParamsExtended(prompt);
@@ -1959,255 +1883,20 @@ function buildGroupExtractionPrompt(charName, charIndex, existingMemories, recen
 }
 
 /**
- * Run memory extraction for group chats — extracts per-character memories.
- * Each NPC character in the group gets their own extraction call and their
- * memories are written to their own Data Bank file.
+ * Run memory extraction — unified for both 1:1 and group chats.
+ * Uses getMemoryTargets() to determine extraction targets. For 1:1 chats the
+ * target loop runs once; for groups it runs once per active NPC character.
  *
  * @param {Object} options
- * @param {boolean} options.force If true, bypass interval check.
+ * @param {boolean} options.force If true, ignore interval check.
  * @param {number|null} options.endIndex Optional end message index (inclusive).
+ * @param {Array|null} options.chatArray Optional external chat array (for batch extraction).
+ * @param {string|null} options.chatId Optional chat ID (for batch extraction).
+ * @param {number|null} options.lastExtractedIdx Optional override for lastExtractedIndex.
  * @param {function|null} options.onProgress Progress callback.
  * @param {AbortSignal|null} options.abortSignal Abort signal for cancellation.
  * @param {string|null} options.progressLabel Label prefix for toast messages.
  * @returns {Promise<{totalMemories: number, chunksProcessed: number, lastExtractedIndex: number}>}
- */
-async function extractGroupMemories({
-    force = false,
-    endIndex = null,
-    onProgress = null,
-    abortSignal = null,
-    progressLabel = null,
-} = {}) {
-    const context = getContext();
-    const members = getGroupMembers();
-    const noopResult = { totalMemories: 0, chunksProcessed: 0, lastExtractedIndex: -1 };
-
-    if (members.length === 0) {
-        logActivity('Group extraction: no active group members found', 'warning');
-        return noopResult;
-    }
-
-    const mode = extension_settings[MODULE_NAME].groupExtractionMode || 'per-character';
-    if (mode !== 'per-character') {
-        logActivity(`Group extraction mode "${mode}" is not yet implemented, falling back to per-character`, 'warning');
-    }
-
-    logActivity(`Group extraction starting for ${members.length} characters: ${members.map(m => m.name).join(', ')}`);
-
-    // Use shared lastExtractedIndex from chat_metadata
-    ensureMetadata();
-    let currentLastExtracted = chat_metadata[MODULE_NAME].lastExtractedIndex ?? -1;
-
-    const chat = context.chat;
-    const effectiveEnd = endIndex !== null ? endIndex + 1 : chat.length;
-    const totalUnprocessed = effectiveEnd - (currentLastExtracted + 1);
-
-    if (totalUnprocessed <= 0) {
-        logActivity('Group extraction: no new messages to extract', 'warning');
-        if (force) {
-            toastr.info('No unprocessed messages. Use "Reset Extraction State" to re-read from the beginning.', 'CharMemory', { timeOut: 5000 });
-        }
-        return noopResult;
-    }
-
-    const chunkSize = extension_settings[MODULE_NAME].maxMessagesPerExtraction;
-    const totalChunks = Math.ceil(totalUnprocessed / chunkSize);
-    const totalSteps = totalChunks * members.length;
-
-    logActivity(`Group extraction: ${totalUnprocessed} messages, ${totalChunks} chunk(s), ${members.length} characters = ${totalSteps} LLM calls`);
-
-    const savedChatId = context.chatId;
-    const effectiveChatId = context.chatId || 'unknown';
-    const source = extension_settings[MODULE_NAME].source;
-    const sourceLabel = getSourceLabel();
-
-    let totalMemories = 0;
-    let chunksProcessed = 0;
-    let stepsCompleted = 0;
-
-    try {
-        inApiCall = true;
-        lastExtractionTime = Date.now();
-
-        // Confirmation for large extractions (inside try so inApiCall is set)
-        if (force && totalSteps > 6 && !abortSignal) {
-            const confirmed = await callGenericPopup(
-                `This will process ${totalUnprocessed} messages for ${members.length} characters (${totalSteps} LLM calls). This may take a while. Continue?`,
-                POPUP_TYPE.CONFIRM,
-            );
-            if (!confirmed) {
-                logActivity('Group extraction cancelled by user', 'warning');
-                return noopResult;
-            }
-        }
-
-        for (let chunk = 0; chunk < totalChunks; chunk++) {
-            if (abortSignal?.aborted) {
-                logActivity(`Group extraction aborted after ${chunksProcessed} chunk(s)`, 'warning');
-                break;
-            }
-
-            // Collect messages for this chunk
-            const { text: recentMessages, endIndex: chunkEndIndex } = collectRecentMessages({
-                endIndex,
-                lastExtractedIdx: currentLastExtracted,
-            });
-
-            if (!recentMessages) {
-                logActivity(`Chunk ${chunk + 1}: no messages returned, stopping`, 'warning');
-                break;
-            }
-
-            // Per-character extraction loop
-            let chunkAborted = false;
-            for (const member of members) {
-                if (abortSignal?.aborted) {
-                    chunkAborted = true;
-                    break;
-                }
-
-                stepsCompleted++;
-                const prefix = progressLabel ? `${progressLabel} — ` : '';
-                const stepInfo = `${member.name} (${stepsCompleted}/${totalSteps})`;
-                toastr.info(`${prefix}Extracting for ${stepInfo} via ${sourceLabel}...`, 'CharMemory', { timeOut: 3000 });
-
-                if (onProgress) {
-                    onProgress({ chunk: chunk + 1, totalChunks, chunksProcessed, totalMemories, character: member.name, step: stepsCompleted, totalSteps });
-                }
-
-                // Read this character's existing memories
-                const memFileName = getMemoryFileNameForCharacter(member.name, member.avatar);
-                const existingMemories = await readMemoriesForCharacter(member.avatar, memFileName);
-
-                // Build per-character prompt
-                const prompt = buildGroupExtractionPrompt(
-                    member.name, member.charIndex, existingMemories, recentMessages, members,
-                );
-
-                const verbose = extension_settings[MODULE_NAME].verboseLogging;
-                if (verbose) {
-                    logActivity(`[${member.name}] Prompt (${prompt.length} chars):\n${prompt}`);
-                }
-
-                logActivity(`[${member.name}] Sending to ${sourceLabel}...`);
-                const llmStartTime = Date.now();
-                let result;
-                try {
-                    result = await callLLM(prompt, extension_settings[MODULE_NAME].responseLength, 'You are a memory extraction assistant.');
-                } catch (llmErr) {
-                    logActivity(`[${member.name}] LLM error: ${llmErr.message}`, 'error');
-                    continue; // Skip this character, try next
-                }
-
-                const llmElapsed = ((Date.now() - llmStartTime) / 1000).toFixed(1);
-                logActivity(`[${member.name}] Response in ${llmElapsed}s (${(result || '').length} chars)`);
-                if (verbose && result) {
-                    logActivity(`[${member.name}] Raw response:\n${result}`);
-                }
-
-                // Verify context hasn't changed
-                const newContext = getContext();
-                if (newContext.chatId !== savedChatId) {
-                    logActivity('Context changed during group extraction, aborting', 'warning');
-                    return { totalMemories, chunksProcessed, lastExtractedIndex: currentLastExtracted };
-                }
-
-                let cleanResult = removeReasoningFromString(result);
-                cleanResult = cleanResult.trim();
-
-                if (!cleanResult || cleanResult === 'NO_NEW_MEMORIES') {
-                    logActivity(`[${member.name}] No new memories for this chunk`);
-                    continue;
-                }
-
-                // Parse and save memories to this character's Data Bank
-                const currentMemories = await readMemoriesForCharacter(member.avatar, memFileName);
-                const existing = parseMemories(currentMemories);
-                const now = new Date();
-                const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-
-                const memoryRegex = /<memory>([\s\S]*?)<\/memory>/gi;
-                const matches = [...cleanResult.matchAll(memoryRegex)];
-                const rawEntries = matches.length > 0
-                    ? matches.map(m => m[1].trim()).filter(Boolean)
-                    : [cleanResult.trim()].filter(Boolean);
-
-                let newBulletCount = 0;
-                for (const entry of rawEntries) {
-                    const bullets = entry.split('\n')
-                        .map(l => l.trim())
-                        .filter(l => l.startsWith('- '))
-                        .map(l => l.slice(2).trim())
-                        .filter(Boolean);
-                    const finalBullets = bullets.length > 0 ? bullets : [entry];
-                    existing.push({ chat: effectiveChatId, date: timestamp, bullets: finalBullets });
-                    newBulletCount += finalBullets.length;
-                }
-
-                await writeMemoriesForCharacter(serializeMemories(existing), member.avatar, memFileName);
-                totalMemories += newBulletCount;
-                logActivity(`[${member.name}] Saved ${newBulletCount} new memor${newBulletCount === 1 ? 'y' : 'ies'}`, 'success');
-            }
-
-            // Don't advance index if abort interrupted the character loop
-            if (chunkAborted) {
-                logActivity(`Chunk ${chunk + 1} aborted mid-character — not advancing index`, 'warning');
-                break;
-            }
-
-            // Advance lastExtractedIndex after each complete chunk (shared across all characters)
-            currentLastExtracted = chunkEndIndex !== -1 ? chunkEndIndex : effectiveEnd - 1;
-            ensureMetadata();
-            chat_metadata[MODULE_NAME].lastExtractedIndex = currentLastExtracted;
-            saveMetadataDebounced();
-            logActivity(`Advanced lastExtractedIndex to ${currentLastExtracted}`);
-
-            chunksProcessed++;
-        }
-
-        // Merge blocks with same chat+date per character
-        if (chunksProcessed > 1 && totalMemories > 0) {
-            for (const member of members) {
-                const memFileName = getMemoryFileNameForCharacter(member.name, member.avatar);
-                const content = await readMemoriesForCharacter(member.avatar, memFileName);
-                const allBlocks = parseMemories(content);
-                const merged = mergeMemoryBlocks(allBlocks);
-                if (merged.length < allBlocks.length) {
-                    await writeMemoriesForCharacter(serializeMemories(merged), member.avatar, memFileName);
-                    logActivity(`[${member.name}] Merged ${allBlocks.length} blocks → ${merged.length}`);
-                }
-            }
-        }
-
-        // Reset counter
-        ensureMetadata();
-        chat_metadata[MODULE_NAME].messagesSinceExtraction = 0;
-        saveMetadataDebounced();
-
-        updateStatusDisplay();
-        updateAllIndicators();
-
-        if (totalMemories > 0) {
-            toastr.success(`${totalMemories} memor${totalMemories === 1 ? 'y' : 'ies'} saved across ${members.length} characters from ${chunksProcessed} chunk(s).`, 'CharMemory');
-        } else if (chunksProcessed > 0) {
-            toastr.info('No new memories found for any group member.', 'CharMemory');
-        }
-
-        return { totalMemories, chunksProcessed, lastExtractedIndex: currentLastExtracted };
-    } catch (err) {
-        console.error(LOG_PREFIX, 'Group extraction failed:', err);
-        logActivity(`Group extraction failed: ${err.message}`, 'error');
-        toastr.error('Group memory extraction failed. Check console for details.', 'CharMemory');
-        return { totalMemories, chunksProcessed, lastExtractedIndex: currentLastExtracted };
-    } finally {
-        inApiCall = false;
-    }
-}
-
-/**
- * Run memory extraction.
- * @param {boolean} force If true, ignore interval check.
- * @param {number|null} endIndex Optional end message index (inclusive). Defaults to last message.
  */
 async function extractMemories({
     force = false,
@@ -2244,10 +1933,13 @@ async function extractMemories({
         return noopResult;
     }
 
-    // Group chat: delegate to per-character extraction
-    if (isActiveChat && isGroupChat()) {
-        return await extractGroupMemories({ force, endIndex, onProgress, abortSignal, progressLabel });
+    // Determine extraction targets
+    const targets = getMemoryTargets();
+    if (targets.length === 0) {
+        logActivity('Extraction: no targets found', 'warning');
+        return noopResult;
     }
+    const isMultiTarget = targets.length > 1;
 
     // Determine current lastExtractedIndex
     let currentLastExtracted;
@@ -2276,18 +1968,25 @@ async function extractMemories({
 
     const chunkSize = extension_settings[MODULE_NAME].maxMessagesPerExtraction;
     const totalChunks = Math.ceil(totalUnprocessed / chunkSize);
+    const totalSteps = totalChunks * targets.length;
 
-    logActivity(`Extraction triggered (${force ? 'manual' : 'auto'}), endIndex=${endIndex ?? 'last'}, totalUnprocessed=${totalUnprocessed}, chunks=${totalChunks}`);
+    if (isMultiTarget) {
+        logActivity(`Extraction starting for ${targets.length} characters: ${targets.map(t => t.name).join(', ')}`);
+        logActivity(`${totalUnprocessed} messages, ${totalChunks} chunk(s), ${targets.length} characters = ${totalSteps} LLM calls`);
+    } else {
+        logActivity(`Extraction triggered (${force ? 'manual' : 'auto'}), endIndex=${endIndex ?? 'last'}, totalUnprocessed=${totalUnprocessed}, chunks=${totalChunks}`);
+    }
 
-    // Confirmation for large manual extractions (>3 chunks, only when force=true)
-    if (force && totalChunks > 3 && !abortSignal) {
-        const confirmed = await callGenericPopup(
-            `This will process ${totalUnprocessed} messages in ${totalChunks} chunks. This may take a while. Continue?`,
-            POPUP_TYPE.CONFIRM,
-        );
+    // Confirmation for large manual extractions
+    const confirmThreshold = isMultiTarget ? 6 : 3;
+    if (force && totalSteps > confirmThreshold && !abortSignal) {
+        const confirmMsg = isMultiTarget
+            ? `This will process ${totalUnprocessed} messages for ${targets.length} characters (${totalSteps} LLM calls). This may take a while. Continue?`
+            : `This will process ${totalUnprocessed} messages in ${totalChunks} chunks. This may take a while. Continue?`;
+        const confirmed = await callGenericPopup(confirmMsg, POPUP_TYPE.CONFIRM);
         if (!confirmed) {
-            logActivity('Large extraction cancelled by user', 'warning');
-            return;
+            logActivity('Extraction cancelled by user', 'warning');
+            return noopResult;
         }
     }
 
@@ -2296,11 +1995,11 @@ async function extractMemories({
     const savedChatId = context.chatId;
     const effectiveChatId = chatId || context.chatId || 'unknown';
 
-    const source = extension_settings[MODULE_NAME].source;
     const sourceLabel = getSourceLabel();
 
     let totalMemories = 0;
     let chunksProcessed = 0;
+    let stepsCompleted = 0;
 
     try {
         inApiCall = true;
@@ -2308,23 +2007,13 @@ async function extractMemories({
 
         for (let chunk = 0; chunk < totalChunks; chunk++) {
             // Check abort signal
-            if (abortSignal && abortSignal.aborted) {
+            if (abortSignal?.aborted) {
                 logActivity(`Extraction aborted after ${chunksProcessed} chunk(s)`, 'warning');
                 toastr.warning(`Extraction stopped after ${chunksProcessed} of ${totalChunks} chunks.`, 'CharMemory');
                 break;
             }
 
-            // Show progress toast
-            const prefix = progressLabel ? `${progressLabel} — ` : '';
-            const chunkInfo = totalChunks > 1 ? ` (chunk ${chunk + 1}/${totalChunks})` : '';
-            toastr.info(`${prefix}Extracting via ${sourceLabel}${chunkInfo}...`, 'CharMemory', { timeOut: 3000 });
-
-            // Call onProgress callback
-            if (onProgress) {
-                onProgress({ chunk: chunk + 1, totalChunks, chunksProcessed, totalMemories });
-            }
-
-            // Collect messages for this chunk
+            // Collect messages for this chunk (shared across all targets)
             const { text: recentMessages, endIndex: chunkEndIndex } = collectRecentMessages({
                 endIndex: endIndex,
                 chatArray: chatArray,
@@ -2336,59 +2025,90 @@ async function extractMemories({
                 break;
             }
 
-            // Build prompt with current memories (re-read each chunk to include newly extracted)
-            const existingMemories = await readMemories();
-            const prompt = buildExtractionPrompt(existingMemories, recentMessages);
-
-            const verbose = extension_settings[MODULE_NAME].verboseLogging;
-            if (verbose) {
-                logActivity(`Prompt sent to ${sourceLabel} (${prompt.length} chars):\n${prompt}`);
-            }
-
-            // Call the appropriate LLM
-            logActivity(`Sending to ${sourceLabel}... waiting for response`);
-            const llmStartTime = Date.now();
-            let result;
-            try {
-                result = await callLLM(prompt, extension_settings[MODULE_NAME].responseLength, 'You are a memory extraction assistant.');
-            } catch (llmErr) {
-                if (llmErr.message?.includes('WebLLM is not available')) {
-                    toastr.error('WebLLM is not available in this browser.', 'CharMemory');
-                    return { totalMemories, chunksProcessed, lastExtractedIndex: currentLastExtracted };
+            // Per-target extraction loop
+            let chunkAborted = false;
+            for (const target of targets) {
+                if (abortSignal?.aborted) {
+                    chunkAborted = true;
+                    break;
                 }
-                throw llmErr;
-            }
 
-            const llmElapsed = ((Date.now() - llmStartTime) / 1000).toFixed(1);
-            logActivity(`Response received from ${sourceLabel} in ${llmElapsed}s (${(result || '').length} chars)`);
-            if (verbose && result) {
-                logActivity(`Raw LLM response:\n${result}`);
-            }
+                stepsCompleted++;
 
-            // For active chats: verify context hasn't changed
-            if (isActiveChat) {
-                const newContext = getContext();
-                if (newContext.characterId !== savedCharId || newContext.chatId !== savedChatId) {
-                    console.log(LOG_PREFIX, 'Context changed during extraction, discarding result');
-                    return { totalMemories, chunksProcessed, lastExtractedIndex: currentLastExtracted };
+                // Show progress toast
+                const prefix = progressLabel ? `${progressLabel} — ` : '';
+                if (isMultiTarget) {
+                    const stepInfo = `${target.name} (${stepsCompleted}/${totalSteps})`;
+                    toastr.info(`${prefix}Extracting for ${stepInfo} via ${sourceLabel}...`, 'CharMemory', { timeOut: 3000 });
+                } else {
+                    const chunkInfo = totalChunks > 1 ? ` (chunk ${chunk + 1}/${totalChunks})` : '';
+                    toastr.info(`${prefix}Extracting via ${sourceLabel}${chunkInfo}...`, 'CharMemory', { timeOut: 3000 });
                 }
-            }
 
-            let cleanResult = removeReasoningFromString(result);
-            cleanResult = cleanResult.trim();
+                if (onProgress) {
+                    onProgress({ chunk: chunk + 1, totalChunks, chunksProcessed, totalMemories, character: target.name, step: stepsCompleted, totalSteps });
+                }
 
-            lastExtractionResult = cleanResult || null;
+                // Read this target's existing memories
+                const existingMemories = await readMemoriesForCharacter(target.avatar, target.fileName);
 
-            if (!cleanResult || cleanResult === 'NO_NEW_MEMORIES') {
-                logActivity(`Chunk ${chunk + 1}: LLM returned NO_NEW_MEMORIES — advancing index anyway`);
-            } else {
-                // Parse existing memory blocks (re-read to get latest)
-                const currentMemories = await readMemories();
+                // Build prompt
+                const prompt = buildExtractionPrompt(target, existingMemories, recentMessages, targets);
+
+                const verbose = extension_settings[MODULE_NAME].verboseLogging;
+                const logLabel = isMultiTarget ? `[${target.name}]` : '';
+                if (verbose) {
+                    logActivity(`${logLabel} Prompt (${prompt.length} chars):\n${prompt}`);
+                }
+
+                logActivity(`${logLabel} Sending to ${sourceLabel}... waiting for response`);
+                const llmStartTime = Date.now();
+                let result;
+                try {
+                    result = await callLLM(prompt, extension_settings[MODULE_NAME].responseLength, 'You are a memory extraction assistant.');
+                } catch (llmErr) {
+                    if (isMultiTarget) {
+                        logActivity(`${logLabel} LLM error: ${llmErr.message}`, 'error');
+                        continue; // Skip this target, try next
+                    }
+                    if (llmErr.message?.includes('WebLLM is not available')) {
+                        toastr.error('WebLLM is not available in this browser.', 'CharMemory');
+                        return { totalMemories, chunksProcessed, lastExtractedIndex: currentLastExtracted };
+                    }
+                    throw llmErr;
+                }
+
+                const llmElapsed = ((Date.now() - llmStartTime) / 1000).toFixed(1);
+                logActivity(`${logLabel} Response in ${llmElapsed}s (${(result || '').length} chars)`);
+                if (verbose && result) {
+                    logActivity(`${logLabel} Raw response:\n${result}`);
+                }
+
+                // For active chats: verify context hasn't changed
+                if (isActiveChat) {
+                    const newContext = getContext();
+                    if (newContext.characterId !== savedCharId || newContext.chatId !== savedChatId) {
+                        console.log(LOG_PREFIX, 'Context changed during extraction, discarding result');
+                        return { totalMemories, chunksProcessed, lastExtractedIndex: currentLastExtracted };
+                    }
+                }
+
+                let cleanResult = removeReasoningFromString(result);
+                cleanResult = cleanResult.trim();
+
+                lastExtractionResult = cleanResult || null;
+
+                if (!cleanResult || cleanResult === 'NO_NEW_MEMORIES') {
+                    logActivity(`${logLabel} No new memories for this chunk`);
+                    continue;
+                }
+
+                // Parse and save memories to this target's Data Bank
+                const currentMemories = await readMemoriesForCharacter(target.avatar, target.fileName);
                 const existing = parseMemories(currentMemories);
                 const now = new Date();
                 const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
-                // Parse <memory> blocks from LLM response; fallback: treat entire result as one block
                 const memoryRegex = /<memory>([\s\S]*?)<\/memory>/gi;
                 const matches = [...cleanResult.matchAll(memoryRegex)];
                 const rawEntries = matches.length > 0
@@ -2402,21 +2122,25 @@ async function extractMemories({
                         .filter(l => l.startsWith('- '))
                         .map(l => l.slice(2).trim())
                         .filter(Boolean);
-                    // If no bullets found, treat the whole entry as a single bullet
                     const finalBullets = bullets.length > 0 ? bullets : [entry];
                     existing.push({ chat: effectiveChatId, date: timestamp, bullets: finalBullets });
                     newBulletCount += finalBullets.length;
                 }
 
-                await writeMemories(serializeMemories(existing));
+                await writeMemoriesForCharacter(serializeMemories(existing), target.avatar, target.fileName);
                 totalMemories += newBulletCount;
-                logActivity(`Chunk ${chunk + 1}: saved ${newBulletCount} new memor${newBulletCount === 1 ? 'y' : 'ies'}`, 'success');
+                logActivity(`${logLabel} Saved ${newBulletCount} new memor${newBulletCount === 1 ? 'y' : 'ies'}`, 'success');
             }
 
-            // Advance lastExtractedIndex after each chunk
+            // Don't advance index if abort interrupted the target loop
+            if (chunkAborted) {
+                logActivity(`Chunk ${chunk + 1} aborted mid-extraction — not advancing index`, 'warning');
+                break;
+            }
+
+            // Advance lastExtractedIndex after each complete chunk
             currentLastExtracted = chunkEndIndex !== -1 ? chunkEndIndex : effectiveEnd - 1;
 
-            // For active chats: save to chat_metadata
             if (isActiveChat) {
                 ensureMetadata();
                 chat_metadata[MODULE_NAME].lastExtractedIndex = currentLastExtracted;
@@ -2427,13 +2151,16 @@ async function extractMemories({
             chunksProcessed++;
         }
 
-        // Merge blocks with the same chat ID (from multi-chunk extraction)
-        if (chunksProcessed > 1 && totalMemories > 0 && extension_settings[MODULE_NAME].mergeChunks) {
-            const allBlocks = parseMemories(await readMemories());
-            const merged = mergeMemoryBlocks(allBlocks);
-            if (merged.length < allBlocks.length) {
-                await writeMemories(serializeMemories(merged));
-                logActivity(`Merged ${allBlocks.length} blocks → ${merged.length} (combined same-chat chunks)`);
+        // Merge blocks with same chat+date per target (multi-chunk extraction)
+        if (chunksProcessed > 1 && totalMemories > 0) {
+            for (const target of targets) {
+                const content = await readMemoriesForCharacter(target.avatar, target.fileName);
+                const allBlocks = parseMemories(content);
+                const merged = mergeMemoryBlocks(allBlocks);
+                if (merged.length < allBlocks.length) {
+                    await writeMemoriesForCharacter(serializeMemories(merged), target.avatar, target.fileName);
+                    logActivity(`${isMultiTarget ? `[${target.name}] ` : ''}Merged ${allBlocks.length} blocks → ${merged.length}`);
+                }
             }
         }
 
@@ -2448,7 +2175,8 @@ async function extractMemories({
         updateAllIndicators();
 
         if (totalMemories > 0) {
-            toastr.success(`${totalMemories} memor${totalMemories === 1 ? 'y' : 'ies'} saved from ${chunksProcessed} chunk(s).`, 'CharMemory');
+            const suffix = isMultiTarget ? ` across ${targets.length} characters` : '';
+            toastr.success(`${totalMemories} memor${totalMemories === 1 ? 'y' : 'ies'} saved${suffix} from ${chunksProcessed} chunk(s).`, 'CharMemory');
         } else if (chunksProcessed > 0) {
             toastr.info('No new memories found.', 'CharMemory');
         }
@@ -2519,22 +2247,14 @@ async function onChatChanged() {
     if (lastIdx >= 0) {
         try {
             let hasMemoriesForChat = false;
-            if (context.groupId) {
-                // For group chats, check any member's Data Bank
-                const members = getGroupMembers();
-                for (const member of members) {
-                    const memFileName = getMemoryFileNameForCharacter(member.name, member.avatar);
-                    const content = await readMemoriesForCharacter(member.avatar, memFileName);
-                    const blocks = parseMemories(content);
-                    if (blocks.some(b => b.chat === chatId || b.chat === 'consolidated' || b.chat === 'unknown')) {
-                        hasMemoriesForChat = true;
-                        break;
-                    }
-                }
-            } else {
-                const content = await readMemories();
+            const targets = getMemoryTargets();
+            for (const target of targets) {
+                const content = await readMemoriesForCharacter(target.avatar, target.fileName);
                 const blocks = parseMemories(content);
-                hasMemoriesForChat = blocks.some(b => b.chat === chatId || b.chat === 'consolidated' || b.chat === 'unknown');
+                if (blocks.some(b => b.chat === chatId || b.chat === 'consolidated' || b.chat === 'unknown')) {
+                    hasMemoriesForChat = true;
+                    break;
+                }
             }
             if (!hasMemoriesForChat) {
                 meta.lastExtractedIndex = -1;
@@ -2691,10 +2411,12 @@ function updateDiagnosticsDisplay() {
 
     // Memory Info
     html += '<div class="charMemory_diagSection"><strong>Memories</strong>';
-    const memFileName = getMemoryFileName();
-    const memAttachment = findMemoryAttachment();
+    const diagTargets = getMemoryTargets();
+    const diagTarget = diagTargets[0]; // Show first target (1:1) or primary target (group)
+    const memFileName = diagTarget?.fileName || '(none)';
+    const memAttachment = diagTarget ? findMemoryAttachmentForCharacter(diagTarget.avatar, diagTarget.fileName) : null;
     html += `<div class="charMemory_diagCard">
-        <div class="charMemory_diagCardTitle">Active file name</div>
+        <div class="charMemory_diagCardTitle">Active file name${diagTargets.length > 1 ? ` (${diagTarget.name})` : ''}</div>
         <div class="charMemory_diagCardContent">${escapeHtml(memFileName)}</div>
     </div>`;
     html += `<div class="charMemory_diagCard">
@@ -2865,69 +2587,104 @@ function escapeHtml(text) {
 
 // ============ Memory Manager ============
 
+/**
+ * Unified memory manager — works for both 1:1 and group chats.
+ * Shows character headers only when multiple targets exist (group mode).
+ * All cards/buttons carry data-avatar and data-filename for uniform event handling.
+ */
 async function showMemoryManager() {
-    if (isGroupChat()) {
-        return showGroupMemoryManager();
+    const targets = getMemoryTargets();
+    if (targets.length === 0) {
+        callGenericPopup('No character selected.', POPUP_TYPE.TEXT);
+        return;
     }
+    const isMultiTarget = targets.length > 1;
 
-    const content = await readMemories();
-    const blocks = parseMemories(content);
+    // Load all targets' memories in parallel
+    const targetData = await Promise.all(targets.map(async (target) => {
+        const content = await readMemoriesForCharacter(target.avatar, target.fileName);
+        const blocks = parseMemories(content || '');
+        return { ...target, blocks };
+    }));
 
-    if (blocks.length === 0) {
-        callGenericPopup('No memories yet.', POPUP_TYPE.TEXT);
+    const totalBlocks = targetData.reduce((sum, t) => sum + t.blocks.length, 0);
+    if (totalBlocks === 0) {
+        callGenericPopup(isMultiTarget ? 'No memories yet for any group member.' : 'No memories yet.', POPUP_TYPE.TEXT);
         return;
     }
 
     let html = '<div class="charMemory_manager">';
-    for (let bi = 0; bi < blocks.length; bi++) {
-        const b = blocks[bi];
-        const chatLabel = b.chat.length > 16 ? b.chat.slice(0, 16) + '...' : b.chat;
-        html += `<div class="charMemory_card" data-block="${bi}">
-            <div class="charMemory_cardHeader">
-                <span class="charMemory_cardTitle">${escapeHtml(chatLabel)}</span>
-                <span class="charMemory_cardTimestamp">${escapeHtml(b.date)}</span>
-                <span class="charMemory_cardActions">
-                    <button class="charMemory_deleteBlockBtn menu_button menu_button_icon" data-block="${bi}" title="Delete all memories from this chat"><i class="fa-solid fa-trash"></i></button>
-                </span>
-            </div>
-            <div class="charMemory_cardBullets">`;
-        for (let bui = 0; bui < b.bullets.length; bui++) {
-            html += `<div class="charMemory_bulletRow" data-block="${bi}" data-bullet="${bui}">
-                <span class="charMemory_bulletText">- ${escapeHtml(b.bullets[bui])}</span>
-                <span class="charMemory_bulletActions">
-                    <button class="charMemory_editBtn menu_button menu_button_icon" data-block="${bi}" data-bullet="${bui}" title="Edit"><i class="fa-solid fa-pencil"></i></button>
-                    <button class="charMemory_deleteBtn menu_button menu_button_icon" data-block="${bi}" data-bullet="${bui}" title="Delete"><i class="fa-solid fa-trash"></i></button>
-                </span>
-            </div>`;
+    for (const target of targetData) {
+        if (target.blocks.length === 0) continue;
+
+        // Character header (group mode only)
+        if (isMultiTarget) {
+            const memCount = target.blocks.reduce((sum, b) => sum + b.bullets.length, 0);
+            html += `<div class="charMemory_groupSection" data-avatar="${escapeAttr(target.avatar)}" data-filename="${escapeAttr(target.fileName)}">
+                <div style="font-weight:bold;font-size:0.95em;margin:8px 0 4px;border-bottom:1px solid var(--SmartThemeBorderColor, rgba(128,128,128,0.2));padding-bottom:4px;">
+                    ${escapeHtml(target.name)} <small style="opacity:0.5;">(${memCount} memories)</small>
+                </div>`;
         }
-        html += '</div></div>';
+
+        for (let bi = 0; bi < target.blocks.length; bi++) {
+            const b = target.blocks[bi];
+            const chatLabel = b.chat.length > 16 ? b.chat.slice(0, 16) + '...' : b.chat;
+            html += `<div class="charMemory_card" data-block="${bi}" data-avatar="${escapeAttr(target.avatar)}" data-filename="${escapeAttr(target.fileName)}">
+                <div class="charMemory_cardHeader">
+                    <span class="charMemory_cardTitle">${escapeHtml(chatLabel)}</span>
+                    <span class="charMemory_cardTimestamp">${escapeHtml(b.date)}</span>
+                    <span class="charMemory_cardActions">
+                        <button class="charMemory_deleteBlockBtn menu_button menu_button_icon" data-block="${bi}" data-avatar="${escapeAttr(target.avatar)}" data-filename="${escapeAttr(target.fileName)}" title="Delete all memories from this block"><i class="fa-solid fa-trash"></i></button>
+                    </span>
+                </div>
+                <div class="charMemory_cardBullets">`;
+            for (let bui = 0; bui < b.bullets.length; bui++) {
+                html += `<div class="charMemory_bulletRow" data-block="${bi}" data-bullet="${bui}">
+                    <span class="charMemory_bulletText">- ${escapeHtml(b.bullets[bui])}</span>
+                    <span class="charMemory_bulletActions">
+                        <button class="charMemory_editBtn menu_button menu_button_icon" data-block="${bi}" data-bullet="${bui}" data-avatar="${escapeAttr(target.avatar)}" data-filename="${escapeAttr(target.fileName)}" title="Edit"><i class="fa-solid fa-pencil"></i></button>
+                        <button class="charMemory_deleteBtn menu_button menu_button_icon" data-block="${bi}" data-bullet="${bui}" data-avatar="${escapeAttr(target.avatar)}" data-filename="${escapeAttr(target.fileName)}" title="Delete"><i class="fa-solid fa-trash"></i></button>
+                    </span>
+                </div>`;
+            }
+            html += '</div></div>';
+        }
+
+        if (isMultiTarget) {
+            html += '</div>'; // close .charMemory_groupSection
+        }
     }
     html += '</div>';
 
     const popup = callGenericPopup(html, POPUP_TYPE.TEXT, '', { wide: true, allowVerticalScrolling: true });
 
-    // Wire up event handlers using delegation
+    // Wire up event handlers — always read avatar+fileName from data attributes
     $(document).off('click.charMemoryManager').on('click.charMemoryManager', '.charMemory_editBtn', async function (e) {
         e.stopPropagation();
         const blockIdx = Number($(this).data('block'));
         const bulletIdx = Number($(this).data('bullet'));
-        await editMemory(blockIdx, bulletIdx);
+        const avatar = String($(this).data('avatar'));
+        const fileName = String($(this).data('filename'));
+        await editMemory(blockIdx, bulletIdx, avatar, fileName);
     });
 
     $(document).off('click.charMemoryDelete').on('click.charMemoryDelete', '.charMemory_deleteBtn', async function (e) {
         e.stopPropagation();
         const blockIdx = Number($(this).data('block'));
         const bulletIdx = Number($(this).data('bullet'));
-        await deleteMemory(blockIdx, bulletIdx);
+        const avatar = String($(this).data('avatar'));
+        const fileName = String($(this).data('filename'));
+        await deleteMemory(blockIdx, bulletIdx, avatar, fileName);
     });
 
     $(document).off('click.charMemoryDeleteBlock').on('click.charMemoryDeleteBlock', '.charMemory_deleteBlockBtn', async function (e) {
         e.stopPropagation();
         const blockIdx = Number($(this).data('block'));
-        await deleteBlock(blockIdx);
+        const avatar = String($(this).data('avatar'));
+        const fileName = String($(this).data('filename'));
+        await deleteBlock(blockIdx, avatar, fileName);
     });
 
-    // Clean up when popup closes
     popup.finally(() => {
         $(document).off('click.charMemoryManager');
         $(document).off('click.charMemoryDelete');
@@ -2936,114 +2693,36 @@ async function showMemoryManager() {
 }
 
 /**
- * Group-aware memory manager. Shows memories organized by character,
- * with edits/deletes routed to each character's own Data Bank file.
+ * Re-index block/bullet data attributes within a scope after deletion.
+ * If group sections exist, re-indexes within each section independently.
+ * Otherwise re-indexes all cards in the manager.
  */
-async function showGroupMemoryManager() {
-    const members = getGroupMembers();
-    if (members.length === 0) {
-        callGenericPopup('No group members found.', POPUP_TYPE.TEXT);
-        return;
+function reindexManager() {
+    const $sections = $('.charMemory_manager .charMemory_groupSection');
+    if ($sections.length > 0) {
+        $sections.each(function () {
+            $(this).find('.charMemory_card').each(function (ci) {
+                $(this).attr('data-block', ci);
+                $(this).find('.charMemory_deleteBlockBtn').attr('data-block', ci);
+                $(this).find('.charMemory_bulletRow').each(function (ri) {
+                    $(this).attr('data-block', ci).attr('data-bullet', ri);
+                    $(this).find('.charMemory_editBtn, .charMemory_deleteBtn').attr('data-block', ci).attr('data-bullet', ri);
+                });
+            });
+        });
+    } else {
+        $('.charMemory_manager .charMemory_card').each(function (ci) {
+            $(this).attr('data-block', ci);
+            $(this).find('.charMemory_deleteBlockBtn').attr('data-block', ci);
+            $(this).find('.charMemory_bulletRow').each(function (ri) {
+                $(this).attr('data-block', ci).attr('data-bullet', ri);
+                $(this).find('.charMemory_editBtn, .charMemory_deleteBtn').attr('data-block', ci).attr('data-bullet', ri);
+            });
+        });
     }
-
-    // Load all members' memories in parallel
-    const memberData = await Promise.all(members.map(async (member) => {
-        const fileName = getMemoryFileNameForCharacter(member.name, member.avatar);
-        const content = await readMemoriesForCharacter(member.avatar, fileName);
-        const blocks = parseMemories(content || '');
-        return { ...member, fileName, blocks };
-    }));
-
-    const totalBlocks = memberData.reduce((sum, m) => sum + m.blocks.length, 0);
-    if (totalBlocks === 0) {
-        callGenericPopup('No memories yet for any group member.', POPUP_TYPE.TEXT);
-        return;
-    }
-
-    let html = '<div class="charMemory_manager">';
-    for (const member of memberData) {
-        if (member.blocks.length === 0) continue;
-        const memCount = member.blocks.reduce((sum, b) => sum + b.bullets.length, 0);
-        html += `<div class="charMemory_groupSection" data-avatar="${escapeHtml(member.avatar)}" data-filename="${escapeHtml(member.fileName)}">
-            <div style="font-weight:bold;font-size:0.95em;margin:8px 0 4px;border-bottom:1px solid var(--SmartThemeBorderColor, rgba(128,128,128,0.2));padding-bottom:4px;">
-                ${escapeHtml(member.name)} <small style="opacity:0.5;">(${memCount} memories)</small>
-            </div>`;
-        for (let bi = 0; bi < member.blocks.length; bi++) {
-            const b = member.blocks[bi];
-            const chatLabel = b.chat.length > 16 ? b.chat.slice(0, 16) + '...' : b.chat;
-            html += `<div class="charMemory_card" data-block="${bi}" data-avatar="${escapeHtml(member.avatar)}" data-filename="${escapeHtml(member.fileName)}">
-                <div class="charMemory_cardHeader">
-                    <span class="charMemory_cardTitle">${escapeHtml(chatLabel)}</span>
-                    <span class="charMemory_cardTimestamp">${escapeHtml(b.date)}</span>
-                    <span class="charMemory_cardActions">
-                        <button class="charMemory_deleteBlockBtn menu_button menu_button_icon" data-block="${bi}" data-avatar="${escapeHtml(member.avatar)}" data-filename="${escapeHtml(member.fileName)}" title="Delete all memories from this block"><i class="fa-solid fa-trash"></i></button>
-                    </span>
-                </div>
-                <div class="charMemory_cardBullets">`;
-            for (let bui = 0; bui < b.bullets.length; bui++) {
-                html += `<div class="charMemory_bulletRow" data-block="${bi}" data-bullet="${bui}">
-                    <span class="charMemory_bulletText">- ${escapeHtml(b.bullets[bui])}</span>
-                    <span class="charMemory_bulletActions">
-                        <button class="charMemory_editBtn menu_button menu_button_icon" data-block="${bi}" data-bullet="${bui}" data-avatar="${escapeHtml(member.avatar)}" data-filename="${escapeHtml(member.fileName)}" title="Edit"><i class="fa-solid fa-pencil"></i></button>
-                        <button class="charMemory_deleteBtn menu_button menu_button_icon" data-block="${bi}" data-bullet="${bui}" data-avatar="${escapeHtml(member.avatar)}" data-filename="${escapeHtml(member.fileName)}" title="Delete"><i class="fa-solid fa-trash"></i></button>
-                    </span>
-                </div>`;
-            }
-            html += '</div></div>';
-        }
-        html += '</div>';
-    }
-    html += '</div>';
-
-    const popup = callGenericPopup(html, POPUP_TYPE.TEXT, '', { wide: true, allowVerticalScrolling: true });
-
-    // Wire up event handlers — group versions pass avatar+fileName
-    $(document).off('click.charMemoryManager').on('click.charMemoryManager', '.charMemory_editBtn', async function (e) {
-        e.stopPropagation();
-        const blockIdx = Number($(this).data('block'));
-        const bulletIdx = Number($(this).data('bullet'));
-        const avatar = $(this).data('avatar');
-        const fileName = $(this).data('filename');
-        if (avatar && fileName) {
-            await editGroupMemory(blockIdx, bulletIdx, avatar, fileName);
-        } else {
-            await editMemory(blockIdx, bulletIdx);
-        }
-    });
-
-    $(document).off('click.charMemoryDelete').on('click.charMemoryDelete', '.charMemory_deleteBtn', async function (e) {
-        e.stopPropagation();
-        const blockIdx = Number($(this).data('block'));
-        const bulletIdx = Number($(this).data('bullet'));
-        const avatar = $(this).data('avatar');
-        const fileName = $(this).data('filename');
-        if (avatar && fileName) {
-            await deleteGroupMemory(blockIdx, bulletIdx, avatar, fileName);
-        } else {
-            await deleteMemory(blockIdx, bulletIdx);
-        }
-    });
-
-    $(document).off('click.charMemoryDeleteBlock').on('click.charMemoryDeleteBlock', '.charMemory_deleteBlockBtn', async function (e) {
-        e.stopPropagation();
-        const blockIdx = Number($(this).data('block'));
-        const avatar = $(this).data('avatar');
-        const fileName = $(this).data('filename');
-        if (avatar && fileName) {
-            await deleteGroupBlock(blockIdx, avatar, fileName);
-        } else {
-            await deleteBlock(blockIdx);
-        }
-    });
-
-    popup.finally(() => {
-        $(document).off('click.charMemoryManager');
-        $(document).off('click.charMemoryDelete');
-        $(document).off('click.charMemoryDeleteBlock');
-    });
 }
 
-async function editGroupMemory(blockIndex, bulletIndex, avatar, fileName) {
+async function editMemory(blockIndex, bulletIndex, avatar, fileName) {
     const content = await readMemoriesForCharacter(avatar, fileName);
     const blocks = parseMemories(content);
 
@@ -3059,12 +2738,14 @@ async function editGroupMemory(blockIndex, bulletIndex, avatar, fileName) {
     await writeMemoriesForCharacter(serializeMemories(blocks), avatar, fileName);
     toastr.success('Memory updated.', 'CharMemory');
 
-    const $section = $(`.charMemory_groupSection[data-avatar="${avatar}"]`);
-    const $row = $section.find(`.charMemory_bulletRow[data-block="${blockIndex}"][data-bullet="${bulletIndex}"]`);
+    // Update DOM in place — scope to section if present
+    const $scope = $(`.charMemory_groupSection[data-avatar="${avatar}"]`);
+    const $row = ($scope.length ? $scope : $('.charMemory_manager'))
+        .find(`.charMemory_bulletRow[data-block="${blockIndex}"][data-bullet="${bulletIndex}"]`);
     $row.find('.charMemory_bulletText').text('- ' + newText);
 }
 
-async function deleteGroupMemory(blockIndex, bulletIndex, avatar, fileName) {
+async function deleteMemory(blockIndex, bulletIndex, avatar, fileName) {
     const content = await readMemoriesForCharacter(avatar, fileName);
     const blocks = parseMemories(content);
 
@@ -3083,25 +2764,27 @@ async function deleteGroupMemory(blockIndex, bulletIndex, avatar, fileName) {
     await writeMemoriesForCharacter(serializeMemories(blocks), avatar, fileName);
     toastr.success('Memory deleted.', 'CharMemory');
 
-    const $section = $(`.charMemory_groupSection[data-avatar="${avatar}"]`);
-    const $row = $section.find(`.charMemory_bulletRow[data-block="${blockIndex}"][data-bullet="${bulletIndex}"]`);
+    // Update DOM in place
+    const $scope = $(`.charMemory_groupSection[data-avatar="${avatar}"]`);
+    const $row = ($scope.length ? $scope : $('.charMemory_manager'))
+        .find(`.charMemory_bulletRow[data-block="${blockIndex}"][data-bullet="${bulletIndex}"]`);
     const $card = $row.closest('.charMemory_card');
     $row.remove();
 
     if ($card.find('.charMemory_bulletRow').length === 0) {
         $card.remove();
     }
-    if ($section.find('.charMemory_card').length === 0) {
-        $section.remove();
+    if ($scope.length && $scope.find('.charMemory_card').length === 0) {
+        $scope.remove();
     }
     if ($('.charMemory_manager .charMemory_card').length === 0) {
         $('.charMemory_manager').html('<div style="text-align:center;padding:1em;">No memories yet.</div>');
     }
 
-    reindexGroupSection($section);
+    reindexManager();
 }
 
-async function deleteGroupBlock(blockIndex, avatar, fileName) {
+async function deleteBlock(blockIndex, avatar, fileName) {
     const content = await readMemoriesForCharacter(avatar, fileName);
     const blocks = parseMemories(content);
 
@@ -3115,123 +2798,14 @@ async function deleteGroupBlock(blockIndex, avatar, fileName) {
     await writeMemoriesForCharacter(serializeMemories(blocks), avatar, fileName);
     toastr.success('Block deleted.', 'CharMemory');
 
-    const $section = $(`.charMemory_groupSection[data-avatar="${avatar}"]`);
-    $section.find(`.charMemory_card[data-block="${blockIndex}"]`).remove();
-
-    if ($section.find('.charMemory_card').length === 0) {
-        $section.remove();
-    }
-    if ($('.charMemory_manager .charMemory_card').length === 0) {
-        $('.charMemory_manager').html('<div style="text-align:center;padding:1em;">No memories yet.</div>');
-    }
-
-    reindexGroupSection($section);
-}
-
-/**
- * Re-index block numbers within a single character's section after deletion.
- */
-function reindexGroupSection($section) {
-    if (!$section || !$section.length) return;
-    const avatar = $section.data('avatar');
-    const fileName = $section.data('filename');
-    $section.find('.charMemory_card').each(function (ci) {
-        $(this).attr('data-block', ci);
-        $(this).find('.charMemory_deleteBlockBtn').attr('data-block', ci);
-        $(this).find('.charMemory_bulletRow').each(function (ri) {
-            $(this).attr('data-block', ci).attr('data-bullet', ri);
-            $(this).find('.charMemory_editBtn, .charMemory_deleteBtn').attr('data-block', ci).attr('data-bullet', ri);
-        });
-    });
-}
-
-function reindexManager() {
-    $('.charMemory_manager .charMemory_card').each(function (ci) {
-        $(this).attr('data-block', ci);
-        $(this).find('.charMemory_deleteBlockBtn').attr('data-block', ci);
-        $(this).find('.charMemory_bulletRow').each(function (ri) {
-            $(this).attr('data-block', ci).attr('data-bullet', ri);
-            $(this).find('.charMemory_editBtn, .charMemory_deleteBtn').attr('data-block', ci).attr('data-bullet', ri);
-        });
-    });
-}
-
-async function editMemory(blockIndex, bulletIndex) {
-    const content = await readMemories();
-    const blocks = parseMemories(content);
-
-    if (blockIndex < 0 || blockIndex >= blocks.length) return;
-    const block = blocks[blockIndex];
-    if (bulletIndex < 0 || bulletIndex >= block.bullets.length) return;
-
-    const edited = await callGenericPopup('Edit memory:', POPUP_TYPE.INPUT, block.bullets[bulletIndex], { rows: 3 });
-
-    if (edited === null || edited === false) return; // cancelled
-
-    const newText = String(edited).trim();
-    block.bullets[bulletIndex] = newText;
-    await writeMemories(serializeMemories(blocks));
-    toastr.success('Memory updated.', 'CharMemory');
-
     // Update DOM in place
-    const $row = $(`.charMemory_bulletRow[data-block="${blockIndex}"][data-bullet="${bulletIndex}"]`);
-    $row.find('.charMemory_bulletText').text('- ' + newText);
-}
+    const $scope = $(`.charMemory_groupSection[data-avatar="${avatar}"]`);
+    ($scope.length ? $scope : $('.charMemory_manager'))
+        .find(`.charMemory_card[data-block="${blockIndex}"]`).remove();
 
-async function deleteMemory(blockIndex, bulletIndex) {
-    const content = await readMemories();
-    const blocks = parseMemories(content);
-
-    if (blockIndex < 0 || blockIndex >= blocks.length) return;
-    const block = blocks[blockIndex];
-    if (bulletIndex < 0 || bulletIndex >= block.bullets.length) return;
-
-    const confirm = await callGenericPopup(`Delete this memory?\n\n- ${block.bullets[bulletIndex]}`, POPUP_TYPE.CONFIRM);
-    if (!confirm) return;
-
-    block.bullets.splice(bulletIndex, 1);
-
-    // Remove block entirely if no bullets remain
-    if (block.bullets.length === 0) {
-        blocks.splice(blockIndex, 1);
+    if ($scope.length && $scope.find('.charMemory_card').length === 0) {
+        $scope.remove();
     }
-
-    await writeMemories(serializeMemories(blocks));
-    toastr.success('Memory deleted.', 'CharMemory');
-
-    // Update DOM in place
-    const $row = $(`.charMemory_bulletRow[data-block="${blockIndex}"][data-bullet="${bulletIndex}"]`);
-    const $card = $row.closest('.charMemory_card');
-    $row.remove();
-
-    if ($card.find('.charMemory_bulletRow').length === 0) {
-        $card.remove();
-    }
-
-    if ($('.charMemory_manager .charMemory_card').length === 0) {
-        $('.charMemory_manager').html('<div style="text-align:center;padding:1em;">No memories yet.</div>');
-    }
-
-    reindexManager();
-}
-
-async function deleteBlock(blockIndex) {
-    const content = await readMemories();
-    const blocks = parseMemories(content);
-
-    if (blockIndex < 0 || blockIndex >= blocks.length) return;
-    const block = blocks[blockIndex];
-
-    const confirm = await callGenericPopup(`Delete all ${block.bullets.length} memories from this chat?`, POPUP_TYPE.CONFIRM);
-    if (!confirm) return;
-
-    blocks.splice(blockIndex, 1);
-    await writeMemories(serializeMemories(blocks));
-    toastr.success('Chat memories deleted.', 'CharMemory');
-
-    // Update DOM in place
-    $(`.charMemory_card[data-block="${blockIndex}"]`).remove();
-
     if ($('.charMemory_manager .charMemory_card').length === 0) {
         $('.charMemory_manager').html('<div style="text-align:center;padding:1em;">No memories yet.</div>');
     }
@@ -3350,7 +2924,8 @@ async function undoConsolidation() {
     }
     const confirm = await callGenericPopup('Undo the last consolidation and restore previous memories?', POPUP_TYPE.CONFIRM);
     if (!confirm) return;
-    await writeMemories(consolidationBackup);
+
+    await writeMemoriesForCharacter(consolidationBackup.content, consolidationBackup.avatar, consolidationBackup.fileName);
     consolidationBackup = null;
     $('#charMemory_undoConsolidate').prop('disabled', true);
     toastr.success('Consolidation undone. Memories restored.', 'CharMemory');
@@ -3482,7 +3057,27 @@ async function consolidateMemories() {
         return;
     }
 
-    const content = await readMemories();
+    const targets = getMemoryTargets();
+    if (targets.length === 0) {
+        toastr.warning('No character selected.', 'CharMemory');
+        return;
+    }
+
+    // For multiple targets (group), show a character picker
+    let target;
+    if (targets.length === 1) {
+        target = targets[0];
+    } else {
+        const pickerHtml = targets.map((t, i) =>
+            `<label class="checkbox_label"><input type="radio" name="charMemory_consolTarget" value="${i}" ${i === 0 ? 'checked' : ''} /> ${escapeHtml(t.name)}</label>`,
+        ).join('<br>');
+        const picked = await callGenericPopup(`Select a character to consolidate memories for:<br><br>${pickerHtml}`, POPUP_TYPE.CONFIRM);
+        if (!picked) return;
+        const selectedIdx = Number($('input[name="charMemory_consolTarget"]:checked').val()) || 0;
+        target = targets[selectedIdx];
+    }
+
+    const content = await readMemoriesForCharacter(target.avatar, target.fileName);
     const memories = parseMemories(content);
 
     if (memories.length < 2) {
@@ -3491,7 +3086,7 @@ async function consolidateMemories() {
     }
 
     const beforeCount = countMemories(memories);
-    logActivity(`Consolidation started: ${beforeCount} memories in ${memories.length} blocks`);
+    logActivity(`Consolidation started for ${target.name}: ${beforeCount} memories in ${memories.length} blocks`);
 
     // Show busy state on button
     const $btn = $('#charMemory_consolidate');
@@ -3711,8 +3306,8 @@ async function consolidateMemories() {
         return;
     }
 
-    consolidationBackup = content;
-    await writeMemories(serializeMemories(cleanBlocks));
+    consolidationBackup = { content, avatar: target.avatar, fileName: target.fileName };
+    await writeMemoriesForCharacter(serializeMemories(cleanBlocks), target.avatar, target.fileName);
     $('#charMemory_undoConsolidate').prop('disabled', false);
 
     const afterCount = countMemories(cleanBlocks);
@@ -4046,11 +3641,18 @@ function setupListeners() {
             saveSettingsDebounced();
         }
 
-        // Also clear stored memories so re-extraction starts fresh
-        const existing = findMemoryAttachment();
-        if (existing) {
-            await deleteAttachment(existing, 'character', () => {}, false);
+        // Also clear stored memories for ALL targets so re-extraction starts fresh
+        const resetTargets = getMemoryTargets();
+        for (const target of resetTargets) {
+            const existing = findMemoryAttachmentForCharacter(target.avatar, target.fileName);
+            if (existing) {
+                await deleteFileFromServer(existing.url, true);
+                ensureCharacterAttachments(target.avatar);
+                extension_settings.character_attachments[target.avatar] =
+                    extension_settings.character_attachments[target.avatar].filter(a => a.url !== existing.url);
+            }
         }
+        saveSettingsDebounced();
 
         // Immediately update stats bar to avoid stale async reads
         $('#charMemory_statCount').text('0 memories');
@@ -4278,12 +3880,18 @@ async function onPinMemoryClick() {
     const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
     const chatId = context.chatId || 'unknown';
 
-    const existingContent = await readMemories();
+    // Find the target matching the message sender (for groups, match by name)
+    const targets = getMemoryTargets();
+    const senderName = msg.name;
+    const target = targets.find(t => t.name === senderName) || targets[0];
+    if (!target) return;
+
+    const existingContent = await readMemoriesForCharacter(target.avatar, target.fileName);
     const blocks = parseMemories(existingContent);
     blocks.push({ chat: chatId, date: timestamp, bullets });
-    await writeMemories(serializeMemories(blocks));
+    await writeMemoriesForCharacter(serializeMemories(blocks), target.avatar, target.fileName);
 
-    toastr.success(`${bullets.length} memor${bullets.length === 1 ? 'y' : 'ies'} pinned!`, 'CharMemory');
+    toastr.success(`${bullets.length} memor${bullets.length === 1 ? 'y' : 'ies'} pinned${targets.length > 1 ? ` to ${target.name}` : ''}!`, 'CharMemory');
     updateStatusDisplay();
 }
 
