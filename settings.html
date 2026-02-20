@@ -172,22 +172,9 @@
                         </div>
                     </div>
 
-                    <!-- Section 3b: Group Chat -->
+                    <!-- Section 4: 1:1 Chat -->
                     <hr class="charMemory_separator" />
-                    <small><b>Group Chat Extraction</b></small>
-
-                    <div class="charMemory_statusRow">
-                        <label for="charMemory_groupMode" title="How to extract memories from group chats. Per-character sends one LLM call per character per chunk (more accurate). Combined sends one call for all characters (faster but may miss details).">
-                            <small>Group extraction mode</small>
-                        </label>
-                        <select id="charMemory_groupMode" class="text_pole">
-                            <option value="per-character">Per-character (one LLM call per character)</option>
-                        </select>
-                        <small class="charMemory_helperText">Each character gets a focused extraction with their own card and existing memories. Memories are stored in each character's Data Bank.</small>
-                    </div>
-
-                    <!-- Section 4: Storage -->
-                    <hr class="charMemory_separator" />
+                    <small><b>1:1 Chat</b></small>
 
                     <div class="charMemory_statusRow">
                         <label class="checkbox_label" for="charMemory_perChat" title="When enabled, each chat gets its own memory file. When disabled, all chats for a character share one file.">
@@ -205,25 +192,45 @@
                         <small class="charMemory_helperText">Leave blank for auto-naming. Set a custom name to override.</small>
                     </div>
 
-                    <!-- Section 5: Advanced -->
-                    <hr class="charMemory_separator" />
-
                     <div class="charMemory_promptSection">
                         <label for="charMemory_extractionPrompt" title="The prompt sent to the LLM for memory extraction. Uses {{charName}}, {{charCard}}, {{existingMemories}}, {{recentMessages}}, {{char}}, and {{user}} placeholders.">
-                            <small>Extraction prompt (1:1 chats)</small>
+                            <small>Extraction prompt</small>
                         </label>
                         <textarea id="charMemory_extractionPrompt" class="text_pole textarea_compact" rows="8" placeholder="Enter extraction prompt..."></textarea>
                         <input type="button" id="charMemory_restorePrompt" class="menu_button" value="Restore Default Prompt" title="Replace the current prompt with the built-in default" />
                     </div>
 
-                    <div class="charMemory_promptSection">
-                        <label for="charMemory_groupExtractionPrompt" title="The prompt sent to the LLM for group chat memory extraction. Uses {{charName}}, {{charCard}}, {{participants}}, {{existingMemories}}, {{recentMessages}}, {{char}}, and {{user}} placeholders.">
-                            <small>Extraction prompt (group chats)</small>
+                    <!-- Section 5: Group Chat -->
+                    <hr class="charMemory_separator" />
+                    <small><b>Group Chat</b></small>
+
+                    <div class="charMemory_statusRow">
+                        <label for="charMemory_groupMode" title="How to extract memories from group chats. Per-character sends one LLM call per character per chunk.">
+                            <small>Extraction mode</small>
                         </label>
-                        <textarea id="charMemory_groupExtractionPrompt" class="text_pole textarea_compact" rows="8" placeholder="Enter group extraction prompt..."></textarea>
-                        <input type="button" id="charMemory_restoreGroupPrompt" class="menu_button" value="Restore Default Group Prompt" title="Replace the group prompt with the built-in default" />
+                        <select id="charMemory_groupMode" class="text_pole">
+                            <option value="per-character">Per-character (one LLM call per character)</option>
+                        </select>
+                        <small class="charMemory_helperText">Each character gets a focused extraction with their own card and existing memories.</small>
                     </div>
 
+                    <div id="charMemory_groupMembersSection">
+                        <label><small>Member memory files</small></label>
+                        <div id="charMemory_groupMembersList" class="charMemory_groupMembersList">
+                            <small class="charMemory_helperText">Open a group chat to see members.</small>
+                        </div>
+                        <small class="charMemory_helperText">Each character's memories are stored in their own Data Bank. Leave blank for auto-naming. If a character already has a memory file, it will be detected automatically.</small>
+                    </div>
+
+                    <div class="charMemory_promptSection">
+                        <label for="charMemory_groupExtractionPrompt" title="The prompt sent to the LLM for group chat memory extraction. Uses {{charName}}, {{charCard}}, {{participants}}, {{existingMemories}}, {{recentMessages}}, {{char}}, and {{user}} placeholders.">
+                            <small>Extraction prompt</small>
+                        </label>
+                        <textarea id="charMemory_groupExtractionPrompt" class="text_pole textarea_compact" rows="8" placeholder="Enter group extraction prompt..."></textarea>
+                        <input type="button" id="charMemory_restoreGroupPrompt" class="menu_button" value="Restore Default Prompt" title="Replace the group prompt with the built-in default" />
+                    </div>
+
+                    <!-- Section 6: Advanced -->
                     <hr class="charMemory_separator" />
 
                     <div class="charMemory_statusRow">

@@ -304,6 +304,30 @@
     opacity: 0.7;
 }
 
+/* Group Members List */
+.charMemory_groupMembersList {
+    margin: 4px 0;
+}
+
+.charMemory_groupMemberRow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+}
+
+.charMemory_groupMemberName {
+    font-size: 0.9em;
+    font-weight: bold;
+    min-width: 80px;
+    flex-shrink: 0;
+}
+
+.charMemory_groupMemberFile {
+    flex: 1;
+    font-size: 0.85em;
+}
+
 /* Batch Extract */
 .charMemory_batchChatList {
     max-height: 300px;

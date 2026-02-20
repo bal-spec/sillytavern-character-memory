@@ -374,6 +374,7 @@ const defaultSettings = {
     verboseLogging: false,
     groupExtractionMode: 'per-character',
     groupExtractionPrompt: defaultGroupExtractionPrompt,
+    characterFileNames: {},
 };
 
 /**
@@ -852,7 +853,7 @@ function updateStatusDisplay() {
             $('#charMemory_statCount').text('0 memories');
         } else {
             for (const member of members) {
-                const memFileName = getMemoryFileNameForCharacter(member.name);
+                const memFileName = getMemoryFileNameForCharacter(member.name, member.avatar);
                 readMemoriesForCharacter(member.avatar, memFileName).then(content => {
                     const blocks = parseMemories(content || '');
                     totalCount += countMemories(blocks);
@@ -886,6 +887,43 @@ function updateStatusDisplay() {
     // Stats bar: cooldown timer
     updateCooldownDisplay();
     startCooldownTimer();
+    updateGroupMembersList();
+}
+
+/**
+ * Populate the group members filename list in settings UI.
+ * Shows each group member with their resolved memory filename (editable).
+ */
+function updateGroupMembersList() {
+    const $container = $('#charMemory_groupMembersList');
+    if (!$container.length) return;
+
+    if (!isGroupChat()) {
+        $container.html('<small class="charMemory_helperText">Open a group chat to see members.</small>');
+        return;
+    }
+
+    const members = getGroupMembers();
+    if (members.length === 0) {
+        $container.html('<small class="charMemory_helperText">No active members in this group.</small>');
+        return;
+    }
+
+    const rows = members.map(member => {
+        const resolved = getMemoryFileNameForCharacter(member.name, member.avatar);
+        const override = extension_settings[MODULE_NAME]?.characterFileNames?.[member.avatar] || '';
+        return `<div class="charMemory_groupMemberRow">
+            <span class="charMemory_groupMemberName">${escapeHtml(member.name)}</span>
+            <input type="text" class="text_pole charMemory_groupMemberFile"
+                   data-avatar="${escapeHtml(member.avatar)}"
+                   data-charname="${escapeHtml(member.name)}"
+                   value="${escapeHtml(override)}"
+                   placeholder="${escapeHtml(resolved)}"
+                   title="Current file: ${escapeHtml(resolved)}" />
+        </div>`;
+    }).join('');
+
+    $container.html(rows);
 }
 
 function updateCooldownDisplay() {
@@ -1001,10 +1039,31 @@ function ensureCharacterAttachments(avatar) {
 
 /**
  * Get memory filename for a specific character (not dependent on this_chid).
+ * Detection cascade:
+ *   1. Manual override in characterFileNames[avatar]
+ *   2. Auto-detect existing *-memories.md in character's Data Bank
+ *   3. Fall back to {SafeName}-memories.md
+ *
  * @param {string} charName Character name.
+ * @param {string} [avatar] Character avatar filename (for override lookup and auto-detect).
  * @returns {string} The memory filename.
  */
-function getMemoryFileNameForCharacter(charName) {
+function getMemoryFileNameForCharacter(charName, avatar) {
+    // 1. Check manual override
+    if (avatar) {
+        const override = extension_settings[MODULE_NAME]?.characterFileNames?.[avatar];
+        if (override) return override;
+    }
+
+    // 2. Auto-detect existing memory file in character's Data Bank
+    if (avatar) {
+        ensureCharacterAttachments(avatar);
+        const existing = extension_settings.character_attachments[avatar]
+            .find(a => a.name && a.name.endsWith('-memories.md'));
+        if (existing) return existing.name;
+    }
+
+    // 3. Fall back to auto-generated name
     const safeName = charName.replace(/[^a-zA-Z0-9_-]/g, '_');
     return `${safeName}-memories.md`;
 }
@@ -1926,7 +1985,7 @@ async function extractGroupMemories({
                 }
 
                 // Read this character's existing memories
-                const memFileName = getMemoryFileNameForCharacter(member.name);
+                const memFileName = getMemoryFileNameForCharacter(member.name, member.avatar);
                 const existingMemories = await readMemoriesForCharacter(member.avatar, memFileName);
 
                 // Build per-character prompt
@@ -2018,7 +2077,7 @@ async function extractGroupMemories({
         // Merge blocks with same chat+date per character
         if (chunksProcessed > 1 && totalMemories > 0) {
             for (const member of members) {
-                const memFileName = getMemoryFileNameForCharacter(member.name);
+                const memFileName = getMemoryFileNameForCharacter(member.name, member.avatar);
                 const content = await readMemoriesForCharacter(member.avatar, memFileName);
                 const allBlocks = parseMemories(content);
                 const merged = mergeMemoryBlocks(allBlocks);
@@ -2373,7 +2432,7 @@ async function onChatChanged() {
                 // For group chats, check any member's Data Bank
                 const members = getGroupMembers();
                 for (const member of members) {
-                    const memFileName = getMemoryFileNameForCharacter(member.name);
+                    const memFileName = getMemoryFileNameForCharacter(member.name, member.avatar);
                     const content = await readMemoriesForCharacter(member.avatar, memFileName);
                     const blocks = parseMemories(content);
                     if (blocks.some(b => b.chat === chatId || b.chat === 'consolidated' || b.chat === 'unknown')) {
@@ -3264,6 +3323,21 @@ function setupListeners() {
         $('#charMemory_groupExtractionPrompt').val(defaultGroupExtractionPrompt);
         saveSettingsDebounced();
         toastr.info('Group extraction prompt restored to default.', 'CharMemory');
+    });
+
+    // Group member filename overrides (event delegation for dynamic inputs)
+    $(document).on('input', '.charMemory_groupMemberFile', function () {
+        const avatar = $(this).data('avatar');
+        const value = String($(this).val()).trim();
+        if (!extension_settings[MODULE_NAME].characterFileNames) {
+            extension_settings[MODULE_NAME].characterFileNames = {};
+        }
+        if (value) {
+            extension_settings[MODULE_NAME].characterFileNames[avatar] = value;
+        } else {
+            delete extension_settings[MODULE_NAME].characterFileNames[avatar];
+        }
+        saveSettingsDebounced();
     });
 
     $('#charMemory_extractNow').off('click').on('click', function () {
