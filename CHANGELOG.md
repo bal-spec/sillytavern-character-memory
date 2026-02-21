@@ -23,7 +23,7 @@
 - **Narrow viewport layout**: Button row splits into two rows on narrow viewports (iPad landscape and similar).
 - **Context-aware prompt titles**: Extraction prompt section now shows "(1:1 chats)" or "(group chats)" so you always know which prompt you're editing.
 - **Searchable model picker**: The model dropdown is now a searchable text input. Type to filter models by name — especially helpful for providers with 100+ models like NanoGPT. Supports keyboard navigation (arrow keys, Enter, Escape).
-- **Group avatar thumbnails in stats bar**: In group chats, the stats bar shows small character avatars next to the character count. Hover for a tooltip showing each character's memory filename.
+- **Group avatar thumbnails in stats bar**: In group chats, the stats bar shows "Group:" followed by small character avatars. Hover for a tooltip showing each character's name and memory filename.
 
 ### Bug Fixes
 

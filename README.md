@@ -148,10 +148,12 @@ Dedicated API is the default and recommended option. It sends *only* the extract
 2. Choose a **Provider** from the dropdown. Options include OpenAI, Anthropic, OpenRouter, Groq, DeepSeek, Mistral, xAI (Grok), NanoGPT, NVIDIA, Ollama, Pollinations (free, no key needed), and Custom.
 3. Enter your **API Key** for that provider (click the **(get key)** link next to the field for a direct link to the provider's key page)
 4. Click **Connect** to fetch the list of available models
-5. Select a **Model** from the dropdown
+5. Select a **Model** — the model picker is searchable: type to filter by name, which is especially helpful for providers with 100+ models like NanoGPT
 6. Click **Test Model** to verify the model responds correctly
 
 ![CharMemory Settings — Dedicated API with NanoGPT, model selection, and auto-extraction sliders](images/04-settings-provider.png)
+
+![Searching for models by typing in the model picker](images/16-model-search.png)
 
 If your provider isn't listed, select **Custom** from the Provider dropdown. You can enter any OpenAI-compatible API base URL and it will work as long as the endpoint supports the `/chat/completions` format. Most LLM providers use this standard.
 
@@ -268,7 +270,7 @@ Manually saves a message as a memory with no LLM involved. Opens an edit dialog 
 
 CharMemory works in group chats with no extra setup. Each group member gets their own memory file, and extraction handles all members in a single pass. The Settings panel automatically adapts to show group-specific options (member file names, group extraction prompt) when a group chat is active, and 1:1 options when a solo chat is active.
 
-![Group chat stats bar showing character count and shared memory stats](images/12-group-main.png)
+![Group chat panel showing character avatars in the stats bar and extraction controls](images/12-group-main.png)
 
 ### How It Works
 
@@ -502,7 +504,9 @@ The default prompt was developed through extensive testing across multiple model
 
 If you customize the prompt, keep the three-section structure and boundary markers intact — models rely on these to understand what to extract from and what to skip.
 
-**Group chats use a separate prompt.** When a group chat is active, the Settings panel shows a **Group Extraction Prompt** instead of the 1:1 prompt. It follows the same principles but adds a `{{participants}}` list so the LLM knows who is speaking, and instructs it to attribute memories to specific characters by name. The two prompts are completely independent — customizations to the 1:1 prompt are not inherited by the group prompt, and vice versa. If you want to apply the same change to both, you need to edit each one separately.
+**Group chats use a separate prompt.** When a group chat is active, the Settings panel shows a **Group Extraction Prompt** instead of the 1:1 prompt. The label changes to "Extraction prompt (group chats)" so you always know which prompt you're editing. It follows the same principles but adds a `{{participants}}` list so the LLM knows who is speaking, and instructs it to attribute memories to specific characters by name. The two prompts are completely independent — customizations to the 1:1 prompt are not inherited by the group prompt, and vice versa. If you want to apply the same change to both, you need to edit each one separately.
+
+![The extraction prompt label shows "(group chats)" when in a group chat](images/17-group-prompt-title.png)
 
 ---
 
