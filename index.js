@@ -1175,8 +1175,8 @@ async function previewConversion() {
     toastr.success(`Converted ${count} memories to ${destFileName}. Remember to hide or remove the original file from Data Bank to avoid duplicates.`, 'CharMemory', { timeOut: 8000 });
     logActivity(`Converted ${count} memories from Data Bank file to ${destFileName}`);
 
-    // Reset source dropdown
-    $('#charMemory_convertSource').val('');
+    // Refresh source dropdown so it reflects the new file state
+    populateConvertSourceDropdown();
     updateStatusDisplay();
 }
 
