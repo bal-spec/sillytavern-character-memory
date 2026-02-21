@@ -2,16 +2,82 @@
 
 This extension automatically extracts structured character memories from chat and stores them in the character's Data Bank. Memories are vectorized by SillyTavern's Vector Storage so the most relevant ones are retrieved at generation time — your character remembers things from old conversations.
 
+## Is CharMemory for you?
 
-## What CharMemory Does
+**CharMemory is built for setups where character cards define who a character is, and memories capture what happens to them over time.**
+
+This is for you if:
+- You use **character cards** for your characters
+- You chat 1:1 or in **group chats** and want characters to remember things across sessions
+- You want memories stored as plain, editable files — not locked in a database
+
+This probably isn't for you if:
+- Your memory workflow is lorebook-based (triggered entries in World Info)
+- You don't use character cards
+
+CharMemory and lorebook-based memory extensions can coexist — they use different storage mechanisms.
+
+## What you need
+
+- A working **SillyTavern** installation
+- An **API key** for any LLM provider (OpenRouter, Groq, DeepSeek, NanoGPT, etc.) — or use **Pollinations** for free testing with no key
+- **Vector Storage** extension (ships with SillyTavern — just needs to be enabled)
+
+## Get started
+
+> **Back up first** — if you already have Data Bank files or character notes you care about, [back them up](#before-you-start--back-up-your-data) before installing. Memory operations can modify or delete files.
+
+**1. Install**
+Extensions (puzzle piece icon) → Install extension → paste this URL → Install just for me:
+```
+https://github.com/bal-spec/sillytavern-character-memory
+```
+
+**2. Connect an extraction LLM**
+Find **Character Memory** in Extensions → open **Settings** → pick a **Provider** → enter your **API Key** → **Connect** → select a **Model** → **Test Model**.
+
+Not sure which model? **GLM 4.7** and **DeepSeek V3.1** are good starting points.
+
+**3. Enable Vector Storage**
+In Extensions, find **Vector Storage** → set source to **Local (Transformers)** → under File vectorization settings, check **Enable for files**.
+
+Local Transformers is the simplest option — no API key, runs in your browser. If you're on a low-powered device or want faster vectorization, select an API-based source (OpenAI, NanoGPT, Cohere, etc.) instead. Either way, the critical setting is **Enable for files** — without it, memories are stored but never retrieved.
+
+**4. Chat**
+Chat normally. After 20 character messages, memories are extracted automatically. Click **View / Edit** in the CharMemory panel to see what was captured.
+
+## What to expect
+
+Once set up, the CharMemory panel shows a **stats bar** tracking extraction progress (e.g., "5/20 msgs"). When the counter reaches the threshold, extraction fires automatically.
+
+- **View / Edit** opens the Memory Manager where you can browse, edit, or delete individual memory bullets
+- **Extract Now** processes all unprocessed messages immediately — no need to wait for the auto threshold
+- **Extract Here** (brain icon on any character message) extracts up to that specific message
+- **Consolidate** merges duplicate and related memories when the file grows large
+
+Memories are stored as a plain markdown file in the character's Data Bank. You can edit the file directly at any time.
+
+---
+
+*Everything below is the full guide — detailed setup with screenshots, feature reference, troubleshooting, and technical docs.*
+
+## Before You Start — Back Up Your Data
+
+CharMemory writes to your character's Data Bank files. If you already have memory files, character notes, or other Data Bank attachments you care about, **back them up first**.
+
+To back up: open SillyTavern → click a character → open their **Data Bank** (paperclip icon) → download any files under Character Attachments.
+
+Operations like **Clear All Memories** and **Consolidation** modify or delete memory files and cannot always be undone. A backup takes seconds and protects hours of accumulated memories.
+
+---
+
+## Feature Overview
 
 When you chat with a character in SillyTavern, the conversation disappears from the LLM's context as it scrolls past the token limit. CharMemory solves this by automatically extracting important facts, events, and developments from your chats and storing them as structured memories.
 
 Memories are stored as plain markdown files in the character's **Data Bank** — SillyTavern's built-in file attachment system. You can view, edit, or delete the memory file at any time, either through CharMemory's Memory Manager or by editing the Data Bank file directly.
 
 These memory files are then vectorized by **Vector Storage** (a standard extension that ships with SillyTavern) so that the most relevant memories are automatically retrieved and injected into the LLM's context at generation time.
-
-### Feature Overview
 
 - **Automatic**: Extracts memories every N character messages/turns (configurable with cooldown for rapid-fire conversations)
 - **Chunked**: Loops through all unprocessed messages in chunks to prevent overwhelming the LLM's context window
@@ -27,44 +93,9 @@ These memory files are then vectorized by **Vector Storage** (a standard extensi
 
 ---
 
-## Before You Start — Back Up Your Data
+## Detailed Setup Guide
 
-CharMemory writes to your character's Data Bank files. If you already have memory files, character notes, or other Data Bank attachments you care about, **back them up first**.
-
-To back up: open SillyTavern → click a character → open their **Data Bank** (paperclip icon) → download any files under Character Attachments.
-
-Operations like **Clear All Memories** and **Consolidation** modify or delete memory files and cannot always be undone. A backup takes seconds and protects hours of accumulated memories.
-
----
-
-## Quick Start
-
-You need a working SillyTavern installation and an API key for any supported LLM provider.
-
-**1. Install the extension**
-Open SillyTavern → click the **Extensions** icon (puzzle piece) → **Install extension** → paste this URL → click **Install just for me**:
-```
-https://github.com/bal-spec/sillytavern-character-memory
-```
-
-**2. Set up the extraction LLM**
-Scroll down in Extensions to find **Character Memory** → expand **Settings** → under **Provider**, pick one (e.g., OpenRouter, NanoGPT, Groq — any provider with an OpenAI-compatible API works) → enter your **API Key** → click **Connect** to fetch models → select a **Model** from the dropdown → click **Test Model** to verify it works.
-
-Not sure which model? **GLM 4.7** and **DeepSeek V3.1** are good starting points.
-
-**3. Enable Vector Storage**
-Still in Extensions, find **Vector Storage** → set Vectorization Source to **Local (Transformers)** → under **File vectorization settings**, check **Enable for files**. This is what makes your character actually *use* the extracted memories during chat.
-
-**4. Chat**
-Chat normally with any character. After 20 character messages, memories are extracted automatically. Click **View / Edit** in the CharMemory panel to see what was captured.
-
-That's it — you're up and running. Everything below covers the details: what the extension does, how to tune it, recommended settings, and troubleshooting.
-
----
-
-## Full Setup Guide
-
-This section walks through each step in detail with screenshots. If you already followed the Quick Start above and everything's working, you can skip ahead to [Per-Message Buttons](#per-message-buttons) or [Understanding the Extraction Settings](#understanding-the-extraction-settings).
+This section walks through each step in detail with screenshots. If you already followed the [Get started](#get-started) steps above and everything's working, you can skip ahead to [Per-Message Buttons](#per-message-buttons) or [Understanding the Extraction Settings](#understanding-the-extraction-settings).
 
 ### Prerequisites
 
@@ -114,8 +145,8 @@ You have three options for **LLM Used for Extraction**:
 Dedicated API is the default and recommended option. It sends *only* the extraction prompt to the LLM — no chat system prompts, jailbreaks, persona instructions, or other context gets mixed in. (The extraction prompt itself includes the character card as a bounded reference section so the LLM knows what not to re-extract — but that's intentional and controlled, unlike Main LLM where everything piles up.) This produces noticeably better memories.
 
 1. Open **Settings** in the CharMemory panel — **Dedicated API** is already selected
-2. Choose a **Provider** from the dropdown. Options include OpenAI, Anthropic, OpenRouter, Groq, DeepSeek, Mistral, NanoGPT, NVIDIA, Ollama, and others.
-3. Enter your **API Key** for that provider
+2. Choose a **Provider** from the dropdown. Options include OpenAI, Anthropic, OpenRouter, Groq, DeepSeek, Mistral, xAI (Grok), NanoGPT, NVIDIA, Ollama, Pollinations (free, no key needed), and Custom.
+3. Enter your **API Key** for that provider (click the **(get key)** link next to the field for a direct link to the provider's key page)
 4. Click **Connect** to fetch the list of available models
 5. Select a **Model** from the dropdown
 6. Click **Test Model** to verify the model responds correctly
@@ -125,6 +156,8 @@ Dedicated API is the default and recommended option. It sends *only* the extract
 If your provider isn't listed, select **Custom** from the Provider dropdown. You can enter any OpenAI-compatible API base URL and it will work as long as the endpoint supports the `/chat/completions` format. Most LLM providers use this standard.
 
 **Note on NVIDIA**: NVIDIA's API doesn't support CORS (browser-to-API requests), so CharMemory automatically routes NVIDIA requests through SillyTavern's server. This happens transparently — no extra setup is needed, just select NVIDIA, enter your API key, and go. Your API key is passed securely via headers and never touches SillyTavern's own configuration.
+
+**Note on Pollinations**: Pollinations is a free provider that requires no API key — useful for trying CharMemory without signing up for anything. Select Pollinations, type a model name (e.g., `openai`), and go. Quality depends on which model Pollinations routes to, so it's best for testing rather than production use.
 
 If you're not sure which model to use, see the [Recommended Models](#recommended-models) section below.
 
@@ -159,7 +192,7 @@ You can follow either extraction in real time in the **Activity Log** (Tools & D
 
 ### Step 4: View Your Memories
 
-Click **View / Edit** to open the Memory Manager. Your extracted memories appear as cards grouped by extraction, showing the chat name and timestamp, with the newest blocks first. Each bullet has its own edit and delete buttons.
+Click **View / Edit** to open the Memory Manager. Your extracted memories appear as cards grouped by extraction, showing the chat name and timestamp. Blocks are displayed in reverse chronological order — newest extractions first, so the most recent memories are always at the top. Each bullet has its own edit and delete buttons.
 
 ![Memory Manager showing 7 extracted memories with edit and delete controls](images/06-memory-manager.png)
 
@@ -195,15 +228,23 @@ The Vector Storage panel has two rows of file settings: **Message attachments** 
 | **Chunk overlap** | 15% | ~450 chars of overlap at 3000 chunk size. Catches memory blocks that straddle a chunk boundary. Without overlap, a block landing exactly on the split gets half in one chunk and half in another, making neither retrievable cleanly. |
 | **Retrieve chunks** | 5 | How many memory chunks are retrieved per generation. At ~2 blocks per chunk, that's roughly 10 memory blocks — enough context without flooding the prompt. Going too high (20+) effectively dumps the whole file, defeating the purpose of semantic search. |
 
-#### Why Local Vectorization Is Fine
+#### Local vs API-Based Vectorization
 
-You might wonder whether a local embedding model is "good enough" compared to hosted options like OpenAI's embeddings. For CharMemory, it absolutely is.
+**Local (Transformers)** runs the embedding model in your browser. It's the simplest option — no API key, no cost, no privacy concerns (memories never leave your machine). For retrieval quality, local is perfectly adequate: embedding is a much simpler task than generation, and for a typical CharMemory use case (dozens to low hundreds of memory bullets), the semantic gaps between relevant and irrelevant memories are wide enough that any reasonable model catches them.
 
-Embedding is a much simpler task than generation — you're not asking the model to reason or follow instructions, just to measure how semantically similar two pieces of text are. Even small models do this well. For a typical CharMemory use case (dozens to low hundreds of memory bullets per character), the semantic gaps between relevant and irrelevant memories are wide enough that any reasonable embedding model catches them.
+**When to use an API source instead:**
 
-Hosted embedding models (OpenAI `text-embedding-3-small`, Cohere `embed-v3`, etc.) produce marginally better embeddings for subtle semantic distinctions, multilingual content, or very large corpora — but for matching "Flux gave Alex a slow blink" against a conversation about the cat's trust level, a local model works perfectly. The retrieval quality bottleneck is almost always the memory *content* quality, not the embedding model.
+- **Low-powered devices** — Local Transformers loads a ~100 MB model into your browser and runs inference on your CPU/GPU. On a phone, tablet, Chromebook, or older laptop this can be noticeably slow and eat battery. An API source offloads that work to a remote server.
+- **Faster vectorization** — API sources return embeddings in milliseconds per call vs. the local model's per-chunk processing time. This matters most during bulk operations like batch extraction or revectorization of large memory files.
+- **Large memory files** — If a character has hundreds of memory bullets, the local model has to churn through many chunks. An API source handles this faster.
 
-Local also has practical advantages: no API key, no cost, no rate limits, no privacy concerns (your memories never leave your machine), and no network latency per embedding call.
+**When local is the better choice:**
+
+- You don't want another API key or dependency
+- Privacy matters — your memories stay on your machine
+- Your device handles it fine (most desktop/laptop setups do)
+
+The retrieval quality difference between local and hosted embeddings is negligible for CharMemory. The bottleneck is almost always memory *content* quality, not the embedding model.
 
 #### Verify It's Working
 
@@ -225,7 +266,9 @@ Manually saves a message as a memory with no LLM involved. Opens an edit dialog 
 
 ## Group Chats
 
-CharMemory works in group chats with no extra setup. Each group member gets their own memory file, and extraction handles all members in a single pass.
+CharMemory works in group chats with no extra setup. Each group member gets their own memory file, and extraction handles all members in a single pass. The Settings panel automatically adapts to show group-specific options (member file names, group extraction prompt) when a group chat is active, and 1:1 options when a solo chat is active.
+
+![Group chat stats bar showing character count and shared memory stats](images/12-group-main.png)
 
 ### How It Works
 
@@ -236,11 +279,13 @@ When extraction fires in a group chat — whether automatically or via Extract N
 3. Sends the chunk to the LLM
 4. Appends any new memories to that character's file
 
-Progress shows which character is being processed (e.g., "Alice (2/6)").
+Progress shows which character is being processed (e.g., "Alice (2/6)"). If the LLM call fails for one member, extraction continues with the remaining members — one failure won't abort the entire group.
 
 ### Viewing and Editing Group Memories
 
 Click **View / Edit** in a group chat and you'll see per-character sections, each with their own memory cards. Edit and delete controls work the same as in 1:1 — they target the correct character's file based on which section the button is in.
+
+![Group memory manager showing per-character memory sections](images/14-group-memory-manager.png)
 
 Newest memory blocks appear first (reverse chronological) in both 1:1 and group chats.
 
@@ -255,6 +300,8 @@ The bookmark button on a group message routes the pinned memory to the correct c
 ### Per-Character Filenames
 
 By default, each group member's memory file is auto-named from their character name (e.g., `Alice-memories.md`). You can configure custom filenames per character in Settings when a group chat is active.
+
+![Per-character memory file names in group settings](images/13-group-member-files.png)
 
 ### Reset and Clear in Groups
 
@@ -300,17 +347,36 @@ Two reset options are available in Settings:
 
 ### Consolidation
 
-When the memory file grows large with many extraction blocks, related or duplicate memories can accumulate across different sessions. The **Consolidate** button sends the full memory file to the LLM with instructions to deduplicate and combine related entries.
+When the memory file grows large with many extraction blocks, related or duplicate memories can accumulate across different sessions. The **Consolidate** tab lets you send the full memory file to the LLM to deduplicate and combine related entries.
 
-Consolidation is always manual — it never runs automatically. Before any changes are applied:
+Consolidation is always manual — it never runs automatically.
 
-1. A **before/after preview** shows you exactly what will change
-2. You must **confirm** before anything is written
-3. **Undo Consolidation** restores the previous version if the result isn't satisfactory
+#### Strategy Presets
+
+Before consolidating, choose a strategy from the dropdown in the Consolidate tab:
+
+| Strategy | What it does |
+|----------|-------------|
+| **Conservative** | Only merges near-exact duplicates. Safest option — preserves the most detail. |
+| **Balanced** | Merges duplicates and combines related facts. Good default. |
+| **Aggressive** | Compresses heavily, summarizes by theme. Best for very large memory files that need significant reduction. |
+
+Each preset has its own prompt that you can view and customize. Click the expand arrow to see the full prompt, edit it to taste, and save. **Restore Default** reverts a preset to its original prompt.
+
+#### The Consolidation Workflow
+
+1. Pick a strategy and click **Consolidate**
+2. The LLM processes your memories and returns a consolidated version, organized by theme (e.g., "Relationship History", "Key Events")
+3. Results appear as **editable cards** — not raw text. Each theme block is read-only by default; click the **pencil icon** on any block to enter edit mode for that block
+4. You can **edit** individual bullets, **delete** bullets or entire blocks, **add** new bullets, and **rename theme headers** before applying
+5. Not happy with the result? Click **Re-run** to get a fresh consolidation. Each re-run saves the previous version to a **version stack** — click **Undo** to step back through prior versions
+6. When satisfied, click **Apply** to write the consolidated memories to the file
 
 **Back up your memory file before consolidating**, especially if you have a large number of memories. The undo is session-only — if you close SillyTavern, the backup is lost. To back up: open the character's Data Bank (paperclip icon) and download the memory file.
 
 In group chats, consolidation shows a character picker — select which character's memories to consolidate. See [Group Chats](#group-chats) for details.
+
+Consolidation automatically uses 2x your configured "Max response length" as its token budget, since it processes the full memory file rather than a single chunk. If you're using a thinking model, this means consolidation gets even more headroom (e.g., 2000 response length → 4000 tokens for consolidation).
 
 Results vary depending on the model used and the size of the memory file. Review the preview carefully before applying.
 
@@ -354,6 +420,8 @@ Click **Refresh** after generating a message to capture the current state.
 
 **Extension Prompts** — All content injected by extensions (including Vector Storage's memory retrieval and any other active extensions). This is the raw view of everything beyond the base conversation that the LLM received.
 
+**Note on group chats**: In group chats, Diagnostics shows memory info for the first group member only. To check a specific character's memories, use View/Edit which shows all members.
+
 ### Why Memories and Lorebooks Both Appear
 
 CharMemory's diagnostics shows both memories and lorebooks because they're the two main sources of supplemental character context that get injected alongside the conversation. When debugging "the character doesn't remember X" or "the character is acting strangely," the answer often involves the interaction between these sources — not just one in isolation. The diagnostics panel gives you a single place to inspect everything the LLM saw beyond the chat messages themselves.
@@ -393,7 +461,7 @@ Setting this too low (e.g., 10) gives the LLM too little context — it extracts
 Token limit for the LLM's response per chunk. Most models produce well-formed output within 1000 tokens. **Reasoning/thinking models** (like GLM-4.7 on NVIDIA) need significantly more — their internal reasoning consumes tokens before producing the actual output. If you're using a thinking model and getting empty extractions, increase this to 2000–3000.
 
 **Merge extraction chunks** (default: off)
-When a chat has more unprocessed messages than the chunk size, extraction runs in multiple passes. With this off (default), each chunk's memories are stored as separate blocks — keeping them small and manageable for consolidation. With this on, blocks from the same chat are merged into one. Disable this for long chats (hundreds of messages) where consolidation would be valuable — large merged blocks can exceed the consolidation LLM's capacity.
+When a chat has more unprocessed messages than the chunk size, extraction runs in multiple passes. With this off (default), each chunk's memories are stored as separate `<memory>` blocks — keeping them small and manageable for consolidation. With this on, blocks from the same chat are merged into a single block after extraction. Leave this off for long chats (hundreds of messages) where consolidation would be valuable — large merged blocks can exceed the consolidation LLM's capacity.
 
 ### How the Settings Interact
 
@@ -430,7 +498,11 @@ The default prompt was developed through extensive testing across multiple model
 
 **"Write what happened, not that it was discussed."** Models tend to write meta-narration like "she told him about her childhood" instead of the actual fact "she grew up in a coastal village." The prompt explicitly addresses this pattern.
 
+**Date/time extraction.** The prompt encourages the LLM to capture dates and times when they are mentioned or clearly implied in conversation, adding temporal context to memories (e.g., "In March, she moved to the coast" rather than just "She moved to the coast").
+
 If you customize the prompt, keep the three-section structure and boundary markers intact — models rely on these to understand what to extract from and what to skip.
+
+**Group chats use a separate prompt.** When a group chat is active, the Settings panel shows a **Group Extraction Prompt** instead of the 1:1 prompt. It follows the same principles but adds a `{{participants}}` list so the LLM knows who is speaking, and instructs it to attribute memories to specific characters by name. The two prompts are completely independent — customizations to the 1:1 prompt are not inherited by the group prompt, and vice versa. If you want to apply the same change to both, you need to edit each one separately.
 
 ---
 
@@ -507,7 +579,9 @@ Each extraction produces a `<memory>` block with chat attribution and timestampe
 
 ### Working with Existing Memory Files
 
-If you already have memory files in the Data Bank from manual notes or another tool, they need to be in the `<memory>` block format for CharMemory to recognize them. Convert freeform text by wrapping it:
+CharMemory auto-detects existing `*-memories.md` files in a character's Data Bank. If you already have a memory file from manual notes or another tool, CharMemory will find and use it automatically rather than creating a duplicate — as long as the filename ends in `-memories.md`.
+
+For CharMemory to parse the contents, the file needs to be in the `<memory>` block format. Convert freeform text by wrapping it:
 
 ```
 <memory chat="imported" date="2026-01-01">
