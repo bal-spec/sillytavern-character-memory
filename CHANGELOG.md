@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.5.0
+
+### New Features
+
+- **Tools tab**: Consolidate, Batch Extraction, and the new Convert tool are now grouped under a single Tools tab with pill-button sub-navigation. Top-level tabs are now Main | Tools | Settings | Log.
+- **Memory file format settings**: New "Memory File Format" section in Settings controls how memories are separated in the Data Bank file for Vector Storage chunking. Options: Block-level (default, unchanged), Bullet-level (each bullet gets its own chunk), or Custom separator.
+- **Include metadata in chunks**: When using bullet-level or custom chunking, optionally prefix each bullet with `[date | chat_id]` so standalone vector chunks retain their provenance.
+- **Reformat offer**: When changing the chunk boundary setting, a confirmation popup offers to reformat the existing memory file to match the new format.
+- **Convert / Import tool**: Convert any Data Bank file into CharMemory's `<memory>` tag format. Supports 6 input formats via heuristic parsing (bullet lists, numbered lists, markdown headings, old CharMemory format, freeform text) with optional LLM-assisted restructuring for unstructured content. Non-destructive: original file is never modified.
+- **Conversion prompt**: Configurable LLM prompt for the Convert tool, with disclosure accordion and Restore Default button (matching the Consolidation prompt pattern).
+
+### Improvements
+
+- **Round-trip safety**: `parseMemories()` now handles metadata-prefixed bullets (`[date | chat] - text`), ensuring files written in any format mode can be correctly parsed back.
+- **Error handling**: `convertWithLLM()` and `previewConversion()` now catch and report errors gracefully instead of failing silently.
+
 ## 1.4.0
 
 ### New Features
