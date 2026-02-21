@@ -950,7 +950,7 @@ function updateStatusDisplay() {
             `<img class="charMemory_groupAvatar" src="/thumbnail?type=avatar&file=${encodeURIComponent(t.avatar)}" alt="${escapeHtml(t.name)}" onerror="this.style.display='none'" />`
         ).join('');
         const tooltipLines = targets.map(t => `${t.name} \u2192 ${t.fileName}`).join('\n');
-        $('#charMemory_statFile').html(`${avatarHtml} Group (${targets.length})`).attr('title', tooltipLines);
+        $('#charMemory_statFile').html(`Group: ${avatarHtml}`).attr('title', tooltipLines);
     } else if (targets.length === 1) {
         $('#charMemory_statFile').text(targets[0].fileName).attr('title', targets[0].fileName);
     } else {
