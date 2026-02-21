@@ -305,6 +305,12 @@ By default, each group member's memory file is auto-named from their character n
 
 ![Per-character memory file names in group settings](images/13-group-member-files.png)
 
+### How Memory Retrieval Works in Groups
+
+During generation, SillyTavern sets the active character to whichever group member is about to speak. Vector Storage then retrieves memories from that character's Data Bank and injects them into the prompt. This means each character gets their own memories when it's their turn to generate — Vulkan gets Vulkan's memories, Flux gets Flux's.
+
+**Diagnostics caveat:** After generation finishes, SillyTavern resets the active character to none. If you click Diagnostics → Refresh between generations, the "Injected Memories" section may appear empty because there's no character context at that moment. This doesn't mean memories weren't injected — it just means the diagnostics snapshot was taken outside of a generation turn.
+
 ### Reset and Clear in Groups
 
 **Reset Extraction State** in a group chat clears tracking for all group members, not just one.
