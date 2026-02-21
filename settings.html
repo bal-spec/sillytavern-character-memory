@@ -29,8 +29,7 @@
             <!-- Top-level tabs -->
             <div class="charMemory_tabs">
                 <button class="charMemory_tab active" data-tab="main">Main</button>
-                <button class="charMemory_tab" data-tab="consolidate">Consolidate</button>
-                <button class="charMemory_tab" data-tab="batch">Batch Extraction</button>
+                <button class="charMemory_tab" data-tab="tools">Tools</button>
                 <button class="charMemory_tab" data-tab="settings">Settings</button>
                 <button class="charMemory_tab" data-tab="log">Log</button>
             </div>
@@ -50,52 +49,131 @@
                 </div>
             </div>
 
-            <!-- Consolidate tab -->
-            <div class="charMemory_tabContent" id="charMemory_tabConsolidate" style="display:none;">
-                <div class="charMemory_promptSection">
-                    <label for="charMemory_consolidationStrategy">
-                        <small>Consolidation strategy</small>
-                    </label>
-                    <select id="charMemory_consolidationStrategy" class="text_pole">
-                        <option value="conservative">Conservative — only merge near-exact duplicates</option>
-                        <option value="balanced">Balanced — merge duplicates & related facts (default)</option>
-                        <option value="aggressive">Aggressive — compress heavily, summarize themes</option>
-                    </select>
-                    <small id="charMemory_consolidationPreview" class="charMemory_helperText" style="font-style:italic;"></small>
-                    <details class="charMemory_promptDisclosure" id="charMemory_promptDisclosure">
-                        <summary><small>Show prompt</small></summary>
-                        <textarea id="charMemory_consolidationPrompt" class="text_pole textarea_compact" rows="6" placeholder="Edit the consolidation prompt for this strategy..."></textarea>
-                        <div class="charMemory_buttonRow">
-                            <input type="button" id="charMemory_restorePresetDefault" class="menu_button" value="Restore Default" title="Reset this preset's prompt to its built-in default" style="display:none;" />
-                        </div>
-                    </details>
+            <!-- Tools tab -->
+            <div class="charMemory_tabContent" id="charMemory_tabTools" style="display:none;">
+                <div class="charMemory_toolPills">
+                    <button class="charMemory_toolPill active" data-tool="consolidate">Consolidate</button>
+                    <button class="charMemory_toolPill" data-tool="batch">Batch</button>
+                    <button class="charMemory_toolPill" data-tool="convert">Convert</button>
                 </div>
-                <div class="charMemory_buttonRow">
-                    <input type="button" id="charMemory_consolidate" class="menu_button" value="Consolidate" title="Use the LLM to merge duplicate and related memories into fewer, cleaner entries" />
-                    <input type="button" id="charMemory_undoConsolidate" class="menu_button" value="Undo Consolidation" title="Restore memories from before the last consolidation (session only)" disabled />
-                </div>
-            </div>
 
-            <!-- Batch Extract tab -->
-            <div class="charMemory_tabContent" id="charMemory_tabBatch" style="display:none;">
-                <div class="charMemory_buttonRow">
-                    <input type="button" id="charMemory_batchRefresh" class="menu_button" value="Refresh" title="Load chat list for this character" />
-                    <input type="button" id="charMemory_batchExtract" class="menu_button" value="Extract Selected" title="Run extraction on all selected chats" disabled />
-                    <input type="button" id="charMemory_batchStop" class="menu_button" value="Stop" title="Cancel batch extraction" style="display:none;" />
+                <!-- Consolidate tool -->
+                <div class="charMemory_toolContent" id="charMemory_toolConsolidate">
+                    <div class="charMemory_promptSection">
+                        <label for="charMemory_consolidationStrategy">
+                            <small>Consolidation strategy</small>
+                        </label>
+                        <select id="charMemory_consolidationStrategy" class="text_pole">
+                            <option value="conservative">Conservative — only merge near-exact duplicates</option>
+                            <option value="balanced">Balanced — merge duplicates & related facts (default)</option>
+                            <option value="aggressive">Aggressive — compress heavily, summarize themes</option>
+                        </select>
+                        <small id="charMemory_consolidationPreview" class="charMemory_helperText" style="font-style:italic;"></small>
+                        <details class="charMemory_promptDisclosure" id="charMemory_promptDisclosure">
+                            <summary><small>Show prompt</small></summary>
+                            <textarea id="charMemory_consolidationPrompt" class="text_pole textarea_compact" rows="6" placeholder="Edit the consolidation prompt for this strategy..."></textarea>
+                            <div class="charMemory_buttonRow">
+                                <input type="button" id="charMemory_restorePresetDefault" class="menu_button" value="Restore Default" title="Reset this preset's prompt to its built-in default" style="display:none;" />
+                            </div>
+                        </details>
+                    </div>
+                    <div class="charMemory_buttonRow">
+                        <input type="button" id="charMemory_consolidate" class="menu_button" value="Consolidate" title="Use the LLM to merge duplicate and related memories into fewer, cleaner entries" />
+                        <input type="button" id="charMemory_undoConsolidate" class="menu_button" value="Undo Consolidation" title="Restore memories from before the last consolidation (session only)" disabled />
+                    </div>
                 </div>
-                <div id="charMemory_batchProgress" class="charMemory_batchProgress" style="display:none;">
-                    <div class="charMemory_batchProgressText"></div>
-                    <div class="charMemory_batchProgressBar"><div class="charMemory_batchProgressFill"></div></div>
+
+                <!-- Batch tool -->
+                <div class="charMemory_toolContent" id="charMemory_toolBatch" style="display:none;">
+                    <div class="charMemory_buttonRow">
+                        <input type="button" id="charMemory_batchRefresh" class="menu_button" value="Refresh" title="Load chat list for this character" />
+                        <input type="button" id="charMemory_batchExtract" class="menu_button" value="Extract Selected" title="Run extraction on all selected chats" disabled />
+                        <input type="button" id="charMemory_batchStop" class="menu_button" value="Stop" title="Cancel batch extraction" style="display:none;" />
+                    </div>
+                    <div id="charMemory_batchProgress" class="charMemory_batchProgress" style="display:none;">
+                        <div class="charMemory_batchProgressText"></div>
+                        <div class="charMemory_batchProgressBar"><div class="charMemory_batchProgressFill"></div></div>
+                    </div>
+                    <div class="charMemory_sectionHeader">
+                        <small><b title="Chat files attached to this character. Select which ones to extract memories from.">Character Attachments</b></small>
+                        <label class="checkbox_label">
+                            <input type="checkbox" id="charMemory_batchSelectAll" />
+                            <small>Select all</small>
+                        </label>
+                    </div>
+                    <div id="charMemory_batchChatList" class="charMemory_batchChatList">
+                        <div class="charMemory_diagEmpty">Click "Refresh" to load chats.</div>
+                    </div>
                 </div>
-                <div class="charMemory_sectionHeader">
-                    <small><b title="Chat files attached to this character. Select which ones to extract memories from.">Character Attachments</b></small>
-                    <label class="checkbox_label">
-                        <input type="checkbox" id="charMemory_batchSelectAll" />
-                        <small>Select all</small>
-                    </label>
-                </div>
-                <div id="charMemory_batchChatList" class="charMemory_batchChatList">
-                    <div class="charMemory_diagEmpty">Click "Refresh" to load chats.</div>
+
+                <!-- Convert tool -->
+                <div class="charMemory_toolContent" id="charMemory_toolConvert" style="display:none;">
+                    <div class="charMemory_statusRow">
+                        <label for="charMemory_convertSource">
+                            <small>Source file</small>
+                        </label>
+                        <select id="charMemory_convertSource" class="text_pole">
+                            <option value="">— Select a Data Bank file —</option>
+                        </select>
+                        <small class="charMemory_helperText">Select any file from this character's Data Bank to convert into CharMemory format.</small>
+                    </div>
+
+                    <div class="charMemory_statusRow">
+                        <label class="checkbox_label" for="charMemory_convertUseLLM">
+                            <input type="checkbox" id="charMemory_convertUseLLM" />
+                            <span>Use LLM to restructure (for freeform text)</span>
+                        </label>
+                        <small class="charMemory_helperText">When the file has no clear structure, send it to the LLM for intelligent restructuring. Uses your configured extraction provider.</small>
+                        <details class="charMemory_promptDisclosure" id="charMemory_convertPromptDisclosure">
+                            <summary><small>Show prompt</small></summary>
+                            <textarea id="charMemory_convertPrompt" class="text_pole textarea_compact" rows="6" placeholder="Conversion prompt..."></textarea>
+                            <div class="charMemory_buttonRow">
+                                <input type="button" id="charMemory_restoreConvertPrompt" class="menu_button" value="Restore Default" title="Reset conversion prompt to built-in default" />
+                            </div>
+                        </details>
+                    </div>
+
+                    <div class="charMemory_buttonRow">
+                        <input type="button" id="charMemory_convertPreview" class="menu_button" value="Preview Conversion" title="Parse the selected file and show a before/after preview" />
+                    </div>
+
+                    <div id="charMemory_convertPreviewArea" style="display:none;">
+                        <div class="charMemory_convertMeta">
+                            <small><b>Detected format:</b> <span id="charMemory_convertFormat">—</span></small>
+                            <small><b>Parse method:</b> <span id="charMemory_convertMethod">—</span></small>
+                            <small><b>Result:</b> <span id="charMemory_convertResultCount">—</span></small>
+                        </div>
+                        <div class="charMemory_convertColumns">
+                            <div class="charMemory_convertColumn">
+                                <small><b>Before</b></small>
+                                <div id="charMemory_convertBefore" class="charMemory_convertBox"></div>
+                            </div>
+                            <div class="charMemory_convertColumn">
+                                <small><b>After</b></small>
+                                <div id="charMemory_convertAfter" class="charMemory_convertBox"></div>
+                            </div>
+                        </div>
+                        <div class="charMemory_convertWarning">
+                            <i class="fa-solid fa-triangle-exclamation fa-sm"></i>
+                            The original file will <b>not</b> be deleted. Hide or remove it from the Data Bank to avoid duplicate memories.
+                        </div>
+                        <div class="charMemory_statusRow">
+                            <small><b>Output to:</b></small>
+                            <label class="radio_label">
+                                <input type="radio" name="charMemory_convertDest" value="auto" checked />
+                                <span>CharMemory file (<span id="charMemory_convertAutoName">—</span>)</span>
+                            </label>
+                            <label class="radio_label">
+                                <input type="radio" name="charMemory_convertDest" value="custom" />
+                                <span>Custom filename:</span>
+                                <input type="text" id="charMemory_convertCustomName" class="text_pole" placeholder="my-memories.md" style="flex:1;" disabled />
+                            </label>
+                        </div>
+                        <div class="charMemory_buttonRow">
+                            <input type="button" id="charMemory_convertExecute" class="menu_button" value="Convert" title="Write converted memories to the chosen destination" />
+                            <input type="button" id="charMemory_convertCancel" class="menu_button" value="Cancel" title="Discard preview and start over" />
+                        </div>
+                    </div>
                 </div>
             </div>
 

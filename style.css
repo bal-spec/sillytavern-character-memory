@@ -160,6 +160,36 @@
     border-bottom-color: var(--SmartThemeQuoteColor, #888);
 }
 
+/* Tool pill sub-navigation */
+.charMemory_toolPills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-bottom: 8px;
+}
+
+.charMemory_toolPill {
+    padding: 3px 10px;
+    font-size: 0.8em;
+    background: var(--SmartThemeBorderColor, rgba(128, 128, 128, 0.15));
+    border: 1px solid transparent;
+    border-radius: 12px;
+    cursor: pointer;
+    opacity: 0.6;
+    color: var(--SmartThemeBodyColor, #ccc);
+    transition: opacity 0.15s, background 0.15s;
+}
+
+.charMemory_toolPill:hover {
+    opacity: 0.85;
+}
+
+.charMemory_toolPill.active {
+    opacity: 1;
+    background: var(--SmartThemeQuoteColor, rgba(128, 128, 128, 0.3));
+    border-color: var(--SmartThemeQuoteColor, #888);
+}
+
 /* Helper text */
 .charMemory_helperText {
     display: block;
@@ -671,4 +701,44 @@
 
 .charMemory_bottomDiagnostics .charMemory_diagnosticsContent {
     max-height: 300px;
+}
+
+/* Convert tool */
+.charMemory_convertMeta {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-bottom: 8px;
+    padding: 6px 8px;
+    background: var(--SmartThemeBorderColor, rgba(128, 128, 128, 0.1));
+    border-radius: 4px;
+    font-size: 0.85em;
+}
+
+.charMemory_convertColumns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.charMemory_convertBox {
+    max-height: 200px;
+    overflow-y: auto;
+    padding: 6px 8px;
+    font-size: 0.8em;
+    font-family: monospace;
+    white-space: pre-wrap;
+    background: var(--black30, rgba(0, 0, 0, 0.15));
+    border: 1px solid var(--SmartThemeBorderColor, rgba(128, 128, 128, 0.2));
+    border-radius: 4px;
+}
+
+.charMemory_convertWarning {
+    padding: 6px 8px;
+    margin-bottom: 8px;
+    font-size: 0.85em;
+    color: var(--SmartThemeQuoteColor, #e8a33d);
+    background: rgba(232, 163, 61, 0.1);
+    border-radius: 4px;
 }
