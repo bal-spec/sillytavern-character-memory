@@ -1230,8 +1230,9 @@ function populateProviderDropdown() {
 
 /**
  * Populate the Convert tool's source file dropdown with Data Bank files.
+ * Verifies attachments against the server to prune stale entries.
  */
-function populateConvertSourceDropdown() {
+async function populateConvertSourceDropdown() {
     const $select = $('#charMemory_convertSource');
     $select.find('option:not(:first)').remove();
 
@@ -1242,7 +1243,31 @@ function populateConvertSourceDropdown() {
     if (!avatar) return;
 
     ensureCharacterAttachments(avatar);
-    const attachments = extension_settings.character_attachments[avatar] || [];
+    let attachments = extension_settings.character_attachments[avatar] || [];
+
+    // Verify which files actually exist on disk and prune stale entries
+    if (attachments.length > 0) {
+        try {
+            const urls = attachments.map(a => a.url);
+            const response = await fetch('/api/files/verify', {
+                method: 'POST',
+                headers: getRequestHeaders(),
+                body: JSON.stringify({ urls }),
+            });
+            if (response.ok) {
+                const verifyMap = await response.json();
+                const before = attachments.length;
+                attachments = attachments.filter(a => verifyMap[a.url] !== false);
+                if (attachments.length < before) {
+                    extension_settings.character_attachments[avatar] = attachments;
+                    saveSettingsDebounced();
+                }
+            }
+        } catch (err) {
+            console.warn(LOG_PREFIX, 'Could not verify attachments:', err);
+        }
+    }
+
     const memoryFileName = getMemoryFileName();
 
     for (const att of attachments) {
@@ -1251,7 +1276,6 @@ function populateConvertSourceDropdown() {
         const $opt = $('<option></option>').val(att.url).text(att.name || att.url);
         $select.append($opt);
     }
-
 }
 
 /**
