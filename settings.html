@@ -146,9 +146,11 @@
                                 </div>
                             </div>
                             <div style="display:flex;gap:5px;align-items:center;">
-                                <select id="charMemory_providerModel" class="text_pole" style="flex:1;">
-                                    <option value="">-- Select model --</option>
-                                </select>
+                                <div class="charMemory_modelPicker" style="flex:1;position:relative;">
+                                    <input type="text" id="charMemory_modelSearch" class="text_pole" placeholder="Search models..." autocomplete="off" />
+                                    <input type="hidden" id="charMemory_providerModel" />
+                                    <div id="charMemory_modelDropdown" class="charMemory_modelDropdown"></div>
+                                </div>
                                 <input type="button" id="charMemory_providerRefreshModels" class="menu_button" value="&#x21bb;" title="Refresh model list" />
                             </div>
                             <small id="charMemory_providerModelInfo" class="charMemory_helperText"></small>
@@ -259,7 +261,7 @@
 
                     <div class="charMemory_promptSection">
                         <label for="charMemory_extractionPrompt" title="The prompt sent to the LLM for memory extraction. Uses {{charName}}, {{charCard}}, {{existingMemories}}, {{recentMessages}}, {{char}}, and {{user}} placeholders.">
-                            <small>Extraction prompt</small>
+                            <small>Extraction prompt (1:1 chats)</small>
                         </label>
                         <textarea id="charMemory_extractionPrompt" class="text_pole textarea_compact" rows="8" placeholder="Enter extraction prompt..."></textarea>
                         <input type="button" id="charMemory_restorePrompt" class="menu_button" value="Restore Default Prompt" title="Replace the current prompt with the built-in default" />
@@ -268,16 +270,6 @@
 
                 <!-- Group Chat section (hidden in 1:1 chats) -->
                 <div id="charMemory_sectionGroup" style="display:none;">
-                    <div class="charMemory_statusRow">
-                        <label for="charMemory_groupMode" title="How to extract memories from group chats. Per-character sends one LLM call per character per chunk.">
-                            <small>Extraction mode</small>
-                        </label>
-                        <select id="charMemory_groupMode" class="text_pole">
-                            <option value="per-character">Per-character (one LLM call per character)</option>
-                        </select>
-                        <small class="charMemory_helperText">Each character gets a focused extraction with their own card and existing memories.</small>
-                    </div>
-
                     <div id="charMemory_groupMembersSection">
                         <label><small>Member memory files</small></label>
                         <div id="charMemory_groupMembersList" class="charMemory_groupMembersList">
@@ -290,7 +282,7 @@
 
                     <div class="charMemory_promptSection">
                         <label for="charMemory_groupExtractionPrompt" title="The prompt sent to the LLM for group chat memory extraction. Uses {{charName}}, {{charCard}}, {{participants}}, {{existingMemories}}, {{recentMessages}}, {{char}}, and {{user}} placeholders.">
-                            <small>Extraction prompt</small>
+                            <small>Extraction prompt (group chats)</small>
                         </label>
                         <textarea id="charMemory_groupExtractionPrompt" class="text_pole textarea_compact" rows="8" placeholder="Enter group extraction prompt..."></textarea>
                         <input type="button" id="charMemory_restoreGroupPrompt" class="menu_button" value="Restore Default Prompt" title="Replace the group prompt with the built-in default" />

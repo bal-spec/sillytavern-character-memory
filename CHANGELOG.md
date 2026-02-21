@@ -4,7 +4,7 @@
 
 ### New Features
 
-- **Group chat support**: CharMemory now works in group chats. Each group member gets their own memory file, extracted individually. The extraction prompt includes participant context so the LLM knows who is speaking and can attribute memories to the correct character.
+- **Group chat support**: CharMemory now works in group chats. Each group member gets their own memory file, extracted individually. A new group chat only extraction prompt includes participant context so the LLM knows who is speaking and can attribute memories to the correct character.
 - **Per-character memory manager for groups**: View/Edit in group chats shows per-character sections, each with their own cards, edit and delete controls.
 - **Group-aware consolidation**: Consolidation in group chats shows a character picker — select which character's memories to consolidate.
 - **Pin memory in group chats**: The bookmark button on group messages routes the pinned memory to the correct character's file based on the message sender.
@@ -14,11 +14,21 @@
 ### Improvements
 
 - **Unified code architecture**: All 1:1 and group chat code paths merged behind a single `getMemoryTargets()` abstraction. This eliminated 11 duplicate functions and reduced the codebase by ~400 lines. A 1:1 chat is internally treated as a group with one member.
+- **Auto-detect existing memory files**: If a character already has a `*-memories.md` file in their Data Bank, CharMemory finds and uses it automatically instead of creating a new one.
 - **Per-chat memories extended to groups**: When "Separate memories per chat" is enabled, group chat members also get per-chat memory files.
 - **Context-aware settings**: Settings panel shows only the relevant section for the current chat type (1:1 or group).
 - **Resolved filename display**: Settings now shows the resolved memory filename for the current character.
+- **Graceful group extraction**: If the LLM call fails for one group member, extraction continues with the remaining members instead of aborting entirely.
 - **Reset extraction in groups**: Reset Extraction State clears memory files and tracking for all group members, not just the active character.
 - **Narrow viewport layout**: Button row splits into two rows on narrow viewports (iPad landscape and similar).
+- **Context-aware prompt titles**: Extraction prompt section now shows "(1:1 chats)" or "(group chats)" so you always know which prompt you're editing.
+- **Searchable model picker**: The model dropdown is now a searchable text input. Type to filter models by name — especially helpful for providers with 100+ models like NanoGPT. Supports keyboard navigation (arrow keys, Enter, Escape).
+- **Group avatar thumbnails in stats bar**: In group chats, the stats bar shows small character avatars next to the character count. Hover for a tooltip showing each character's memory filename.
+
+### Bug Fixes
+
+- **Fix "Merge extraction chunks" setting**: The merge toggle was not being checked — multi-chunk extractions were always merged regardless of the setting. Now correctly respects the checkbox.
+- **Remove placeholder group extraction mode dropdown**: The "Extraction mode" dropdown in group settings had only one option and did nothing. Removed.
 
 ## 1.3.0
 
@@ -58,7 +68,9 @@
 ### New Features
 
 - **NVIDIA provider**: Added NVIDIA as a built-in provider. NVIDIA's API doesn't support CORS, so requests are automatically routed through SillyTavern's server proxy — no extra setup needed.
-- **Reasoning/thinking model support**: Models that use reasoning tokens (e.g., GLM-4.7 on NVIDIA) put output in `reasoning_content` instead of `content`. CharMemory now reads this automatically. Verbose logging shows `[reasoning: N chars]` when reasoning tokens are used. Some providers may support disabling reasoning via the system prompt field — see README for details.
+- **xAI (Grok) provider**: Added xAI as a built-in provider with Grok models.
+- **Pollinations provider**: Added Pollinations as a free, no-API-key provider for quick testing.
+- **Reasoning/thinking model support**: Models that use reasoning tokens (e.g., GLM-4.7 on NVIDIA) put output in `reasoning_content` instead of `content`. CharMemory now reads this automatically — in both extraction and consolidation. Verbose logging shows `[reasoning: N chars]` when reasoning tokens are used. Some providers may support disabling reasoning via the system prompt field — see README for details.
 - **API key reveal/hide toggle**: Eye icon button next to the API key field to show/hide the key. Auto-hides after 10 seconds for security.
 - **Connect/Test Model flow**: Explicit Connect button fetches the model list with inline status feedback. Test Model button verifies the selected model responds correctly, showing model name, response time, and whether it followed the test instruction.
 - **Verbose API response logging**: When verbose mode is enabled, the Activity Log shows HTTP status codes, finish reasons, token usage, and reasoning content length for all API calls.
@@ -68,8 +80,10 @@
 
 - **Default chunk size reduced**: "Messages per LLM call" default changed from 50 to 20. Testing showed 50 caused timeouts with some providers, and 20 produces good results for most chat styles.
 - **Response length slider max increased**: From 2000 to 4000 tokens, to accommodate reasoning/thinking models that need budget for both reasoning and output.
-- **Default to Dedicated API**: Extraction source now defaults to "Dedicated API" instead of "Main LLM". Dedicated API produces better memories because the extraction prompt isn't polluted by chat context.
+- **Default to Dedicated API via OpenRouter**: Extraction source now defaults to "Dedicated API" instead of "Main LLM", with OpenRouter as the default provider. Dedicated API produces better memories because the extraction prompt isn't polluted by chat context.
+- **"Get key" links**: Each provider now shows a direct link to its API key management page next to the API Key field.
 - **Clearer UI labels**: "API Provider" renamed to "Dedicated API", "LLM Provider" renamed to "LLM Used for Extraction".
+- **Consolidation token budget**: Consolidation automatically uses 2x the configured "Max response length" to give the LLM enough room to process the full memory file.
 - **Extraction prompt refinements**: Reduced card-trait leakage, meta-narration, and play-by-play through iterative prompt testing across multiple models.
 
 ### Bug Fixes
@@ -80,6 +94,8 @@
 - **Fix extraction counter display**: The progress counter in the stats bar now updates immediately when the interval slider changes.
 - **Fix stuck "Testing..." button**: The Test button no longer gets stuck in the "Testing..." state on errors.
 - **Guard model fetch when API key is missing**: No longer fires an API request with a blank key when the provider is selected before entering credentials.
+- **Fix stale extraction state on chat switch**: When switching to a chat whose extraction index is set but no memories exist for that chat, the index is automatically reset. This prevents the "no unprocessed messages" dead state.
+- **Seed message counter on chat switch**: When switching to a chat with unprocessed messages, the auto-extraction counter is seeded with the correct count so extraction fires at the right time.
 
 ### Documentation
 

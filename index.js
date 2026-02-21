@@ -392,7 +392,6 @@ const defaultSettings = {
     nanogptFilterReasoning: false,
     minCooldownMinutes: 10,
     verboseLogging: false,
-    groupExtractionMode: 'per-character',
     groupExtractionPrompt: defaultGroupExtractionPrompt,
     characterFileNames: {},
 };
@@ -689,7 +688,8 @@ function getFilteredNanoGptModels(models, providerSettings) {
  * @param {boolean} [forceRefresh=false] Force refresh from API.
  */
 async function populateProviderModels(providerKey, forceRefresh = false) {
-    const $select = $('#charMemory_providerModel');
+    const $search = $('#charMemory_modelSearch');
+    const $hidden = $('#charMemory_providerModel');
     const preset = PROVIDER_PRESETS[providerKey];
     if (!preset) return;
 
@@ -701,19 +701,21 @@ async function populateProviderModels(providerKey, forceRefresh = false) {
 
     // Early exit if API key required but missing
     if (preset.requiresApiKey && !providerSettings.apiKey) {
-        $select.empty().append('<option value="">-- Enter API key, then click Connect --</option>');
+        currentModelList = [];
+        $search.val('').attr('placeholder', 'Enter API key, then click Connect');
+        $hidden.val('');
+        renderModelDropdown('');
         $('#charMemory_providerModelInfo').text('');
         return;
     }
 
     try {
+        currentModelList = [];
+
         if (providerKey === 'nanogpt') {
-            // NanoGPT uses its own rich model list with optgroups
+            // NanoGPT uses its own rich model list with groups
             const models = await fetchNanoGptModels();
             const filtered = getFilteredNanoGptModels(models, providerSettings);
-            const currentVal = $select.val() || providerSettings.model;
-
-            $select.empty().append('<option value="">-- Select model --</option>');
 
             const byProvider = {};
             for (const m of filtered) {
@@ -722,19 +724,25 @@ async function populateProviderModels(providerKey, forceRefresh = false) {
             }
 
             for (const [provider, providerModels] of Object.entries(byProvider)) {
-                const $group = $(`<optgroup label="${escapeHtml(provider)}">`);
                 for (const m of providerModels) {
                     const subTag = m.subscription ? ' [Sub]' : '';
-                    $group.append(`<option value="${escapeHtml(m.id)}">${escapeHtml(m.name)} (${m.cost})${subTag}</option>`);
+                    currentModelList.push({
+                        id: m.id,
+                        name: `${m.name} (${m.cost})${subTag}`,
+                        group: provider,
+                    });
                 }
-                $select.append($group);
             }
 
+            const currentVal = $hidden.val() || providerSettings.model;
             if (currentVal && filtered.some(m => m.id === currentVal)) {
-                $select.val(currentVal);
+                const match = currentModelList.find(m => m.id === currentVal);
+                $hidden.val(currentVal);
+                $search.val(match ? match.name : currentVal);
                 updateProviderModelInfo(models, currentVal);
             } else {
-                $select.val('');
+                $hidden.val('');
+                $search.val('');
                 providerSettings.model = '';
                 saveSettingsDebounced();
                 $('#charMemory_providerModelInfo').text('');
@@ -742,24 +750,70 @@ async function populateProviderModels(providerKey, forceRefresh = false) {
         } else {
             // Standard OpenAI-compatible model list
             const models = await fetchProviderModels(providerKey);
-            const currentVal = $select.val() || providerSettings.model;
 
-            $select.empty().append('<option value="">-- Select model --</option>');
             for (const m of models) {
-                $select.append(`<option value="${escapeHtml(m.id)}">${escapeHtml(m.name)}</option>`);
+                currentModelList.push({ id: m.id, name: m.name });
             }
 
+            const currentVal = $hidden.val() || providerSettings.model;
             if (currentVal && models.some(m => m.id === currentVal)) {
-                $select.val(currentVal);
+                const match = currentModelList.find(m => m.id === currentVal);
+                $hidden.val(currentVal);
+                $search.val(match ? match.name : currentVal);
             } else if (providerSettings.model) {
-                // Model may not be in list yet (e.g. typed manually before)
-                $select.val('');
+                $hidden.val('');
+                $search.val('');
             }
             $('#charMemory_providerModelInfo').text('');
         }
+
+        $search.attr('placeholder', 'Search models...');
+        renderModelDropdown('');
     } catch (err) {
         console.error(LOG_PREFIX, `Failed to fetch models for ${preset.name}:`, err);
         throw err;
+    }
+}
+
+/**
+ * Render the model dropdown from currentModelList, filtered by query.
+ * @param {string} filter — search string (case-insensitive substring match)
+ */
+function renderModelDropdown(filter) {
+    const $dropdown = $('#charMemory_modelDropdown');
+    $dropdown.empty();
+
+    const lowerFilter = (filter || '').toLowerCase();
+    const selectedId = $('#charMemory_providerModel').val();
+
+    if (currentModelList.length === 0) {
+        $dropdown.append('<div class="charMemory_modelEmpty">No models \u2014 click \u21bb to fetch</div>');
+        return;
+    }
+
+    let hasResults = false;
+    let lastGroup = null;
+
+    for (const model of currentModelList) {
+        if (lowerFilter && !model.id.toLowerCase().includes(lowerFilter) && !model.name.toLowerCase().includes(lowerFilter)) {
+            continue;
+        }
+
+        // Render group header if this model's group differs from the last rendered
+        if (model.group && model.group !== lastGroup) {
+            $dropdown.append(`<div class="charMemory_modelGroup">${escapeHtml(model.group)}</div>`);
+            lastGroup = model.group;
+        }
+
+        const selectedClass = model.id === selectedId ? ' selected' : '';
+        $dropdown.append(
+            `<div class="charMemory_modelOption${selectedClass}" data-model-id="${escapeHtml(model.id)}">${escapeHtml(model.name)}</div>`
+        );
+        hasResults = true;
+    }
+
+    if (!hasResults) {
+        $dropdown.append('<div class="charMemory_modelEmpty">No matching models</div>');
     }
 }
 
@@ -860,8 +914,7 @@ function loadSettings() {
     $('#charMemory_minCooldown').val(extension_settings[MODULE_NAME].minCooldownMinutes);
     $('#charMemory_minCooldownCounter').val(extension_settings[MODULE_NAME].minCooldownMinutes);
     $('#charMemory_extractionPrompt').val(extension_settings[MODULE_NAME].extractionPrompt);
-    $('#charMemory_groupMode').val(extension_settings[MODULE_NAME].groupExtractionMode);
-    $('#charMemory_groupExtractionPrompt').val(extension_settings[MODULE_NAME].groupExtractionPrompt);
+$('#charMemory_groupExtractionPrompt').val(extension_settings[MODULE_NAME].groupExtractionPrompt);
     $('#charMemory_consolidationStrategy').val(extension_settings[MODULE_NAME].consolidationStrategy || 'balanced');
     updateConsolidationStrategyUI();
     $('#charMemory_source').val(extension_settings[MODULE_NAME].source);
@@ -891,10 +944,13 @@ function updateStatusDisplay() {
 
     const targets = getMemoryTargets();
 
-    // Stats bar: file name
+    // Stats bar: file name (with avatars for group chats)
     if (targets.length > 1) {
-        const label = `Group (${targets.length} characters)`;
-        $('#charMemory_statFile').text(label).attr('title', targets.map(t => t.name).join(', '));
+        const avatarHtml = targets.map(t =>
+            `<img class="charMemory_groupAvatar" src="/thumbnail?type=avatar&file=${encodeURIComponent(t.avatar)}" alt="${escapeHtml(t.name)}" onerror="this.style.display='none'" />`
+        ).join('');
+        const tooltipLines = targets.map(t => `${t.name} \u2192 ${t.fileName}`).join('\n');
+        $('#charMemory_statFile').html(`${avatarHtml} Group (${targets.length})`).attr('title', tooltipLines);
     } else if (targets.length === 1) {
         $('#charMemory_statFile').text(targets[0].fileName).attr('title', targets[0].fileName);
     } else {
@@ -1330,6 +1386,8 @@ async function fetchChatMessages(fileName) {
 
 let cachedNanoGptModels = null;
 const modelCache = {};
+/** @type {Array<{id: string, name: string, group?: string}>} */
+let currentModelList = [];
 
 /**
  * Fetch available text models from NanoGPT, with subscription status.
@@ -2151,8 +2209,8 @@ async function extractMemories({
             chunksProcessed++;
         }
 
-        // Merge blocks with same chat+date per target (multi-chunk extraction)
-        if (chunksProcessed > 1 && totalMemories > 0) {
+        // Merge blocks with same chat per target (multi-chunk extraction)
+        if (chunksProcessed > 1 && totalMemories > 0 && extension_settings[MODULE_NAME].mergeChunks) {
             for (const target of targets) {
                 const content = await readMemoriesForCharacter(target.avatar, target.fileName);
                 const allBlocks = parseMemories(content);
@@ -3428,7 +3486,7 @@ function setupListeners() {
 
         try {
             await populateProviderModels(providerKey, true);
-            const modelCount = $('#charMemory_providerModel option').length - 1; // minus placeholder
+            const modelCount = currentModelList.length;
             if (modelCount > 0) {
                 $status.text(`Connected — ${modelCount} model${modelCount !== 1 ? 's' : ''} available.`).css('color', '#27ae60').show();
             } else {
@@ -3441,14 +3499,89 @@ function setupListeners() {
         }
     });
 
-    $('#charMemory_providerModel').off('change').on('change', async function () {
-        const val = String($(this).val());
+    // Model search input — filter dropdown on typing
+    $('#charMemory_modelSearch').off('input').on('input', function () {
+        const filter = $(this).val();
+        renderModelDropdown(filter);
+        $('#charMemory_modelDropdown').addClass('open');
+    });
+
+    // Model search input — open dropdown on focus
+    $('#charMemory_modelSearch').off('focus').on('focus', function () {
+        renderModelDropdown($(this).val());
+        $('#charMemory_modelDropdown').addClass('open');
+    });
+
+    // Model dropdown — select a model on click
+    $('#charMemory_modelDropdown').off('click').on('click', '.charMemory_modelOption', function () {
+        const modelId = $(this).data('model-id');
+        const model = currentModelList.find(m => m.id === modelId);
+        if (!model) return;
+
+        $('#charMemory_providerModel').val(modelId);
+        $('#charMemory_modelSearch').val(model.name);
+        $('#charMemory_modelDropdown').removeClass('open');
+
         const providerKey = extension_settings[MODULE_NAME].selectedProvider;
         const providerSettings = getProviderSettings(providerKey);
-        providerSettings.model = val;
+        providerSettings.model = modelId;
         saveSettingsDebounced();
+
         if (providerKey === 'nanogpt' && cachedNanoGptModels) {
-            updateProviderModelInfo(cachedNanoGptModels, val);
+            updateProviderModelInfo(cachedNanoGptModels, modelId);
+        }
+    });
+
+    // Close dropdown when clicking outside
+    $(document).off('click.charMemoryModelPicker').on('click.charMemoryModelPicker', function (e) {
+        if (!$(e.target).closest('.charMemory_modelPicker').length) {
+            $('#charMemory_modelDropdown').removeClass('open');
+            // Restore display to current selection if search was abandoned
+            const selectedId = $('#charMemory_providerModel').val();
+            if (selectedId) {
+                const model = currentModelList.find(m => m.id === selectedId);
+                if (model) $('#charMemory_modelSearch').val(model.name);
+            } else {
+                $('#charMemory_modelSearch').val('');
+            }
+        }
+    });
+
+    // Keyboard navigation in model dropdown
+    $('#charMemory_modelSearch').off('keydown').on('keydown', function (e) {
+        const $dropdown = $('#charMemory_modelDropdown');
+        if (!$dropdown.hasClass('open')) {
+            if (e.key === 'ArrowDown' || e.key === 'Enter') {
+                renderModelDropdown($(this).val());
+                $dropdown.addClass('open');
+                e.preventDefault();
+            }
+            return;
+        }
+
+        const $options = $dropdown.find('.charMemory_modelOption');
+        const $active = $dropdown.find('.charMemory_modelOption.active');
+        let idx = $options.index($active);
+
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            idx = Math.min(idx + 1, $options.length - 1);
+            $options.removeClass('active');
+            $options.eq(idx).addClass('active');
+            $options.eq(idx)[0]?.scrollIntoView({ block: 'nearest' });
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            idx = Math.max(idx - 1, 0);
+            $options.removeClass('active');
+            $options.eq(idx).addClass('active');
+            $options.eq(idx)[0]?.scrollIntoView({ block: 'nearest' });
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            if ($active.length) {
+                $active.click();
+            }
+        } else if (e.key === 'Escape') {
+            $dropdown.removeClass('open');
         }
     });
 
@@ -3537,11 +3670,6 @@ function setupListeners() {
         $('#charMemory_extractionPrompt').val(defaultExtractionPrompt);
         saveSettingsDebounced();
         toastr.info('Extraction prompt restored to default.', 'CharMemory');
-    });
-
-    $('#charMemory_groupMode').off('change').on('change', function () {
-        extension_settings[MODULE_NAME].groupExtractionMode = String($(this).val());
-        saveSettingsDebounced();
     });
 
     $('#charMemory_groupExtractionPrompt').off('input').on('input', function () {
