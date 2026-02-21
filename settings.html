@@ -134,45 +134,7 @@
                     </div>
 
                     <div class="charMemory_buttonRow">
-                        <input type="button" id="charMemory_convertPreview" class="menu_button" value="Preview Conversion" title="Parse the selected file and show a before/after preview" />
-                    </div>
-
-                    <div id="charMemory_convertPreviewArea" style="display:none;">
-                        <div class="charMemory_convertMeta">
-                            <small><b>Detected format:</b> <span id="charMemory_convertFormat">—</span></small>
-                            <small><b>Parse method:</b> <span id="charMemory_convertMethod">—</span></small>
-                            <small><b>Result:</b> <span id="charMemory_convertResultCount">—</span></small>
-                        </div>
-                        <div class="charMemory_convertColumns">
-                            <div class="charMemory_convertColumn">
-                                <small><b>Before</b></small>
-                                <div id="charMemory_convertBefore" class="charMemory_convertBox"></div>
-                            </div>
-                            <div class="charMemory_convertColumn">
-                                <small><b>After</b></small>
-                                <div id="charMemory_convertAfter" class="charMemory_convertBox"></div>
-                            </div>
-                        </div>
-                        <div class="charMemory_convertWarning">
-                            <i class="fa-solid fa-triangle-exclamation fa-sm"></i>
-                            The original file will <b>not</b> be deleted. Hide or remove it from the Data Bank to avoid duplicate memories.
-                        </div>
-                        <div class="charMemory_statusRow">
-                            <small><b>Output to:</b></small>
-                            <label class="radio_label">
-                                <input type="radio" name="charMemory_convertDest" value="auto" checked />
-                                <span>CharMemory file (<span id="charMemory_convertAutoName">—</span>)</span>
-                            </label>
-                            <label class="radio_label">
-                                <input type="radio" name="charMemory_convertDest" value="custom" />
-                                <span>Custom filename:</span>
-                                <input type="text" id="charMemory_convertCustomName" class="text_pole" placeholder="my-memories.md" style="flex:1;" disabled />
-                            </label>
-                        </div>
-                        <div class="charMemory_buttonRow">
-                            <input type="button" id="charMemory_convertExecute" class="menu_button" value="Convert" title="Write converted memories to the chosen destination" />
-                            <input type="button" id="charMemory_convertCancel" class="menu_button" value="Cancel" title="Discard preview and start over" />
-                        </div>
+                        <input type="button" id="charMemory_convertPreview" class="menu_button" value="Preview Conversion" title="Parse the selected file and show an interactive before/after preview" />
                     </div>
                 </div>
             </div>

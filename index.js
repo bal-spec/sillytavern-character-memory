@@ -56,7 +56,7 @@ function getMemoryFileName() {
 let inApiCall = false;
 let lastExtractionResult = null;
 let consolidationBackup = null;
-let convertPreviewResult = null; // { blocks, warnings, sourceContent }
+// convertPreviewResult removed — conversion state now lives in the dialog closure
 let lastExtractionTime = 0; // session-only, resets on page load
 
 // ============ Activity Log ============
@@ -834,9 +834,68 @@ async function convertWithLLM(content, charName) {
 }
 
 /**
- * Parse the selected source file and show before/after preview.
+ * Build the HTML for the conversion preview dialog.
+ */
+function buildConversionDialog(sourceContent, formatLabel, method, convertedBlocks, editingSet, useLLM) {
+    const afterCount = countMemories(convertedBlocks);
+    const hasEditing = editingSet.size > 0;
+    const memoryFileName = getMemoryFileName();
+
+    return `<div class="charMemory_consolidationDialog">
+        <div class="charMemory_consolidationStats" id="charMemory_convStats">
+            Detected: ${escapeHtml(formatLabel)} &bull; Method: <span id="charMemory_convMethod">${escapeHtml(method)}</span> &bull; Result: <span id="charMemory_convAfterCount">${afterCount}</span> memories in <span id="charMemory_convBlockCount">${convertedBlocks.length}</span> block(s)
+        </div>
+        <div class="charMemory_consolidationToolbar">
+            <label class="checkbox_label" style="margin-right:8px;white-space:nowrap;">
+                <input type="checkbox" id="charMemory_convDialogLLM" ${useLLM ? 'checked' : ''} />
+                <span>Use LLM</span>
+            </label>
+            <input type="button" id="charMemory_rerunConversion" class="menu_button" value="Re-run" title="Re-parse the source file with current settings" />
+            <input type="button" id="charMemory_undoConvRerun" class="menu_button" value="Undo" title="Revert to previous version" disabled />
+            <span id="charMemory_convRerunSpinner" style="display:none;">Working...</span>
+        </div>
+        <div class="charMemory_consolidationPanes">
+            <div class="charMemory_consolidationPane">
+                <h4>Original File</h4>
+                <div class="charMemory_consolidationContent"><pre class="charMemory_convertSourcePre">${escapeHtml(sourceContent)}</pre></div>
+            </div>
+            <div class="charMemory_consolidationPane">
+                <h4>Converted Memories</h4>
+                <div class="charMemory_consolidationContent" id="charMemory_convEditorPane">${renderConsolidatedCards(convertedBlocks, editingSet)}</div>
+                <button class="charMemory_editorAddBlock menu_button ${hasEditing ? '' : 'charMemory_editorAddBlock--hidden'}" id="charMemory_convAddBlock"><i class="fa-solid fa-plus fa-xs"></i> Add Block</button>
+            </div>
+        </div>
+        <div class="charMemory_convOutputSection">
+            <div class="charMemory_convertWarning">
+                <i class="fa-solid fa-triangle-exclamation fa-sm"></i>
+                The original file will <b>not</b> be deleted. Hide or remove it from the Data Bank to avoid duplicate memories.
+            </div>
+            <div class="charMemory_convDestRow">
+                <small><b>Output to:</b></small>
+                <label class="radio_label">
+                    <input type="radio" name="charMemory_convDest" value="auto" checked />
+                    <span>CharMemory file (${escapeHtml(memoryFileName)})</span>
+                </label>
+                <label class="radio_label">
+                    <input type="radio" name="charMemory_convDest" value="custom" />
+                    <span>Custom:</span>
+                    <input type="text" id="charMemory_convCustomName" class="text_pole" placeholder="my-memories.md" style="flex:1;max-width:200px;" disabled />
+                </label>
+            </div>
+        </div>
+    </div>`;
+}
+
+/**
+ * Parse the selected source file and show an interactive conversion preview dialog.
+ * The dialog uses the same editable-card pattern as the consolidation feature.
  */
 async function previewConversion() {
+    if (inApiCall) {
+        toastr.warning('An API call is already in progress.', 'CharMemory');
+        return;
+    }
+
     const fileUrl = $('#charMemory_convertSource').val();
     if (!fileUrl) {
         toastr.warning('Select a source file first.', 'CharMemory');
@@ -870,6 +929,7 @@ async function previewConversion() {
     let result;
 
     try {
+        inApiCall = true;
         if (useLLM && format !== 'memory_tags') {
             const charName = getCharacterName() || 'Character';
             toastr.info('Sending to LLM for restructuring...', 'CharMemory', { timeOut: 3000 });
@@ -881,40 +941,204 @@ async function previewConversion() {
         console.error(LOG_PREFIX, 'Conversion failed:', err);
         toastr.error(`Conversion failed: ${err.message || 'Unknown error'}`, 'CharMemory');
         return;
+    } finally {
+        inApiCall = false;
     }
-
-    convertPreviewResult = { ...result, sourceContent };
-
-    // Populate preview UI
-    $('#charMemory_convertFormat').text(formatLabels[format] || format);
-    $('#charMemory_convertMethod').text(useLLM && format !== 'memory_tags' ? 'LLM' : 'Heuristic');
-    $('#charMemory_convertResultCount').text(`${countMemories(result.blocks)} memories in ${result.blocks.length} block(s)`);
-
-    const beforeText = sourceContent.length > 1500 ? sourceContent.substring(0, 1500) + '\n...(truncated)' : sourceContent;
-    const afterText = serializeMemories(result.blocks);
-    const afterTruncated = afterText.length > 1500 ? afterText.substring(0, 1500) + '\n...(truncated)' : afterText;
-
-    $('#charMemory_convertBefore').text(beforeText);
-    $('#charMemory_convertAfter').text(afterTruncated);
-    $('#charMemory_convertPreviewArea').show();
 
     for (const w of result.warnings) {
         toastr.warning(w, 'CharMemory');
     }
 
+    // memory_tags format needs no conversion — heuristic already warned the user
     if (format === 'memory_tags') {
-        $('#charMemory_convertExecute').prop('disabled', true);
-    } else {
-        $('#charMemory_convertExecute').prop('disabled', false);
+        return;
     }
-}
 
-/**
- * Write converted memories to the chosen destination.
- */
-async function executeConversion() {
-    if (!convertPreviewResult || convertPreviewResult.blocks.length === 0) {
-        toastr.warning('No memories to convert. Run Preview first.', 'CharMemory');
+    if (result.blocks.length === 0) {
+        toastr.warning('No memories could be extracted from the file.', 'CharMemory');
+        return;
+    }
+
+    // === Editor state (lives in closure, survives popup DOM lifecycle) ===
+    let editorBlocks = result.blocks.map(b => ({ ...b, bullets: [...b.bullets] }));
+    const versionStack = [];
+    const editingSet = new Set();
+    let destType = 'auto';
+    let destCustomName = '';
+    let dialogClosed = false; // cancellation flag for in-flight re-run callbacks
+    const cloneBlocks = (blocks) => blocks.map(b => ({ ...b, bullets: [...b.bullets] }));
+
+    const refreshEditor = () => {
+        $('#charMemory_convEditorPane').html(renderConsolidatedCards(editorBlocks, editingSet));
+        $('#charMemory_convAfterCount').text(countMemories(editorBlocks));
+        $('#charMemory_convBlockCount').text(editorBlocks.length);
+        $('#charMemory_convAddBlock').toggleClass('charMemory_editorAddBlock--hidden', editingSet.size === 0);
+    };
+
+    // Build and show dialog
+    const formatLabel = formatLabels[format] || format;
+    const method = useLLM && format !== 'memory_tags' ? 'LLM' : 'Heuristic';
+    const dialogHtml = buildConversionDialog(sourceContent, formatLabel, method, editorBlocks, editingSet, useLLM && format !== 'memory_tags');
+    const popup = callGenericPopup(dialogHtml, POPUP_TYPE.CONFIRM, '', { wide: true, allowVerticalScrolling: true });
+
+    // === Editor event delegation (same card classes as consolidation, different namespaces) ===
+
+    $(document).off('click.charMemoryConvToggle').on('click.charMemoryConvToggle', '.charMemory_editorToggleEdit', function () {
+        const bi = Number($(this).data('block'));
+        if (editingSet.has(bi)) editingSet.delete(bi);
+        else editingSet.add(bi);
+        refreshEditor();
+    });
+
+    $(document).off('input.charMemoryConvBullet').on('input.charMemoryConvBullet', '.charMemory_editorBulletInput', function () {
+        const bi = Number($(this).data('block'));
+        const bui = Number($(this).data('bullet'));
+        if (editorBlocks[bi]) editorBlocks[bi].bullets[bui] = $(this).val();
+    });
+
+    $(document).off('input.charMemoryConvTheme').on('input.charMemoryConvTheme', '.charMemory_editorThemeInput', function () {
+        const bi = Number($(this).data('block'));
+        if (editorBlocks[bi]) editorBlocks[bi].chat = $(this).val();
+    });
+
+    $(document).off('click.charMemoryConvDelBullet').on('click.charMemoryConvDelBullet', '.charMemory_editorDeleteBullet', function () {
+        const bi = Number($(this).data('block'));
+        const bui = Number($(this).data('bullet'));
+        if (editorBlocks[bi]) {
+            editorBlocks[bi].bullets.splice(bui, 1);
+            if (editorBlocks[bi].bullets.length === 0) {
+                editorBlocks.splice(bi, 1);
+                reindexEditingSet(editingSet, bi);
+            }
+            refreshEditor();
+        }
+    });
+
+    $(document).off('click.charMemoryConvDelBlock').on('click.charMemoryConvDelBlock', '.charMemory_editorDeleteBlock', function () {
+        const bi = Number($(this).data('block'));
+        editorBlocks.splice(bi, 1);
+        reindexEditingSet(editingSet, bi);
+        refreshEditor();
+    });
+
+    $(document).off('click.charMemoryConvAddBullet').on('click.charMemoryConvAddBullet', '.charMemory_editorAddBullet', function () {
+        const bi = Number($(this).data('block'));
+        if (editorBlocks[bi]) {
+            editorBlocks[bi].bullets.push('');
+            refreshEditor();
+            $(`#charMemory_convEditorPane .charMemory_editorCard[data-block="${bi}"] .charMemory_editorBulletInput:last`).focus();
+        }
+    });
+
+    $(document).off('click.charMemoryConvAddBlock').on('click.charMemoryConvAddBlock', '#charMemory_convAddBlock', function () {
+        const now = new Date();
+        const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+        const newIdx = editorBlocks.length;
+        editorBlocks.push({ chat: 'New Group', date: timestamp, bullets: [''] });
+        editingSet.add(newIdx);
+        refreshEditor();
+        $('#charMemory_convEditorPane .charMemory_editorCard:last .charMemory_editorBulletInput:last').focus();
+    });
+
+    // === Destination controls (state captured in closure for after popup closes) ===
+
+    $(document).off('change.charMemoryConvDest').on('change.charMemoryConvDest', 'input[name="charMemory_convDest"]', function () {
+        destType = $(this).val();
+        $('#charMemory_convCustomName').prop('disabled', destType !== 'custom');
+    });
+
+    $(document).off('input.charMemoryConvCustom').on('input.charMemoryConvCustom', '#charMemory_convCustomName', function () {
+        destCustomName = $(this).val();
+    });
+
+    // === Re-run ===
+
+    $('#charMemory_rerunConversion').off('click').on('click', async () => {
+        if (inApiCall) return;
+        const currentBlocks = cloneBlocks(editorBlocks);
+        const llmChecked = $('#charMemory_convDialogLLM').prop('checked');
+
+        $('#charMemory_convRerunSpinner').show();
+        $('#charMemory_rerunConversion').prop('disabled', true);
+        $('#charMemory_convEditorPane').addClass('charMemory_editorDisabled');
+
+        let newResult;
+        try {
+            inApiCall = true;
+            if (llmChecked && format !== 'memory_tags') {
+                const charName = getCharacterName() || 'Character';
+                newResult = await convertWithLLM(sourceContent, charName);
+            } else {
+                newResult = convertHeuristic(sourceContent, format);
+            }
+        } catch (err) {
+            console.error(LOG_PREFIX, 'Re-run conversion failed:', err);
+            toastr.error(`Re-run failed: ${err.message || 'Unknown error'}`, 'CharMemory');
+            newResult = null;
+        } finally {
+            inApiCall = false;
+        }
+
+        // Bail out if the dialog was closed while the LLM call was in flight
+        if (dialogClosed) return;
+
+        $('#charMemory_convRerunSpinner').hide();
+        $('#charMemory_rerunConversion').prop('disabled', false);
+        $('#charMemory_convEditorPane').removeClass('charMemory_editorDisabled');
+
+        if (newResult && newResult.blocks.length > 0) {
+            versionStack.push(currentBlocks);
+            $('#charMemory_undoConvRerun').prop('disabled', false);
+            editorBlocks = newResult.blocks.map(b => ({ ...b, bullets: [...b.bullets] }));
+            editingSet.clear();
+            refreshEditor();
+            for (const w of newResult.warnings) {
+                toastr.warning(w, 'CharMemory');
+            }
+            const newMethod = llmChecked && format !== 'memory_tags' ? 'LLM' : 'Heuristic';
+            $('#charMemory_convMethod').text(newMethod);
+        }
+    });
+
+    // === Undo ===
+
+    $('#charMemory_undoConvRerun').off('click').on('click', () => {
+        if (versionStack.length === 0) return;
+        editorBlocks = versionStack.pop();
+        editingSet.clear();
+        refreshEditor();
+        if (versionStack.length === 0) $('#charMemory_undoConvRerun').prop('disabled', true);
+    });
+
+    // === Wait for dialog Accept/Cancel ===
+
+    const confirmed = await popup;
+    dialogClosed = true;
+
+    // Clean up all event delegation
+    $(document).off('click.charMemoryConvToggle');
+    $(document).off('input.charMemoryConvBullet');
+    $(document).off('input.charMemoryConvTheme');
+    $(document).off('click.charMemoryConvDelBullet');
+    $(document).off('click.charMemoryConvDelBlock');
+    $(document).off('click.charMemoryConvAddBullet');
+    $(document).off('click.charMemoryConvAddBlock');
+    $(document).off('change.charMemoryConvDest');
+    $(document).off('input.charMemoryConvCustom');
+
+    if (!confirmed) {
+        logActivity('Conversion cancelled by user');
+        return;
+    }
+
+    // === Save converted memories ===
+
+    const cleanBlocks = editorBlocks
+        .map(b => ({ ...b, bullets: b.bullets.filter(bullet => bullet.trim() !== '') }))
+        .filter(b => b.bullets.length > 0);
+
+    if (cleanBlocks.length === 0) {
+        toastr.warning('No memories to save.', 'CharMemory');
         return;
     }
 
@@ -925,10 +1149,10 @@ async function executeConversion() {
         return;
     }
 
-    const destType = $('input[name="charMemory_convertDest"]:checked').val();
+    // destType and destCustomName are captured from closure (updated by event handlers)
     let destFileName;
     if (destType === 'custom') {
-        destFileName = $('#charMemory_convertCustomName').val().trim();
+        destFileName = destCustomName.trim();
         if (!destFileName) {
             toastr.warning('Enter a filename for custom output.', 'CharMemory');
             return;
@@ -944,17 +1168,15 @@ async function executeConversion() {
         existingBlocks = parseMemories(existingContent);
     }
 
-    const allBlocks = [...existingBlocks, ...convertPreviewResult.blocks];
+    const allBlocks = [...existingBlocks, ...cleanBlocks];
     await writeMemoriesForCharacter(serializeMemories(allBlocks), avatar, destFileName);
 
-    const count = countMemories(convertPreviewResult.blocks);
+    const count = countMemories(cleanBlocks);
     toastr.success(`Converted ${count} memories to ${destFileName}. Remember to hide or remove the original file from Data Bank to avoid duplicates.`, 'CharMemory', { timeOut: 8000 });
     logActivity(`Converted ${count} memories from Data Bank file to ${destFileName}`);
 
-    // Reset preview and source selection
-    $('#charMemory_convertPreviewArea').hide();
+    // Reset source dropdown
     $('#charMemory_convertSource').val('');
-    convertPreviewResult = null;
     updateStatusDisplay();
 }
 
@@ -1030,8 +1252,6 @@ function populateConvertSourceDropdown() {
         $select.append($opt);
     }
 
-    // Show auto-name in output destination
-    $('#charMemory_convertAutoName').text(memoryFileName);
 }
 
 /**
@@ -4290,11 +4510,6 @@ function setupListeners() {
 
     // Convert tool
     $('#charMemory_convertPreview').off('click').on('click', () => previewConversion());
-    $('#charMemory_convertExecute').off('click').on('click', () => executeConversion());
-    $('#charMemory_convertCancel').off('click').on('click', () => {
-        $('#charMemory_convertPreviewArea').hide();
-        convertPreviewResult = null;
-    });
     $('#charMemory_restoreConvertPrompt').off('click').on('click', () => {
         $('#charMemory_convertPrompt').val(defaultConversionPrompt);
         extension_settings[MODULE_NAME].conversionPrompt = '';
@@ -4304,10 +4519,6 @@ function setupListeners() {
         extension_settings[MODULE_NAME].conversionPrompt = $(this).val();
         saveSettingsDebounced();
     });
-    $('input[name="charMemory_convertDest"]').off('change').on('change', function () {
-        $('#charMemory_convertCustomName').prop('disabled', $(this).val() !== 'custom');
-    });
-
     $('#charMemory_refreshDiag').off('click').on('click', function () {
         captureDiagnostics();
         toastr.info('Diagnostics refreshed.', 'CharMemory');
