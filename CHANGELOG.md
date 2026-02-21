@@ -9,12 +9,14 @@
 - **Include metadata in chunks**: When using bullet-level or custom chunking, optionally prefix each bullet with `[date | chat_id]` so standalone vector chunks retain their provenance.
 - **Reformat offer**: When changing the chunk boundary setting, a confirmation popup offers to reformat the existing memory file to match the new format.
 - **Convert / Import tool**: Convert any Data Bank file into CharMemory's `<memory>` tag format. Supports 6 input formats via heuristic parsing (bullet lists, numbered lists, markdown headings, old CharMemory format, freeform text) with optional LLM-assisted restructuring for unstructured content. Non-destructive: original file is never modified.
+- **Interactive conversion preview**: The Convert tool uses the same popup dialog as Consolidation — side-by-side panes with the original file on the left and editable memory cards on the right. Edit, add, or delete blocks and bullets before saving. Includes Re-run (with LLM toggle) and Undo. Output destination (auto or custom filename) is chosen inside the dialog.
 - **Conversion prompt**: Configurable LLM prompt for the Convert tool, with disclosure accordion and Restore Default button (matching the Consolidation prompt pattern).
 
 ### Improvements
 
 - **Round-trip safety**: `parseMemories()` now handles metadata-prefixed bullets (`[date | chat] - text`), ensuring files written in any format mode can be correctly parsed back.
 - **Error handling**: `convertWithLLM()` and `previewConversion()` now catch and report errors gracefully instead of failing silently.
+- **Convert source dropdown verification**: The source file dropdown now verifies files against the server before displaying, removing phantom entries for files that were deleted through the Data Bank UI.
 
 ## 1.4.0
 

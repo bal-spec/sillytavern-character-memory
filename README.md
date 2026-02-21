@@ -85,6 +85,8 @@ These memory files are then vectorized by **Vector Storage** (a standard extensi
 - **Visible**: Memories stored as a plain markdown file in character Data Bank — fully viewable and editable
 - **Per-bullet management**: Browse, edit, or delete individual memory bullets from the Memory Manager
 - **Consolidation**: Merge duplicate and related memories with preview before applying and one-click undo
+- **Convert / Import**: Convert any Data Bank file into CharMemory format with an interactive preview dialog — supports bullet lists, numbered lists, markdown, freeform text, and LLM-assisted restructuring
+- **Memory file format settings**: Control how memories are separated for Vector Storage chunking — block-level, bullet-level, or custom separator
 - **Group chat support**: Works in group chats — each member gets their own memory file, extracted and managed individually
 - **Scoped**: Memories are per-character by default, with optional per-chat isolation
 - **Non-destructive**: Only appends, never overwrites existing memories
@@ -188,7 +190,7 @@ You don't have to wait for the auto-extraction threshold. There are two ways to 
 
 ![The brain icon on a character message — "Extract memories up to here"](images/11-extract-here.png)
 
-You can follow either extraction in real time in the **Activity Log** (Tools & Diagnostics → Activity Log). It shows each step: messages collected, LLM call sent, response received, and memories saved.
+You can follow either extraction in real time in the **Activity Log** (Tools → Activity Log). It shows each step: messages collected, LLM call sent, response received, and memories saved.
 
 ![Activity Log showing a successful extraction — 15 messages collected, 7 memories saved](images/08-activity-log.png)
 
@@ -325,7 +327,7 @@ During generation, SillyTavern sets the active character to whichever group memb
 
 If you have existing chats with a character, you don't need to manually extract each one. Batch extraction processes multiple chats at once:
 
-1. Open **Tools & Diagnostics** → **Batch Extract** tab
+1. Open **Tools** tab → **Batch** pill
 2. Click **Refresh** to load the list of chats for the current character
 3. Select the chats you want to extract (use **Select All** to check all of them)
 4. Click **Extract Selected** — a confirmation popup shows the total message count
@@ -355,13 +357,13 @@ Two reset options are available in Settings:
 
 ### Consolidation
 
-When the memory file grows large with many extraction blocks, related or duplicate memories can accumulate across different sessions. The **Consolidate** tab lets you send the full memory file to the LLM to deduplicate and combine related entries.
+When the memory file grows large with many extraction blocks, related or duplicate memories can accumulate across different sessions. The **Consolidate** tool (**Tools** tab → **Consolidate** pill) lets you send the full memory file to the LLM to deduplicate and combine related entries.
 
 Consolidation is always manual — it never runs automatically.
 
 #### Strategy Presets
 
-Before consolidating, choose a strategy from the dropdown in the Consolidate tab:
+Before consolidating, choose a strategy from the dropdown (**Tools** tab → **Consolidate** pill):
 
 | Strategy | What it does |
 |----------|-------------|
@@ -388,6 +390,44 @@ Consolidation automatically uses 2x your configured "Max response length" as its
 
 Results vary depending on the model used and the size of the memory file. Review the preview carefully before applying.
 
+### Convert / Import
+
+If you have existing Data Bank files with character notes, memory lists, or other text, the **Convert** tool can restructure them into CharMemory's `<memory>` tag format.
+
+Open **Tools** tab → **Convert** pill:
+
+![Convert tool panel](images/18-convert-tool.png)
+
+1. Select a **source file** from the dropdown (shows all Data Bank files except the active CharMemory file)
+2. Optionally check **Use LLM to restructure** — recommended for freeform text with no clear structure. Uses your configured extraction provider
+3. Click **Preview Conversion** — a popup dialog opens with two panes:
+
+| Left pane | Right pane |
+|-----------|------------|
+| Original file content (read-only) | Converted memories as editable cards |
+
+4. **Edit the result** before saving — click the pencil icon on any block to enter edit mode. You can edit bullets, delete bullets or blocks, add new ones, and rename theme headers
+5. Not happy? Click **Re-run** to re-parse (toggle the LLM checkbox to switch methods). Each re-run saves the previous version — click **Undo** to step back
+6. Choose an **output destination** at the bottom — the auto-generated CharMemory file, or a custom filename
+7. Click **OK** to save, or **Cancel** to discard
+
+![Convert preview dialog](images/19-convert-preview.png)
+
+The Convert tool detects 6 input formats automatically:
+
+| Format | Example |
+|--------|---------|
+| CharMemory `<memory>` tags | Already in format — no conversion needed |
+| Old CharMemory (`## Memory N`) | Auto-migrated |
+| Bullet lists (`- ` or `* `) | Each bullet becomes a memory |
+| Numbered lists (`1.`, `2)`) | Each item becomes a memory |
+| Markdown with headings | Headings become block themes |
+| Freeform text | Split on sentences (use LLM for better results) |
+
+**Non-destructive**: the original file is never modified or deleted. After converting, hide or remove the original from the Data Bank to avoid duplicate memories being injected.
+
+The LLM conversion prompt is configurable — expand **Show prompt** below the LLM checkbox to view and edit it. Click **Restore Default** to revert.
+
 ### Per-Chat Memories
 
 By default, all chats for a character share one memory file. Enable **Separate memories per chat** in Settings → Storage to give each conversation its own file. This is useful when the same character appears in different scenarios or timelines that shouldn't share context.
@@ -410,7 +450,7 @@ The memory file is auto-named from the character name (e.g., `Flux_the_Cat-memor
 
 ## Using Diagnostics
 
-The **Diagnostics** tab (Tools & Diagnostics → Diagnostics) shows you exactly what the LLM saw during its last generation. This is the single best tool for answering "why isn't my character remembering X?" or "what memories are actually being used?"
+The **Diagnostics** tab (Tools → Diagnostics) shows you exactly what the LLM saw during its last generation. This is the single best tool for answering "why isn't my character remembering X?" or "what memories are actually being used?"
 
 Click **Refresh** after generating a message to capture the current state.
 
@@ -587,11 +627,33 @@ Each extraction produces a `<memory>` block with chat attribution and timestampe
 - The file is append-only during normal operation — new extractions add blocks at the end
 - Old files using the `## Memory N` heading format are auto-migrated on first read
 
+### Chunk Boundary Settings
+
+Vector Storage chunks your memory file on `\n\n` (double newline) boundaries. By default, each `<memory>` block is one chunk. If your memory file is large, you may want more granular chunking so Vector Storage retrieves individual bullets instead of entire blocks.
+
+Open **Settings** → **Memory File Format**:
+
+| Setting | Behavior |
+|---------|----------|
+| **Block-level** (default) | One chunk per `<memory>` block. Original behavior — unchanged from previous versions. |
+| **Bullet-level** | Each bullet gets its own chunk. `<memory>` tags are preserved for round-trip safety, but `\n\n` is inserted between bullets so Vector Storage chunks them individually. |
+| **Custom separator** | Blocks separated by a custom string (e.g., `\n---\n`). Use this if your Vector Storage chunking strategy uses a different boundary. |
+
+**Include metadata in chunks**: When using bullet-level or custom chunking, enable this to prefix each bullet with `[date | chat_id]` so standalone vector chunks retain their provenance (which chat they came from and when they were extracted).
+
+![Memory File Format settings](images/20-format-settings.png)
+
+When you change the chunk boundary setting, CharMemory offers to **reformat** the existing memory file to match. This re-reads, re-parses, and re-serializes all memories with the new format. You can decline to keep the existing file as-is.
+
+After reformatting, **purge vectors and revectorize** the file in Vector Storage so the index reflects the new chunk boundaries.
+
 ### Working with Existing Memory Files
 
 CharMemory auto-detects existing `*-memories.md` files in a character's Data Bank. If you already have a memory file from manual notes or another tool, CharMemory will find and use it automatically rather than creating a duplicate — as long as the filename ends in `-memories.md`.
 
-For CharMemory to parse the contents, the file needs to be in the `<memory>` block format. Convert freeform text by wrapping it:
+For CharMemory to parse the contents, the file needs to be in the `<memory>` block format. The easiest way to convert existing files is the [Convert / Import](#convert--import) tool in the **Tools** tab — it detects the format automatically and lets you preview and edit the result before saving.
+
+To convert manually, wrap your text like this:
 
 ```
 <memory chat="imported" date="2026-01-01">
@@ -602,15 +664,13 @@ For CharMemory to parse the contents, the file needs to be in the `<memory>` blo
 
 Any text outside `<memory>` blocks is ignored by the Memory Manager and won't appear in diagnostics. It won't cause errors, but it also won't be managed by CharMemory.
 
-The easiest way to manage your existing memory files that are not in this format is going to be to use an LLM in chat mode (outside SillyTavern, e.g. the NanoGPT web interface), paste in the format example above and attach your chat files.
-
 After converting existing files or making manual edits, **purge vectors and revectorize** the file in Vector Storage so the index reflects the updated content. Vector Storage doesn't incrementally update — it re-chunks and re-embeds the entire file from scratch when you revectorize.
 
 ---
 
 ## Troubleshooting
 
-**"0 memories" after extraction**: Check the Activity Log (Tools & Diagnostics → Activity Log). It shows exactly what happened — whether the LLM returned NO_NEW_MEMORIES, produced unparseable output, or encountered an error. Enable **Verbose** mode to see the full prompt and response. If verbose mode shows `finish=length` with completion tokens used but 0 chars content, you're using a reasoning/thinking model that needs a higher **Max response length** — increase it to 2000–3000.
+**"0 memories" after extraction**: Check the Activity Log (Tools → Activity Log). It shows exactly what happened — whether the LLM returned NO_NEW_MEMORIES, produced unparseable output, or encountered an error. Enable **Verbose** mode to see the full prompt and response. If verbose mode shows `finish=length` with completion tokens used but 0 chars content, you're using a reasoning/thinking model that needs a higher **Max response length** — increase it to 2000–3000.
 
 **Memories extracted but character doesn't use them**: Vector Storage isn't set up, or "Enable for files" isn't checked. Open Diagnostics and verify the Vectorization line shows "Yes" and that Injected Memories shows entries after generating a message.
 
