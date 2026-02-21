@@ -460,11 +460,16 @@ function parseMemories(content) {
         const chat = chatMatch ? unescapeAttr(chatMatch[1]) : 'unknown';
         const date = dateMatch ? unescapeAttr(dateMatch[1]) : '';
 
-        // Extract bullets (lines starting with "- ")
+        // Extract bullets (lines starting with "- " or metadata-prefixed "[...] - ")
         const bullets = body.split('\n')
             .map(line => line.trim())
-            .filter(line => line.startsWith('- '))
-            .map(line => line.slice(2).trim())
+            .filter(line => line.startsWith('- ') || /^\[.*?\]\s*-\s/.test(line))
+            .map(line => {
+                // Strip metadata prefix if present: "[date | chat] - text" → "text"
+                const metaMatch = line.match(/^\[.*?\]\s*-\s+(.+)/);
+                if (metaMatch) return metaMatch[1].trim();
+                return line.slice(2).trim();
+            })
             .filter(Boolean);
 
         if (bullets.length > 0) {
@@ -515,19 +520,17 @@ function serializeMemories(blocks, formatOverride) {
     const fmt = formatOverride || getFormatOptions();
 
     if (fmt.boundary === 'bullet') {
-        // Bullet-level: each bullet separated by separator (default \n\n)
-        const sep = fmt.separator || '\n\n';
-        const allBullets = [];
-        for (const b of blocks) {
-            for (const bullet of b.bullets) {
+        // Bullet-level: \n\n between each bullet for VS chunking.
+        // <memory> tags are preserved so parseMemories() can round-trip.
+        return blocks.map(b => {
+            const bulletsText = b.bullets.map(bullet => {
                 if (fmt.metadata) {
-                    allBullets.push(`[${b.date} | ${b.chat}] - ${bullet}`);
-                } else {
-                    allBullets.push(`- ${bullet}`);
+                    return `[${b.date} | ${b.chat}] - ${bullet}`;
                 }
-            }
-        }
-        return allBullets.join(sep);
+                return `- ${bullet}`;
+            }).join('\n\n');
+            return `<memory chat="${escapeAttr(b.chat)}" date="${escapeAttr(b.date)}">\n${bulletsText}\n</memory>`;
+        }).join('\n\n');
     }
 
     if (fmt.boundary === 'custom') {
@@ -799,7 +802,13 @@ async function convertWithLLM(content, charName) {
         .replace(/\{\{charName\}\}/g, charName)
         .replace(/\{\{sourceText\}\}/g, content);
 
-    const response = await callLLM(prompt, extension_settings[MODULE_NAME].responseLength || 2000, 'You are a text restructuring assistant. Preserve all information faithfully.');
+    let response;
+    try {
+        response = await callLLM(prompt, extension_settings[MODULE_NAME].responseLength || 2000, 'You are a text restructuring assistant. Preserve all information faithfully.');
+    } catch (err) {
+        console.error(LOG_PREFIX, 'LLM conversion failed:', err);
+        return { blocks: [], warnings: [`LLM call failed: ${err.message || 'Unknown error'}`] };
+    }
 
     if (!response || !response.trim()) {
         warnings.push('LLM returned an empty response.');
@@ -834,7 +843,14 @@ async function previewConversion() {
         return;
     }
 
-    const sourceContent = await getFileAttachment(fileUrl);
+    let sourceContent;
+    try {
+        sourceContent = await getFileAttachment(fileUrl);
+    } catch (err) {
+        console.error(LOG_PREFIX, 'Failed to read source file:', err);
+        toastr.error('Could not read the selected file.', 'CharMemory');
+        return;
+    }
     if (!sourceContent) {
         toastr.error('Could not read the selected file.', 'CharMemory');
         return;
@@ -853,12 +869,18 @@ async function previewConversion() {
     const useLLM = $('#charMemory_convertUseLLM').prop('checked');
     let result;
 
-    if (useLLM && format !== 'memory_tags') {
-        const charName = getCharacterName() || 'Character';
-        toastr.info('Sending to LLM for restructuring...', 'CharMemory', { timeOut: 3000 });
-        result = await convertWithLLM(sourceContent, charName);
-    } else {
-        result = convertHeuristic(sourceContent, format);
+    try {
+        if (useLLM && format !== 'memory_tags') {
+            const charName = getCharacterName() || 'Character';
+            toastr.info('Sending to LLM for restructuring...', 'CharMemory', { timeOut: 3000 });
+            result = await convertWithLLM(sourceContent, charName);
+        } else {
+            result = convertHeuristic(sourceContent, format);
+        }
+    } catch (err) {
+        console.error(LOG_PREFIX, 'Conversion failed:', err);
+        toastr.error(`Conversion failed: ${err.message || 'Unknown error'}`, 'CharMemory');
+        return;
     }
 
     convertPreviewResult = { ...result, sourceContent };
@@ -929,8 +951,9 @@ async function executeConversion() {
     toastr.success(`Converted ${count} memories to ${destFileName}. Remember to hide or remove the original file from Data Bank to avoid duplicates.`, 'CharMemory', { timeOut: 8000 });
     logActivity(`Converted ${count} memories from Data Bank file to ${destFileName}`);
 
-    // Reset preview
+    // Reset preview and source selection
     $('#charMemory_convertPreviewArea').hide();
+    $('#charMemory_convertSource').val('');
     convertPreviewResult = null;
     updateStatusDisplay();
 }
