@@ -237,6 +237,21 @@ Each memory block should answer: "What from this encounter would {{charName}} re
 
 Output ONLY <memory> blocks (or NO_NEW_MEMORIES). No headers, no commentary, no extra text.`;
 
+const defaultConversionPrompt = `You are converting a text file into a structured memory format for {{charName}}.
+
+The input contains facts, memories, or notes in an unstructured format. Your task is to restructure this into clean, organized memory blocks.
+
+Rules:
+1. Extract every distinct fact or piece of information as a bullet point starting with "- ".
+2. Group related facts into <memory chat="[Topic Name]" date="[today]"> blocks where Topic Name is a short descriptive label (e.g. "Appearance", "Relationships", "Key Events").
+3. Preserve ALL information — do not summarize, combine, or omit anything from the source.
+4. Do not add facts, inferences, or details not explicitly stated in the source.
+5. Clean up grammar and formatting, but do not change the meaning.
+6. Skip formatting artifacts, HTML tags, and metadata that aren't actual memories.
+
+Source text to restructure:
+{{sourceText}}`;
+
 const EXTRACTION_SOURCE = {
     MAIN_LLM: 'main_llm',
     WEBLLM: 'webllm',
@@ -395,6 +410,10 @@ const defaultSettings = {
     verboseLogging: false,
     groupExtractionPrompt: defaultGroupExtractionPrompt,
     characterFileNames: {},
+    chunkBoundary: 'block',
+    customSeparator: '\\n\\n',
+    chunkMetadata: false,
+    conversionPrompt: '',
 };
 
 /**
@@ -562,6 +581,111 @@ function migrateMemoriesIfNeeded(content) {
         bullets.push(content.trim());
     }
     return serializeMemories([{ chat: 'unknown', date: timestamp, bullets }]);
+}
+
+/**
+ * Detect the format of a Data Bank file's content.
+ * @param {string} content Raw file content.
+ * @returns {'memory_tags'|'memory_headings'|'bullets'|'numbered'|'markdown_headings'|'freeform'}
+ */
+function detectFileFormat(content) {
+    if (!content || !content.trim()) return 'freeform';
+    if (/<memory\b[^>]*>/i.test(content)) return 'memory_tags';
+    if (/^## Memory \d+/m.test(content)) return 'memory_headings';
+    const lines = content.split('\n').filter(l => l.trim());
+    const bulletLines = lines.filter(l => /^\s*[-*]\s/.test(l));
+    if (bulletLines.length > lines.length * 0.4) return 'bullets';
+    const numberedLines = lines.filter(l => /^\s*\d+[\.\)]\s/.test(l));
+    if (numberedLines.length > lines.length * 0.3) return 'numbered';
+    if (/^#{1,3}\s+.+/m.test(content)) return 'markdown_headings';
+    return 'freeform';
+}
+
+/**
+ * Convert file content to <memory> tag format using heuristic parsing.
+ * @param {string} content Raw file content.
+ * @param {string} format Detected format from detectFileFormat().
+ * @returns {{blocks: {chat: string, date: string, bullets: string[]}[], warnings: string[]}}
+ */
+function convertHeuristic(content, format) {
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const warnings = [];
+
+    if (format === 'memory_tags') {
+        warnings.push('Already in CharMemory format — no conversion needed.');
+        return { blocks: parseMemories(content), warnings };
+    }
+
+    if (format === 'memory_headings') {
+        const migrated = migrateMemoriesIfNeeded(content);
+        return { blocks: parseMemories(migrated), warnings };
+    }
+
+    if (format === 'bullets') {
+        const lines = content.split('\n');
+        const bullets = [];
+        for (const line of lines) {
+            const match = line.match(/^\s*[-*]\s+(.+)/);
+            if (match) bullets.push(match[1].trim());
+        }
+        return {
+            blocks: [{ chat: 'imported', date: today, bullets }],
+            warnings,
+        };
+    }
+
+    if (format === 'numbered') {
+        const lines = content.split('\n');
+        const bullets = [];
+        for (const line of lines) {
+            const match = line.match(/^\s*\d+[\.\)]\s+(.+)/);
+            if (match) bullets.push(match[1].trim());
+        }
+        return {
+            blocks: [{ chat: 'imported', date: today, bullets }],
+            warnings,
+        };
+    }
+
+    if (format === 'markdown_headings') {
+        const blocks = [];
+        let currentHeading = 'imported';
+        let currentBullets = [];
+        for (const line of content.split('\n')) {
+            const headingMatch = line.match(/^#{1,3}\s+(.+)/);
+            if (headingMatch) {
+                if (currentBullets.length > 0) {
+                    blocks.push({ chat: currentHeading, date: today, bullets: currentBullets });
+                    currentBullets = [];
+                }
+                currentHeading = headingMatch[1].trim();
+                continue;
+            }
+            const bulletMatch = line.match(/^\s*[-*]\s+(.+)/);
+            if (bulletMatch) {
+                currentBullets.push(bulletMatch[1].trim());
+            } else if (line.trim()) {
+                currentBullets.push(line.trim());
+            }
+        }
+        if (currentBullets.length > 0) {
+            blocks.push({ chat: currentHeading, date: today, bullets: currentBullets });
+        }
+        return { blocks, warnings };
+    }
+
+    // Freeform: split on sentences
+    const sentences = content.replace(/\n/g, ' ').split(/(?<=[.!?])\s+/).map(s => s.trim()).filter(Boolean);
+    if (sentences.length === 0) {
+        warnings.push('File appears empty.');
+        return { blocks: [], warnings };
+    }
+    warnings.push('Freeform text detected — results may be rough. Consider using LLM restructuring for better quality.');
+    return {
+        blocks: [{ chat: 'imported', date: today, bullets: sentences }],
+        warnings,
+    };
 }
 
 // Diagnostics state (session-only, not persisted)
@@ -864,6 +988,11 @@ function updateProviderModelInfo(models, modelId) {
     }
 }
 
+function toggleChunkBoundaryUI(value) {
+    $('#charMemory_customSeparatorRow').toggle(value === 'custom');
+    $('#charMemory_chunkMetadataRow').toggle(value === 'bullet' || value === 'custom');
+}
+
 function loadSettings() {
     if (!extension_settings[MODULE_NAME]) {
         extension_settings[MODULE_NAME] = {};
@@ -949,6 +1078,10 @@ $('#charMemory_groupExtractionPrompt').val(extension_settings[MODULE_NAME].group
     $('#charMemory_source').val(extension_settings[MODULE_NAME].source);
     $('#charMemory_fileName').val(extension_settings[MODULE_NAME].fileName);
     $('#charMemory_verboseLog').prop('checked', extension_settings[MODULE_NAME].verboseLogging);
+    $('#charMemory_chunkBoundary').val(extension_settings[MODULE_NAME].chunkBoundary || 'block');
+    $('#charMemory_customSeparator').val(extension_settings[MODULE_NAME].customSeparator || '\\n\\n');
+    $('#charMemory_chunkMetadata').prop('checked', !!extension_settings[MODULE_NAME].chunkMetadata);
+    toggleChunkBoundaryUI(extension_settings[MODULE_NAME].chunkBoundary || 'block');
 
     // Provider settings
     populateProviderDropdown();
@@ -3863,6 +3996,24 @@ function setupListeners() {
         $(`#charMemory_tool${tool.charAt(0).toUpperCase() + tool.slice(1)}`).show();
         if (tool === 'batch') loadBatchChatList();
         if (tool === 'convert') populateConvertSourceDropdown();
+    });
+
+    // Chunk boundary format controls
+    $('#charMemory_chunkBoundary').off('change').on('change', function () {
+        const val = $(this).val();
+        extension_settings[MODULE_NAME].chunkBoundary = val;
+        saveSettingsDebounced();
+        toggleChunkBoundaryUI(val);
+    });
+
+    $('#charMemory_customSeparator').off('input').on('input', function () {
+        extension_settings[MODULE_NAME].customSeparator = $(this).val();
+        saveSettingsDebounced();
+    });
+
+    $('#charMemory_chunkMetadata').off('change').on('change', function () {
+        extension_settings[MODULE_NAME].chunkMetadata = $(this).prop('checked');
+        saveSettingsDebounced();
     });
 
     $('#charMemory_refreshDiag').off('click').on('click', function () {

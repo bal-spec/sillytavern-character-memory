@@ -314,6 +314,38 @@
                     <small class="charMemory_helperText">When enabled, multi-chunk extractions from the same chat are merged into one block. Disable for long chats to keep blocks smaller for consolidation.</small>
                 </div>
 
+                <!-- Memory File Format (advanced) -->
+                <hr class="charMemory_separator" />
+                <small><b>Memory File Format</b></small>
+
+                <div class="charMemory_statusRow">
+                    <label for="charMemory_chunkBoundary" title="Controls how memories are separated in the Data Bank file. Vector Storage splits on the separator to create individual retrievable chunks.">
+                        <small>Chunk boundary</small>
+                    </label>
+                    <select id="charMemory_chunkBoundary" class="text_pole">
+                        <option value="block">Block-level (default)</option>
+                        <option value="bullet">Bullet-level</option>
+                        <option value="custom">Custom</option>
+                    </select>
+                    <small class="charMemory_helperText">Controls how memories are separated in the file. Vector Storage splits on the separator to create retrievable chunks.</small>
+                </div>
+
+                <div class="charMemory_statusRow" id="charMemory_customSeparatorRow" style="display:none;">
+                    <label for="charMemory_customSeparator" title="Characters inserted between chunks. Use \\n for newlines.">
+                        <small>Custom separator</small>
+                    </label>
+                    <input type="text" id="charMemory_customSeparator" class="text_pole" placeholder="\\n\\n" />
+                    <small class="charMemory_helperText">Characters inserted between chunks. Use \n for newlines. Default: \n\n (blank line).</small>
+                </div>
+
+                <div id="charMemory_chunkMetadataRow" style="display:none;">
+                    <label class="checkbox_label" for="charMemory_chunkMetadata" title="When using bullet-level chunking, prefix each bullet with its date and chat ID so standalone bullets retain their context.">
+                        <input type="checkbox" id="charMemory_chunkMetadata" />
+                        <span>Include metadata in chunks</span>
+                    </label>
+                    <small class="charMemory_helperText">Prefix each bullet with [date | chat_id] so standalone chunks retain their provenance.</small>
+                </div>
+
                 <!-- Storage -->
                 <hr class="charMemory_separator" />
 
