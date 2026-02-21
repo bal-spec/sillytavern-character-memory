@@ -56,6 +56,7 @@ function getMemoryFileName() {
 let inApiCall = false;
 let lastExtractionResult = null;
 let consolidationBackup = null;
+let convertPreviewResult = null; // { blocks, warnings, sourceContent }
 let lastExtractionTime = 0; // session-only, resets on page load
 
 // ============ Activity Log ============
@@ -609,6 +610,34 @@ function populateProviderDropdown() {
         $select.append(`<option value="${escapeHtml(key)}">${escapeHtml(preset.name)}</option>`);
     }
     $select.val(extension_settings[MODULE_NAME].selectedProvider || 'openrouter');
+}
+
+/**
+ * Populate the Convert tool's source file dropdown with Data Bank files.
+ */
+function populateConvertSourceDropdown() {
+    const $select = $('#charMemory_convertSource');
+    $select.find('option:not(:first)').remove();
+
+    const context = getContext();
+    if (!context.characterId && context.characterId !== 0) return;
+
+    const avatar = characters[context.characterId]?.avatar;
+    if (!avatar) return;
+
+    ensureCharacterAttachments(avatar);
+    const attachments = extension_settings.character_attachments[avatar] || [];
+    const memoryFileName = getMemoryFileName();
+
+    for (const att of attachments) {
+        // Skip the active CharMemory file
+        if (att.name === memoryFileName) continue;
+        const $opt = $('<option></option>').val(att.url).text(att.name || att.url);
+        $select.append($opt);
+    }
+
+    // Show auto-name in output destination
+    $('#charMemory_convertAutoName').text(memoryFileName);
 }
 
 /**
@@ -3819,7 +3848,21 @@ function setupListeners() {
         $('.charMemory_tabContent').hide();
         const capName = tab.charAt(0).toUpperCase() + tab.slice(1);
         $(`#charMemory_tab${capName}`).show();
-        if (tab === 'batch') loadBatchChatList();
+        // Auto-load batch list when switching to Tools tab with Batch pill active
+        if (tab === 'tools' && $('.charMemory_toolPill.active').data('tool') === 'batch') {
+            loadBatchChatList();
+        }
+    });
+
+    // Pill switching within Tools tab
+    $('.charMemory_toolPill').off('click').on('click', function () {
+        const tool = $(this).data('tool');
+        $('.charMemory_toolPill').removeClass('active');
+        $(this).addClass('active');
+        $('.charMemory_toolContent').hide();
+        $(`#charMemory_tool${tool.charAt(0).toUpperCase() + tool.slice(1)}`).show();
+        if (tool === 'batch') loadBatchChatList();
+        if (tool === 'convert') populateConvertSourceDropdown();
     });
 
     $('#charMemory_refreshDiag').off('click').on('click', function () {
