@@ -551,6 +551,59 @@ function serializeMemories(blocks, formatOverride) {
 }
 
 /**
+ * Re-read, re-parse, and re-serialize a memory file with the active format settings.
+ * @param {string} avatar Character avatar filename.
+ * @param {string} fileName Memory filename.
+ * @returns {Promise<{blocks: number, bullets: number}|null>} Counts, or null if no file found.
+ */
+async function reformatExistingMemories(avatar, fileName) {
+    const content = await readMemoriesForCharacter(avatar, fileName);
+    if (!content || !content.trim()) return null;
+
+    const blocks = parseMemories(content);
+    if (blocks.length === 0) return null;
+
+    const reformatted = serializeMemories(blocks);
+    await writeMemoriesForCharacter(reformatted, avatar, fileName);
+    logActivity(`Reformatted ${countMemories(blocks)} memories in ${blocks.length} blocks to ${extension_settings[MODULE_NAME].chunkBoundary} format`);
+    return { blocks: blocks.length, bullets: countMemories(blocks) };
+}
+
+/**
+ * After a format setting change, offer to reformat existing memory files.
+ */
+async function offerReformat() {
+    const targets = getMemoryTargets();
+    if (targets.length === 0) return;
+
+    let totalBullets = 0;
+    let totalBlocks = 0;
+    for (const target of targets) {
+        const content = await readMemoriesForCharacter(target.avatar, target.fileName);
+        if (content && content.trim()) {
+            const blocks = parseMemories(content);
+            totalBlocks += blocks.length;
+            totalBullets += countMemories(blocks);
+        }
+    }
+
+    if (totalBullets === 0) return;
+
+    const result = await callGenericPopup(
+        `Reformat existing memories to match the new format?\n\nThis will rewrite ${totalBullets} memories in ${totalBlocks} blocks.`,
+        POPUP_TYPE.CONFIRM,
+    );
+
+    if (result) {
+        for (const target of targets) {
+            await reformatExistingMemories(target.avatar, target.fileName);
+        }
+        toastr.success(`Reformatted ${totalBullets} memories.`, 'CharMemory');
+        updateStatusDisplay();
+    }
+}
+
+/**
  * Merge memory blocks that share the same chat ID and date into single blocks.
  * Preserves ordering — merged block appears at the position of the first occurrence.
  * @param {{chat: string, date: string, bullets: string[]}[]} blocks
@@ -769,6 +822,117 @@ async function convertWithLLM(content, charName) {
     }
 
     return { blocks, warnings };
+}
+
+/**
+ * Parse the selected source file and show before/after preview.
+ */
+async function previewConversion() {
+    const fileUrl = $('#charMemory_convertSource').val();
+    if (!fileUrl) {
+        toastr.warning('Select a source file first.', 'CharMemory');
+        return;
+    }
+
+    const sourceContent = await getFileAttachment(fileUrl);
+    if (!sourceContent) {
+        toastr.error('Could not read the selected file.', 'CharMemory');
+        return;
+    }
+
+    const format = detectFileFormat(sourceContent);
+    const formatLabels = {
+        memory_tags: 'CharMemory <memory> tags',
+        memory_headings: 'Old CharMemory (## Memory N)',
+        bullets: 'Bullet list',
+        numbered: 'Numbered list',
+        markdown_headings: 'Markdown with headings',
+        freeform: 'Freeform text',
+    };
+
+    const useLLM = $('#charMemory_convertUseLLM').prop('checked');
+    let result;
+
+    if (useLLM && format !== 'memory_tags') {
+        const charName = getCharacterName() || 'Character';
+        toastr.info('Sending to LLM for restructuring...', 'CharMemory', { timeOut: 3000 });
+        result = await convertWithLLM(sourceContent, charName);
+    } else {
+        result = convertHeuristic(sourceContent, format);
+    }
+
+    convertPreviewResult = { ...result, sourceContent };
+
+    // Populate preview UI
+    $('#charMemory_convertFormat').text(formatLabels[format] || format);
+    $('#charMemory_convertMethod').text(useLLM && format !== 'memory_tags' ? 'LLM' : 'Heuristic');
+    $('#charMemory_convertResultCount').text(`${countMemories(result.blocks)} memories in ${result.blocks.length} block(s)`);
+
+    const beforeText = sourceContent.length > 1500 ? sourceContent.substring(0, 1500) + '\n...(truncated)' : sourceContent;
+    const afterText = serializeMemories(result.blocks);
+    const afterTruncated = afterText.length > 1500 ? afterText.substring(0, 1500) + '\n...(truncated)' : afterText;
+
+    $('#charMemory_convertBefore').text(beforeText);
+    $('#charMemory_convertAfter').text(afterTruncated);
+    $('#charMemory_convertPreviewArea').show();
+
+    for (const w of result.warnings) {
+        toastr.warning(w, 'CharMemory');
+    }
+
+    if (format === 'memory_tags') {
+        $('#charMemory_convertExecute').prop('disabled', true);
+    } else {
+        $('#charMemory_convertExecute').prop('disabled', false);
+    }
+}
+
+/**
+ * Write converted memories to the chosen destination.
+ */
+async function executeConversion() {
+    if (!convertPreviewResult || convertPreviewResult.blocks.length === 0) {
+        toastr.warning('No memories to convert. Run Preview first.', 'CharMemory');
+        return;
+    }
+
+    const context = getContext();
+    const avatar = characters[context.characterId]?.avatar;
+    if (!avatar) {
+        toastr.error('No character selected.', 'CharMemory');
+        return;
+    }
+
+    const destType = $('input[name="charMemory_convertDest"]:checked').val();
+    let destFileName;
+    if (destType === 'custom') {
+        destFileName = $('#charMemory_convertCustomName').val().trim();
+        if (!destFileName) {
+            toastr.warning('Enter a filename for custom output.', 'CharMemory');
+            return;
+        }
+    } else {
+        destFileName = getMemoryFileName();
+    }
+
+    // If destination file already exists, append
+    const existingContent = await readMemoriesForCharacter(avatar, destFileName);
+    let existingBlocks = [];
+    if (existingContent && existingContent.trim()) {
+        existingBlocks = parseMemories(existingContent);
+    }
+
+    const allBlocks = [...existingBlocks, ...convertPreviewResult.blocks];
+    await writeMemoriesForCharacter(serializeMemories(allBlocks), avatar, destFileName);
+
+    const count = countMemories(convertPreviewResult.blocks);
+    toastr.success(`Converted ${count} memories to ${destFileName}. Remember to hide or remove the original file from Data Bank to avoid duplicates.`, 'CharMemory', { timeOut: 8000 });
+    logActivity(`Converted ${count} memories from Data Bank file to ${destFileName}`);
+
+    // Reset preview
+    $('#charMemory_convertPreviewArea').hide();
+    convertPreviewResult = null;
+    updateStatusDisplay();
 }
 
 // Diagnostics state (session-only, not persisted)
@@ -1165,6 +1329,7 @@ $('#charMemory_groupExtractionPrompt').val(extension_settings[MODULE_NAME].group
     $('#charMemory_customSeparator').val(extension_settings[MODULE_NAME].customSeparator || '\\n\\n');
     $('#charMemory_chunkMetadata').prop('checked', !!extension_settings[MODULE_NAME].chunkMetadata);
     toggleChunkBoundaryUI(extension_settings[MODULE_NAME].chunkBoundary || 'block');
+    $('#charMemory_convertPrompt').val(extension_settings[MODULE_NAME].conversionPrompt || defaultConversionPrompt);
 
     // Provider settings
     populateProviderDropdown();
@@ -4082,11 +4247,12 @@ function setupListeners() {
     });
 
     // Chunk boundary format controls
-    $('#charMemory_chunkBoundary').off('change').on('change', function () {
+    $('#charMemory_chunkBoundary').off('change').on('change', async function () {
         const val = $(this).val();
         extension_settings[MODULE_NAME].chunkBoundary = val;
         saveSettingsDebounced();
         toggleChunkBoundaryUI(val);
+        await offerReformat();
     });
 
     $('#charMemory_customSeparator').off('input').on('input', function () {
@@ -4097,6 +4263,26 @@ function setupListeners() {
     $('#charMemory_chunkMetadata').off('change').on('change', function () {
         extension_settings[MODULE_NAME].chunkMetadata = $(this).prop('checked');
         saveSettingsDebounced();
+    });
+
+    // Convert tool
+    $('#charMemory_convertPreview').off('click').on('click', () => previewConversion());
+    $('#charMemory_convertExecute').off('click').on('click', () => executeConversion());
+    $('#charMemory_convertCancel').off('click').on('click', () => {
+        $('#charMemory_convertPreviewArea').hide();
+        convertPreviewResult = null;
+    });
+    $('#charMemory_restoreConvertPrompt').off('click').on('click', () => {
+        $('#charMemory_convertPrompt').val(defaultConversionPrompt);
+        extension_settings[MODULE_NAME].conversionPrompt = '';
+        saveSettingsDebounced();
+    });
+    $('#charMemory_convertPrompt').off('input').on('input', function () {
+        extension_settings[MODULE_NAME].conversionPrompt = $(this).val();
+        saveSettingsDebounced();
+    });
+    $('input[name="charMemory_convertDest"]').off('change').on('change', function () {
+        $('#charMemory_convertCustomName').prop('disabled', $(this).val() !== 'custom');
     });
 
     $('#charMemory_refreshDiag').off('click').on('click', function () {
