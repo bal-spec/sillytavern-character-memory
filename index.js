@@ -497,7 +497,53 @@ function unescapeAttr(text) {
     return String(text).replace(/&quot;/g, '"').replace(/&amp;/g, '&');
 }
 
-function serializeMemories(blocks) {
+/**
+ * Get the current memory format options from settings.
+ * @returns {{boundary: string, separator: string, metadata: boolean}}
+ */
+function getFormatOptions() {
+    const s = extension_settings[MODULE_NAME] || {};
+    const boundary = s.chunkBoundary || 'block';
+    let separator = '\n\n';
+    if (boundary === 'custom' && s.customSeparator) {
+        separator = s.customSeparator.replace(/\\n/g, '\n').replace(/\\t/g, '\t');
+    }
+    return { boundary, separator, metadata: !!s.chunkMetadata };
+}
+
+function serializeMemories(blocks, formatOverride) {
+    const fmt = formatOverride || getFormatOptions();
+
+    if (fmt.boundary === 'bullet') {
+        // Bullet-level: each bullet separated by separator (default \n\n)
+        const sep = fmt.separator || '\n\n';
+        const allBullets = [];
+        for (const b of blocks) {
+            for (const bullet of b.bullets) {
+                if (fmt.metadata) {
+                    allBullets.push(`[${b.date} | ${b.chat}] - ${bullet}`);
+                } else {
+                    allBullets.push(`- ${bullet}`);
+                }
+            }
+        }
+        return allBullets.join(sep);
+    }
+
+    if (fmt.boundary === 'custom') {
+        // Custom separator between blocks, optional metadata
+        return blocks.map(b => {
+            const bulletsText = b.bullets.map(bullet => {
+                if (fmt.metadata) {
+                    return `[${b.date} | ${b.chat}] - ${bullet}`;
+                }
+                return `- ${bullet}`;
+            }).join('\n');
+            return `<memory chat="${escapeAttr(b.chat)}" date="${escapeAttr(b.date)}">\n${bulletsText}\n</memory>`;
+        }).join(fmt.separator);
+    }
+
+    // Default block-level: unchanged original behavior
     return blocks.map(b => {
         const bulletsText = b.bullets.map(bullet => `- ${bullet}`).join('\n');
         return `<memory chat="${escapeAttr(b.chat)}" date="${escapeAttr(b.date)}">\n${bulletsText}\n</memory>`;
@@ -686,6 +732,43 @@ function convertHeuristic(content, format) {
         blocks: [{ chat: 'imported', date: today, bullets: sentences }],
         warnings,
     };
+}
+
+/**
+ * Convert file content to <memory> tag format using LLM.
+ * @param {string} content Raw file content.
+ * @param {string} charName Character name for prompt.
+ * @returns {Promise<{blocks: {chat: string, date: string, bullets: string[]}[], warnings: string[]}>}
+ */
+async function convertWithLLM(content, charName) {
+    const warnings = [];
+    const prompt = (extension_settings[MODULE_NAME].conversionPrompt || defaultConversionPrompt)
+        .replace(/\{\{charName\}\}/g, charName)
+        .replace(/\{\{sourceText\}\}/g, content);
+
+    const response = await callLLM(prompt, extension_settings[MODULE_NAME].responseLength || 2000, 'You are a text restructuring assistant. Preserve all information faithfully.');
+
+    if (!response || !response.trim()) {
+        warnings.push('LLM returned an empty response.');
+        return { blocks: [], warnings };
+    }
+
+    const blocks = parseMemories(response);
+    if (blocks.length === 0) {
+        // LLM may have returned plain bullets without <memory> tags — wrap them
+        const lines = response.split('\n').map(l => l.trim()).filter(l => l.startsWith('- '));
+        if (lines.length > 0) {
+            const now = new Date();
+            const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+            return {
+                blocks: [{ chat: 'imported', date: today, bullets: lines.map(l => l.slice(2).trim()) }],
+                warnings: ['LLM did not use <memory> tags — bullets wrapped automatically.'],
+            };
+        }
+        warnings.push('LLM response could not be parsed into memories.');
+    }
+
+    return { blocks, warnings };
 }
 
 // Diagnostics state (session-only, not persisted)
