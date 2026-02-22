@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.6.0
+
+### New Features
+
+- **Injection Viewer**: See exactly what memories, lorebook entries, and extension prompts were injected for each AI response — answering "what caused this response?"
+  - Syringe indicator icon on AI messages that have recorded injection data
+  - "View Injected" button in the message action menu (alongside Extract Here and Pin)
+  - Toggleable side drawer with collapsible sections for CharMemory, Lorebook Entries, and Extension Prompts
+  - Drawer auto-updates on new generations and persists open/closed state across sessions
+  - Injection data is stored per-message in chat metadata for historical review
+  - Click any past message's indicator to see what was injected for that specific generation
+
 ## 1.5.0
 
 ### New Features
