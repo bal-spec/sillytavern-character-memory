@@ -1187,6 +1187,7 @@ let lastDiagnostics = {
     timestamp: null,
 };
 let diagnosticsHistory = [];
+let pendingDiagnosticsMessageIndex = null;
 
 /**
  * Toggle provider settings panel visibility.
@@ -1610,7 +1611,11 @@ function ensureMetadata() {
         chat_metadata[MODULE_NAME] = {
             lastExtractedIndex: -1,
             messagesSinceExtraction: 0,
+            injectionData: {},
         };
+    }
+    if (!chat_metadata[MODULE_NAME].injectionData) {
+        chat_metadata[MODULE_NAME].injectionData = {};
     }
 }
 
@@ -3037,7 +3042,7 @@ function onWorldInfoActivated(entries) {
 /**
  * Capture diagnostics from extension prompts after generation.
  */
-function captureDiagnostics() {
+function captureDiagnostics(messageIndex) {
     const context = getContext();
     lastDiagnostics.extensionPrompts = {};
     lastDiagnostics.timestamp = new Date().toLocaleTimeString();
@@ -3059,6 +3064,43 @@ function captureDiagnostics() {
     // Store in history (keep last 5)
     diagnosticsHistory.unshift({ ...lastDiagnostics, worldInfoEntries: [...lastDiagnostics.worldInfoEntries] });
     if (diagnosticsHistory.length > 5) diagnosticsHistory.pop();
+
+    // Persist per-message injection snapshot
+    if (typeof messageIndex === 'number' && messageIndex >= 0) {
+        ensureMetadata();
+
+        // Extract memory bullets from Data Bank vector injection
+        const dbPrompt = lastDiagnostics.extensionPrompts['4_vectors_data_bank'];
+        const memories = [];
+        if (dbPrompt && dbPrompt.content) {
+            const bullets = dbPrompt.content.split('\n')
+                .map(line => line.trim())
+                .filter(line => line.startsWith('- '))
+                .map(line => line.slice(2).trim())
+                .filter(Boolean);
+            for (const b of bullets) {
+                memories.push({ text: b });
+            }
+        }
+
+        const snapshot = {
+            memories,
+            worldInfo: lastDiagnostics.worldInfoEntries.map(e => ({
+                comment: e.comment,
+                keys: e.keys,
+                content: e.content,
+            })),
+            extensionPrompts: Object.values(lastDiagnostics.extensionPrompts).map(p => ({
+                label: p.label,
+                content: p.content.substring(0, 500),
+                position: p.position,
+            })),
+            timestamp: lastDiagnostics.timestamp,
+        };
+
+        chat_metadata[MODULE_NAME].injectionData[messageIndex] = snapshot;
+        saveMetadataDebounced();
+    }
 
     updateDiagnosticsDisplay();
 }
