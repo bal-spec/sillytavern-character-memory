@@ -414,6 +414,7 @@ const defaultSettings = {
     customSeparator: '\\n\\n',
     chunkMetadata: false,
     conversionPrompt: '',
+    injectionDrawerOpen: false,
 };
 
 /**
@@ -2971,6 +2972,11 @@ async function onChatChanged() {
     const msgCount = context.chat ? context.chat.length : 0;
 
     logActivity(`Chat changed: "${charName}" chat=${chatId} (${msgCount} messages)`);
+
+    // Clear injection drawer on chat switch
+    $('#charMemory_drawerBody').html('<div class="charMemory_diagEmpty">Click the <i class="fa-solid fa-syringe"></i> icon on a message to view its injected context.</div>');
+    $('#charMemory_drawerMsgLabel').text('');
+    $('#charMemory_drawerFooter').text('');
 
     if (context.groupId) {
         const members = getGroupMembers();
