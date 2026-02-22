@@ -3100,9 +3100,20 @@ function captureDiagnostics(messageIndex) {
 
         chat_metadata[MODULE_NAME].injectionData[messageIndex] = snapshot;
         saveMetadataDebounced();
+
+        // Update the indicator now that the snapshot exists
+        const $mes = $(`#chat .mes[mesid="${messageIndex}"]`);
+        if ($mes.length) {
+            updateIndicatorForMessage($mes, messageIndex);
+        }
     }
 
     updateDiagnosticsDisplay();
+
+    // Auto-update injection drawer if open
+    if ($('#charMemory_injectionDrawer').hasClass('open') && typeof messageIndex === 'number' && messageIndex >= 0) {
+        showInjectionDrawer(messageIndex);
+    }
 }
 
 /**
@@ -4808,12 +4819,118 @@ function onViewInjectedClick() {
 }
 
 /**
- * Show the injection context drawer for a given message.
- * Stub — full implementation in a later task.
- * @param {number} messageIndex The message index in chat.
+ * Toggle the injection viewer drawer open/closed.
+ * @param {boolean} [forceState] If provided, force open (true) or closed (false).
+ */
+function toggleInjectionDrawer(forceState) {
+    const $drawer = $('#charMemory_injectionDrawer');
+    const $toggle = $('#charMemory_drawerToggle');
+    const isOpen = $drawer.hasClass('open');
+    const shouldOpen = forceState !== undefined ? forceState : !isOpen;
+
+    $drawer.toggleClass('open', shouldOpen);
+    $toggle.toggleClass('open', shouldOpen);
+
+    // Persist state
+    extension_settings[MODULE_NAME].injectionDrawerOpen = shouldOpen;
+    saveSettingsDebounced();
+}
+
+/**
+ * Show the injection drawer for a specific message.
+ * @param {number} messageIndex The chat message index to display.
  */
 function showInjectionDrawer(messageIndex) {
-    console.log(LOG_PREFIX, 'showInjectionDrawer called for message', messageIndex);
+    ensureMetadata();
+    const snapshot = chat_metadata[MODULE_NAME]?.injectionData?.[messageIndex];
+
+    const $body = $('#charMemory_drawerBody');
+    const $label = $('#charMemory_drawerMsgLabel');
+    const $footer = $('#charMemory_drawerFooter');
+
+    $label.text(`\u2014 Message #${messageIndex}`);
+
+    if (!snapshot) {
+        $body.html('<div class="charMemory_diagEmpty">No injection data recorded for this message.</div>');
+        $footer.text('');
+        toggleInjectionDrawer(true);
+        return;
+    }
+
+    let html = '';
+
+    // CharMemory section
+    const memCount = snapshot.memories?.length || 0;
+    html += '<div class="charMemory_drawerSection">';
+    html += '<div class="charMemory_drawerSectionHeader" data-section="memories">';
+    html += '<i class="fa-solid fa-chevron-down charMemory_drawerChevron"></i> ';
+    html += `<strong>CharMemory</strong> <span class="charMemory_drawerCount">(${memCount})</span>`;
+    html += '</div>';
+    html += '<div class="charMemory_drawerSectionBody">';
+    if (memCount > 0) {
+        for (const mem of snapshot.memories) {
+            html += `<div class="charMemory_drawerBullet">- ${escapeHtml(mem.text)}</div>`;
+        }
+    } else {
+        html += '<div class="charMemory_diagEmpty">No memories injected</div>';
+    }
+    html += '</div></div>';
+
+    // Lorebook Entries section
+    const wiCount = snapshot.worldInfo?.length || 0;
+    html += '<div class="charMemory_drawerSection">';
+    html += '<div class="charMemory_drawerSectionHeader" data-section="worldinfo">';
+    html += '<i class="fa-solid fa-chevron-down charMemory_drawerChevron"></i> ';
+    html += `<strong>Lorebook Entries</strong> <span class="charMemory_drawerCount">(${wiCount})</span>`;
+    html += '</div>';
+    html += '<div class="charMemory_drawerSectionBody">';
+    if (wiCount > 0) {
+        for (const entry of snapshot.worldInfo) {
+            html += '<div class="charMemory_drawerCard">';
+            html += `<div class="charMemory_drawerCardTitle">${escapeHtml(entry.comment)}</div>`;
+            if (entry.keys?.length > 0) {
+                html += `<div class="charMemory_drawerCardKeys">Keys: ${escapeHtml(entry.keys.join(', '))}</div>`;
+            }
+            if (entry.content) {
+                html += `<div class="charMemory_drawerCardContent">${escapeHtml(entry.content)}${entry.content.length >= 200 ? '...' : ''}</div>`;
+            }
+            html += '</div>';
+        }
+    } else {
+        html += '<div class="charMemory_diagEmpty">No lorebook entries activated</div>';
+    }
+    html += '</div></div>';
+
+    // Extension Prompts section
+    const epCount = snapshot.extensionPrompts?.length || 0;
+    html += '<div class="charMemory_drawerSection">';
+    html += '<div class="charMemory_drawerSectionHeader" data-section="prompts">';
+    html += '<i class="fa-solid fa-chevron-down charMemory_drawerChevron"></i> ';
+    html += `<strong>Extension Prompts</strong> <span class="charMemory_drawerCount">(${epCount})</span>`;
+    html += '</div>';
+    html += '<div class="charMemory_drawerSectionBody">';
+    if (epCount > 0) {
+        for (const prompt of snapshot.extensionPrompts) {
+            html += '<div class="charMemory_drawerCard">';
+            html += `<div class="charMemory_drawerCardTitle">${escapeHtml(prompt.label)}</div>`;
+            html += `<div class="charMemory_drawerCardContent">${escapeHtml(prompt.content)}${prompt.content.length >= 500 ? '...' : ''}</div>`;
+            html += '</div>';
+        }
+    } else {
+        html += '<div class="charMemory_diagEmpty">No extension prompts active</div>';
+    }
+    html += '</div></div>';
+
+    $body.html(html);
+    $footer.text(`Captured at ${snapshot.timestamp}`);
+
+    // Open the drawer
+    toggleInjectionDrawer(true);
+
+    // Highlight the selected message briefly
+    $('#chat .mes').removeClass('charMemory_highlightMes');
+    $(`#chat .mes[mesid="${messageIndex}"]`).addClass('charMemory_highlightMes');
+    setTimeout(() => $(`#chat .mes[mesid="${messageIndex}"]`).removeClass('charMemory_highlightMes'), 1500);
 }
 
 // ============ Batch Extraction ============
@@ -4980,6 +5097,24 @@ jQuery(async function () {
     const settingsHtml = await renderExtensionTemplateAsync('third-party/sillytavern-character-memory', 'settings');
     $('#extensions_settings2').append(settingsHtml);
 
+    // Injection viewer drawer — appended to body, outside extension panel
+    $('body').append(`
+        <div id="charMemory_injectionDrawer" class="charMemory_injectionDrawer">
+            <div class="charMemory_drawerHeader">
+                <span class="charMemory_drawerTitle">Injected Context</span>
+                <span class="charMemory_drawerMsgLabel" id="charMemory_drawerMsgLabel"></span>
+                <div class="charMemory_drawerClose" id="charMemory_drawerClose" title="Close"><i class="fa-solid fa-xmark"></i></div>
+            </div>
+            <div class="charMemory_drawerBody" id="charMemory_drawerBody">
+                <div class="charMemory_diagEmpty">Click the <i class="fa-solid fa-syringe"></i> icon on a message to view its injected context.</div>
+            </div>
+            <div class="charMemory_drawerFooter" id="charMemory_drawerFooter"></div>
+        </div>
+        <div id="charMemory_drawerToggle" class="charMemory_drawerToggle" title="Toggle injection viewer">
+            <i class="fa-solid fa-syringe"></i>
+        </div>
+    `);
+
     loadSettings();
     setupListeners();
     registerSlashCommands();
@@ -4999,6 +5134,23 @@ jQuery(async function () {
     // Diagnostics hooks
     eventSource.on(event_types.WORLD_INFO_ACTIVATED, onWorldInfoActivated);
     eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, captureDiagnostics);
+
+    // Injection drawer controls
+    $('#charMemory_drawerClose').on('click', () => toggleInjectionDrawer(false));
+    $('#charMemory_drawerToggle').on('click', () => toggleInjectionDrawer());
+
+    // Drawer section collapse/expand
+    $(document).on('click', '.charMemory_drawerSectionHeader', function () {
+        const $body = $(this).next('.charMemory_drawerSectionBody');
+        const $chevron = $(this).find('.charMemory_drawerChevron');
+        $body.slideToggle(150);
+        $chevron.toggleClass('collapsed');
+    });
+
+    // Restore drawer state from settings
+    if (extension_settings[MODULE_NAME].injectionDrawerOpen) {
+        toggleInjectionDrawer(true);
+    }
 
     console.log(LOG_PREFIX, 'Extension loaded');
 });
