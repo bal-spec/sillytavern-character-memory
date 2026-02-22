@@ -4644,6 +4644,13 @@ function updateIndicatorForMessage(mesElement, messageIndex) {
     if (messageIndex <= lastIdx && messageIndex >= 0) {
         $nameBlock.append('<span class="charMemory_extractedIndicator" title="Memory extracted"><i class="fa-solid fa-brain fa-xs"></i></span>');
     }
+
+    // Injection data indicator
+    $nameBlock.find('.charMemory_injectionIndicator').remove();
+    const hasInjectionData = chat_metadata[MODULE_NAME]?.injectionData?.[messageIndex];
+    if (hasInjectionData) {
+        $nameBlock.append('<span class="charMemory_injectionIndicator" title="Click to view injected context" data-mesid="' + messageIndex + '"><i class="fa-solid fa-syringe fa-xs"></i></span>');
+    }
 }
 
 /**
@@ -4683,7 +4690,7 @@ function addButtonsToExistingMessages() {
         if (!$extraBtns.length) return;
 
         // Skip if already injected
-        if ($extraBtns.find('.charMemory_extractHereBtn, .charMemory_pinMemoryBtn').length) return;
+        if ($extraBtns.find('.charMemory_extractHereBtn, .charMemory_pinMemoryBtn, .charMemory_viewInjectedBtn').length) return;
 
         // Pin as memory — all non-system messages
         $extraBtns.prepend(`<div class="mes_button charMemory_pinMemoryBtn" data-mesid="${mesId}" title="Pin as memory"><i class="fa-solid fa-bookmark"></i></div>`);
@@ -4691,6 +4698,8 @@ function addButtonsToExistingMessages() {
         // Extract from here — character messages only
         if (!msg.is_user) {
             $extraBtns.prepend(`<div class="mes_button charMemory_extractHereBtn" data-mesid="${mesId}" title="Extract memories up to here"><i class="fa-solid fa-brain"></i></div>`);
+            // View injected context
+            $extraBtns.prepend(`<div class="mes_button charMemory_viewInjectedBtn" data-mesid="${mesId}" title="View injected context"><i class="fa-solid fa-syringe"></i></div>`);
             updateIndicatorForMessage(this, mesId);
         }
     });
@@ -4714,7 +4723,7 @@ function onMessageRenderedAddButtons(messageIndex) {
     if (!$extraBtns.length) return;
 
     // Remove existing extension buttons to prevent duplicates
-    $extraBtns.find('.charMemory_extractHereBtn, .charMemory_pinMemoryBtn').remove();
+    $extraBtns.find('.charMemory_extractHereBtn, .charMemory_pinMemoryBtn, .charMemory_viewInjectedBtn').remove();
 
     // Pin as memory — available on all non-system messages (user + character)
     $extraBtns.prepend(`<div class="mes_button charMemory_pinMemoryBtn" data-mesid="${messageIndex}" title="Pin as memory"><i class="fa-solid fa-bookmark"></i></div>`);
@@ -4722,6 +4731,8 @@ function onMessageRenderedAddButtons(messageIndex) {
     // Extract from here — character messages only
     if (!msg.is_user) {
         $extraBtns.prepend(`<div class="mes_button charMemory_extractHereBtn" data-mesid="${messageIndex}" title="Extract memories up to here"><i class="fa-solid fa-brain"></i></div>`);
+        // View injected context
+        $extraBtns.prepend(`<div class="mes_button charMemory_viewInjectedBtn" data-mesid="${messageIndex}" title="View injected context"><i class="fa-solid fa-syringe"></i></div>`);
         updateIndicatorForMessage($mes, messageIndex);
     }
 }
@@ -4785,6 +4796,24 @@ async function onPinMemoryClick() {
 
     toastr.success(`${bullets.length} memor${bullets.length === 1 ? 'y' : 'ies'} pinned${targets.length > 1 ? ` to ${target.name}` : ''}!`, 'CharMemory');
     updateStatusDisplay();
+}
+
+/**
+ * Click handler for "View Injected" button and injection indicator.
+ */
+function onViewInjectedClick() {
+    const messageIndex = Number($(this).data('mesid'));
+    if (isNaN(messageIndex)) return;
+    showInjectionDrawer(messageIndex);
+}
+
+/**
+ * Show the injection context drawer for a given message.
+ * Stub — full implementation in a later task.
+ * @param {number} messageIndex The message index in chat.
+ */
+function showInjectionDrawer(messageIndex) {
+    console.log(LOG_PREFIX, 'showInjectionDrawer called for message', messageIndex);
 }
 
 // ============ Batch Extraction ============
@@ -4964,6 +4993,8 @@ jQuery(async function () {
     eventSource.on(event_types.USER_MESSAGE_RENDERED, onMessageRenderedAddButtons);
     $(document).on('click', '.charMemory_extractHereBtn', onExtractHereClick);
     $(document).on('click', '.charMemory_pinMemoryBtn', onPinMemoryClick);
+    $(document).on('click', '.charMemory_viewInjectedBtn', onViewInjectedClick);
+    $(document).on('click', '.charMemory_injectionIndicator', onViewInjectedClick);
 
     // Diagnostics hooks
     eventSource.on(event_types.WORLD_INFO_ACTIVATED, onWorldInfoActivated);

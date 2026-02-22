@@ -736,3 +736,29 @@
     flex-wrap: wrap;
     padding: 4px 0;
 }
+
+/* Injection viewer — per-message button */
+.charMemory_viewInjectedBtn {
+    cursor: pointer;
+    opacity: 0.7;
+    transition: opacity 0.15s;
+}
+.charMemory_viewInjectedBtn:hover {
+    opacity: 1;
+}
+
+/* Injection data indicator (syringe icon next to char name) */
+.charMemory_injectionIndicator {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 4px;
+    opacity: 0.35;
+    color: var(--SmartThemeQuoteColor, #e8a33d);
+    font-size: 0.75em;
+    vertical-align: middle;
+    cursor: pointer;
+    transition: opacity 0.15s;
+}
+.charMemory_injectionIndicator:hover {
+    opacity: 0.8;
+}
