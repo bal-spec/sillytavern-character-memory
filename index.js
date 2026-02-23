@@ -3100,7 +3100,7 @@ function captureDiagnostics(messageIndex) {
             })),
             extensionPrompts: Object.values(lastDiagnostics.extensionPrompts).map(p => ({
                 label: p.label,
-                content: p.content.substring(0, 500),
+                content: p.label === '4_vectors_data_bank' ? p.content : p.content.substring(0, 500),
                 position: p.position,
             })),
             timestamp: lastDiagnostics.timestamp,
@@ -4921,7 +4921,8 @@ function showInjectionDrawer(messageIndex) {
         for (const prompt of snapshot.extensionPrompts) {
             html += '<div class="charMemory_drawerCard">';
             html += `<div class="charMemory_drawerCardTitle">${escapeHtml(prompt.label)}</div>`;
-            html += `<div class="charMemory_drawerCardContent">${escapeHtml(prompt.content)}${prompt.content.length >= 500 ? '...' : ''}</div>`;
+            const isTruncated = prompt.label !== '4_vectors_data_bank' && prompt.content.length >= 500;
+            html += `<div class="charMemory_drawerCardContent" style="white-space:pre-wrap;">${escapeHtml(prompt.content)}${isTruncated ? '...' : ''}</div>`;
             html += '</div>';
         }
     } else {
