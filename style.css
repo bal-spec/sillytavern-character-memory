@@ -876,6 +876,14 @@
     border-top: 1px solid var(--SmartThemeBorderColor, rgba(128, 128, 128, 0.3));
     flex-shrink: 0;
 }
+.charMemory_drawerDiagLink {
+    cursor: pointer;
+    text-decoration: underline;
+    opacity: 0.8;
+}
+.charMemory_drawerDiagLink:hover {
+    opacity: 1;
+}
 
 /* Drawer toggle button */
 .charMemory_drawerToggle {

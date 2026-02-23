@@ -3298,7 +3298,7 @@ async function computeHealthScore() {
 function renderHealthStatusBarItem(result) {
     const classes = 'health-green health-yellow health-red health-unknown';
 
-    // Status bar dot
+    // Status bar dot — reflects all checks (settings + injection)
     const $dot = $('#charMemory_healthDot');
     const $label = $('#charMemory_healthLabel');
     $dot.removeClass(classes).addClass(`health-${result.level}`);
@@ -3306,18 +3306,42 @@ function renderHealthStatusBarItem(result) {
     const labels = { green: 'Healthy', yellow: 'Warnings', red: 'Issues', unknown: '\u2014' };
     $label.text(labels[result.level] || '\u2014');
 
-    const tooltip = result.level === 'unknown'
+    const statusTooltip = result.level === 'unknown'
         ? 'No character selected'
         : result.checks
             .filter(c => c.level !== 'green')
             .map(c => `[${c.level.toUpperCase()}] ${c.label}`)
             .join('\n') || 'All checks passed';
-    $('#charMemory_statHealth').attr('title', tooltip);
+    $('#charMemory_statHealth').attr('title', statusTooltip);
 
-    // Drawer header dot
-    $('#charMemory_drawerHealthDot')
-        .removeClass(classes).addClass(`health-${result.level}`)
-        .attr('title', tooltip);
+    // Drawer header dot — reflects injection state only (gray until generation)
+    const $drawerDot = $('#charMemory_drawerHealthDot');
+    const hasDiagnostics = !!lastDiagnostics.timestamp;
+    if (!hasDiagnostics) {
+        $drawerDot.removeClass(classes).addClass('health-unknown')
+            .attr('title', 'No generation captured yet.\nGenerate a message to check injection health.');
+        return;
+    }
+
+    // Build injection-specific stats for the tooltip
+    const injectionChecks = result.checks.filter(c =>
+        ['memories_injected', 'duplicate_detection', 'file_vectorized'].includes(c.id));
+    const memCheck = result.checks.find(c => c.id === 'memories_injected');
+    const dupeCheck = result.checks.find(c => c.id === 'duplicate_detection');
+    const vecCheck = result.checks.find(c => c.id === 'file_vectorized');
+
+    const drawerLevel = injectionChecks.some(c => c.level === 'red') ? 'red'
+        : injectionChecks.some(c => c.level === 'yellow') ? 'yellow'
+        : injectionChecks.length > 0 ? 'green' : 'unknown';
+
+    const lines = [];
+    if (vecCheck) lines.push(vecCheck.detail);
+    if (memCheck) lines.push(memCheck.detail);
+    if (dupeCheck && dupeCheck.level !== 'green') lines.push(dupeCheck.detail);
+    lines.push('', 'Open CharMemory panel \u2192 Diagnostics for full details.');
+
+    $drawerDot.removeClass(classes).addClass(`health-${drawerLevel}`)
+        .attr('title', lines.join('\n'));
 }
 
 /**
@@ -5168,7 +5192,7 @@ function showInjectionDrawer(messageIndex) {
     html += '</div></div>';
 
     $body.html(html);
-    $footer.text(`Captured at ${snapshot.timestamp}`);
+    $footer.html(`Captured at ${escapeHtml(snapshot.timestamp)} &middot; <span class="charMemory_drawerDiagLink" title="Open CharMemory panel and scroll to Diagnostics">Open Diagnostics</span>`);
 
     // Open the drawer
     toggleInjectionDrawer(true);
@@ -5385,6 +5409,16 @@ jQuery(async function () {
     // Injection drawer controls
     $('#charMemory_drawerClose').on('click', () => toggleInjectionDrawer(false));
     $('#charMemory_drawerToggle').on('click', () => toggleInjectionDrawer());
+
+    // Drawer "Open Diagnostics" link
+    $(document).on('click', '.charMemory_drawerDiagLink', function () {
+        const $diag = $('.charMemory_bottomDiagnostics');
+        if ($diag.length) {
+            $diag[0].scrollIntoView({ behavior: 'smooth', block: 'start' });
+            $diag.css('outline', '2px solid var(--SmartThemeQuoteColor, #e8a33d)');
+            setTimeout(() => $diag.css('outline', ''), 1500);
+        }
+    });
 
     // Drawer section collapse/expand
     $(document).on('click', '.charMemory_drawerSectionHeader', function () {
