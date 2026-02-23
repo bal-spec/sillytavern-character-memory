@@ -5077,13 +5077,11 @@ function onViewInjectedClick() {
 function toggleInjectionDrawer(forceState) {
     const $drawer = $('#charMemory_injectionDrawer');
     const $toggle = $('#charMemory_drawerToggle');
-    const $backdrop = $('#charMemory_drawerBackdrop');
     const isOpen = $drawer.hasClass('open');
     const shouldOpen = forceState !== undefined ? forceState : !isOpen;
 
     $drawer.toggleClass('open', shouldOpen);
     $toggle.toggleClass('open', shouldOpen);
-    $backdrop.toggleClass('open', shouldOpen);
 
     // Persist state
     extension_settings[MODULE_NAME].injectionDrawerOpen = shouldOpen;
@@ -5411,7 +5409,6 @@ jQuery(async function () {
 
     // Injection drawer controls
     $('#charMemory_drawerClose').on('click', () => toggleInjectionDrawer(false));
-    $('#charMemory_drawerBackdrop').on('click', () => toggleInjectionDrawer(false));
     $('#charMemory_drawerToggle').on('click', () => toggleInjectionDrawer());
 
     // Drawer "Open Diagnostics" link
@@ -5423,6 +5420,19 @@ jQuery(async function () {
             setTimeout(() => $diag.css('outline', ''), 1500);
         }
     });
+
+    // Swipe right to close drawer (touch devices)
+    let touchStartX = 0;
+    const drawer = document.getElementById('charMemory_injectionDrawer');
+    if (drawer) {
+        drawer.addEventListener('touchstart', (e) => {
+            touchStartX = e.touches[0].clientX;
+        }, { passive: true });
+        drawer.addEventListener('touchend', (e) => {
+            const deltaX = e.changedTouches[0].clientX - touchStartX;
+            if (deltaX > 60) toggleInjectionDrawer(false);
+        }, { passive: true });
+    }
 
     // Drawer section collapse/expand
     $(document).on('click', '.charMemory_drawerSectionHeader', function () {

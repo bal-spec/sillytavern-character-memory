@@ -830,19 +830,11 @@
     transform: translateX(0);
 }
 
-/* Backdrop — click outside drawer to close (works on both touch and mouse) */
+/* Backdrop is hidden — kept in DOM but not used as a click-to-close overlay
+   because it would interfere with the chat textarea. Instead, the drawer
+   is closed via the X button, the toggle tab, or swipe gestures. */
 .charMemory_drawerBackdrop {
     display: none;
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    z-index: 999;
-    background: rgba(0, 0, 0, 0.15);
-}
-.charMemory_drawerBackdrop.open {
-    display: block;
 }
 
 .charMemory_drawerHeader {
