@@ -772,6 +772,7 @@
     width: 320px;
     height: 100vh;
     background: var(--SmartThemeBlurTintColor, #1a1a2e);
+    color: var(--SmartThemeBodyColor, #ccc);
     border-left: 1px solid var(--SmartThemeBorderColor, rgba(128, 128, 128, 0.3));
     z-index: 1000;
     display: flex;
@@ -810,6 +811,8 @@
     padding: 4px;
     margin-left: auto;
     transition: opacity 0.15s;
+    color: var(--SmartThemeBodyColor, #ccc);
+    font-size: 1.1em;
 }
 .charMemory_drawerClose:hover {
     opacity: 1;
@@ -836,6 +839,7 @@
     top: 50%;
     transform: translateY(-50%);
     background: var(--SmartThemeBlurTintColor, #1a1a2e);
+    color: var(--SmartThemeBodyColor, #ccc);
     border: 1px solid var(--SmartThemeBorderColor, rgba(128, 128, 128, 0.3));
     border-right: none;
     border-radius: 6px 0 0 6px;
