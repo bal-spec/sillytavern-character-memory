@@ -3296,11 +3296,12 @@ async function computeHealthScore() {
  * Update the health dot and label in the status bar.
  */
 function renderHealthStatusBarItem(result) {
+    const classes = 'health-green health-yellow health-red health-unknown';
+
+    // Status bar dot
     const $dot = $('#charMemory_healthDot');
     const $label = $('#charMemory_healthLabel');
-
-    $dot.removeClass('health-green health-yellow health-red health-unknown')
-        .addClass(`health-${result.level}`);
+    $dot.removeClass(classes).addClass(`health-${result.level}`);
 
     const labels = { green: 'Healthy', yellow: 'Warnings', red: 'Issues', unknown: '\u2014' };
     $label.text(labels[result.level] || '\u2014');
@@ -3312,6 +3313,11 @@ function renderHealthStatusBarItem(result) {
             .map(c => `[${c.level.toUpperCase()}] ${c.label}`)
             .join('\n') || 'All checks passed';
     $('#charMemory_statHealth').attr('title', tooltip);
+
+    // Drawer header dot
+    $('#charMemory_drawerHealthDot')
+        .removeClass(classes).addClass(`health-${result.level}`)
+        .attr('title', tooltip);
 }
 
 /**
@@ -3562,9 +3568,10 @@ function updateDiagnosticsDisplay() {
     if (promptKeys.length > 0) {
         for (const key of promptKeys) {
             const p = prompts[key];
+            const isTruncated = key !== '4_vectors_data_bank' && p.content.length >= 300;
             html += `<div class="charMemory_diagCard">
                 <div class="charMemory_diagCardTitle">${escapeHtml(p.label)}</div>
-                <div class="charMemory_diagCardContent">${escapeHtml(p.content)}${p.content.length >= 300 ? '...' : ''}</div>
+                <div class="charMemory_diagCardContent" style="white-space:pre-wrap;">${escapeHtml(p.content)}${isTruncated ? '...' : ''}</div>
             </div>`;
         }
     } else {
@@ -5340,6 +5347,7 @@ jQuery(async function () {
     $('body').append(`
         <div id="charMemory_injectionDrawer" class="charMemory_injectionDrawer">
             <div class="charMemory_drawerHeader">
+                <span class="charMemory_healthDot" id="charMemory_drawerHealthDot" title="Injection health"></span>
                 <span class="charMemory_drawerTitle">Injected Context</span>
                 <span class="charMemory_drawerMsgLabel" id="charMemory_drawerMsgLabel"></span>
                 <div class="charMemory_drawerClose" id="charMemory_drawerClose" title="Close"><i class="fa-solid fa-xmark"></i></div>
