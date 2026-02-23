@@ -92,6 +92,8 @@ These memory files are then vectorized by **Vector Storage** (a standard extensi
 - **Non-destructive**: Only appends, never overwrites existing memories
 - **Multiple LLM sources**: Dedicated connection to an LLM provider via API (recommended), WebLLM (browser-local), or the Main LLM provider in use for the chat
 - **Memory/Lorebook diagnostics**: Shows you exactly what the LLM saw during its last generation to help debug memories and lorebook entries not showing up/triggering
+- **Injection Viewer**: Per-message side drawer showing exactly which memories, lorebook entries, and extension prompts were injected for any specific generation
+- **Injection Health Score**: Traffic-light indicator (green/yellow/red) that checks your Vector Storage configuration and flags issues like missing files, zero overlap, or duplicate memories
 
 ---
 
@@ -179,6 +181,7 @@ As you chat, open the extension to watch the **stats bar** at the top of the Cha
 - **Memory count**: Total individual memory bullets stored
 - **Progress**: Messages since last extraction vs. the auto-extract threshold (e.g., "1/20 msgs")
 - **Status**: "Ready" when extraction can fire, or a cooldown timer
+- **Health**: A colored dot indicating injection health — green (all checks passed), yellow (warnings), red (problems detected), or gray (not yet evaluated). Click it to jump to the Diagnostics panel for details. See [Injection Health Score](#injection-health-score) below.
 
 #### Your First Extraction
 
@@ -466,13 +469,113 @@ Click **Refresh** after generating a message to capture the current state.
 
 **Activated Entries — Last Generation** — Which specific lorebook entries actually fired during the last generation, based on their trigger keys matching the conversation. Unlike the static list above, this shows what was *actually injected* — so you can see if a lorebook entry you expected to fire didn't, or if unexpected entries are crowding out memory context.
 
-**Extension Prompts** — All content injected by extensions (including Vector Storage's memory retrieval and any other active extensions). This is the raw view of everything beyond the base conversation that the LLM received.
+**Extension Prompts** — All content injected by extensions (including Vector Storage's memory retrieval and any other active extensions). This is the raw view of everything beyond the base conversation that the LLM received. The `4_vectors_data_bank` entry shows the full content retrieved by Vector Storage — this is what gets injected into the LLM's context alongside the conversation.
+
+**Injection Health** — A health card showing the results of automated checks on your Vector Storage configuration. Each check is color-coded (green/yellow/red) with an explanation and recommendation if something needs attention. See [Injection Health Score](#injection-health-score) for details on each check.
 
 **Note on group chats**: In group chats, Diagnostics shows memory info for the first group member only. To check a specific character's memories, use View/Edit which shows all members.
 
 ### Why Memories and Lorebooks Both Appear
 
 CharMemory's diagnostics shows both memories and lorebooks because they're the two main sources of supplemental character context that get injected alongside the conversation. When debugging "the character doesn't remember X" or "the character is acting strangely," the answer often involves the interaction between these sources — not just one in isolation. The diagnostics panel gives you a single place to inspect everything the LLM saw beyond the chat messages themselves.
+
+---
+
+## Injection Viewer
+
+The **Injection Viewer** is a side drawer that shows you exactly what context was injected for any specific message. While Diagnostics gives you a snapshot of the *latest* generation, the Injection Viewer lets you inspect *any* past message — making it easy to compare what changed between generations.
+
+### Opening the Viewer
+
+On each character message, you'll see a small pen/quill icon (next to the edit and menu buttons). Click it to open the Injection Viewer drawer on the right side of the chat. The drawer title shows which message you're inspecting (e.g., "Message #999").
+
+You can also open the drawer from the small toggle tab on the right edge of the chat area, then click the icon on any message to load its data.
+
+### What the Viewer Shows
+
+The drawer has three collapsible sections:
+
+**CharMemory** — The specific memory bullets that Vector Storage retrieved and injected for this generation. Each bullet is listed individually with a count in the header (e.g., "CharMemory (17)"). This is the most direct answer to "what did my character remember when writing this message?"
+
+**Lorebook Entries** — Which World Info / lorebook entries were activated for this generation, based on keyword triggers matching the conversation. Each entry shows its name, trigger keys, and a preview of its content. If a lorebook entry you expected to fire isn't listed here, its keywords didn't match the recent conversation context.
+
+**Extension Prompts** — The raw content injected by all extensions, keyed by their injection position (e.g., `4_vectors_data_bank` for Vector Storage, `2_floating_prompt` for Author's Note). This is the unprocessed view — useful for seeing the exact text the LLM received, including `<memory>` block markup and chunk boundaries.
+
+### How Data is Captured
+
+Injection data is captured automatically at generation time — when the character produces a response, CharMemory takes a snapshot of all injected context at that moment. This means:
+
+- **Only character messages have injection data** — user messages don't trigger a generation, so there's nothing to capture
+- **Older messages may not have data** — snapshots are only captured while the extension is installed and active. Messages generated before installation show "Click the icon on a message to view its injected context"
+- **Data persists for the session** — injection snapshots are stored in chat metadata, so they survive page refreshes within the same chat
+
+### Closing the Viewer
+
+Click the **X** button in the top-right corner of the drawer, or **swipe right** on the drawer (useful on touch devices like iPads where the X button may be near the screen edge).
+
+### Using Injection Viewer with Diagnostics
+
+The Injection Viewer and Diagnostics serve complementary purposes:
+
+| | Injection Viewer | Diagnostics |
+|---|---|---|
+| **Scope** | Per-message — inspect any past generation | Latest generation only |
+| **Detail** | Parsed sections (memories, lorebooks, prompts) | Full system overview (file status, vectorization, health) |
+| **Best for** | "What did the character know when it wrote *this* message?" | "Is my setup working correctly?" |
+| **Access** | Pen icon on any character message | Tools → Diagnostics → Refresh |
+
+For a complete picture, use both: Diagnostics to verify your setup is healthy, and the Injection Viewer to spot-check individual messages.
+
+---
+
+## Injection Health Score
+
+The **Health Score** is a traffic-light indicator that automatically checks whether your Vector Storage settings are configured correctly for CharMemory. It surfaces problems and recommendations so you don't have to manually inspect raw injected content.
+
+### Where It Appears
+
+- **Stats bar** — A colored dot as the 5th item in the CharMemory stats bar. Click it to scroll directly to the Diagnostics panel for details.
+- **Injection Viewer drawer** — A health dot in the drawer header, with a tooltip showing injection-specific stats (memories injected, duplicates detected). This dot stays gray until a generation has been captured.
+- **Diagnostics panel** — A detailed health card showing each check with its status and recommendations.
+
+### Health Levels
+
+| Color | Meaning |
+|-------|---------|
+| **Green** | All checks passed — your setup looks good |
+| **Yellow** | Warnings — things work but could be improved |
+| **Red** | Problems — something is preventing memories from being injected correctly |
+| **Gray** | Not yet evaluated — no character selected or no generation captured |
+
+### What It Checks
+
+The health score runs up to 7 checks, depending on what data is available:
+
+| Check | What it looks for | When it's a problem |
+|-------|-------------------|---------------------|
+| **Files enabled** | "Enable for files" is checked in Vector Storage | RED if disabled — memories are stored but never retrieved |
+| **Memory file exists** | A memory file exists in the character's Data Bank | RED if missing — nothing to vectorize |
+| **File vectorized** | The memory file has been chunked into vectors | RED if 0 chunks — file exists but hasn't been processed |
+| **Chunk overlap** | Vector Storage's Data Bank overlap setting | YELLOW if 0% — memory blocks on chunk boundaries get split, causing duplicates |
+| **Chunk size** | Vector Storage's Data Bank chunk size | YELLOW if too small (blocks get split) or too large (loses retrieval granularity) |
+| **Memories injected** | Whether memory bullets appeared in the last generation | RED if file exists and is vectorized but 0 memories were injected |
+| **Duplicate detection** | Whether the same bullet appears multiple times in injected content | YELLOW if duplicates found — usually means chunk overlap or chunk size needs adjustment |
+
+Checks 1–5 run immediately when you open a chat. Checks 6–7 only run after a generation has been captured (since they inspect injected content).
+
+### Acting on Health Warnings
+
+**RED: Files not enabled** — Open Extensions → Vector Storage → check "Enable for files" under File vectorization settings.
+
+**RED: Memory file not found** — Run an extraction first (Extract Now or wait for auto-extraction). The memory file is created on first extraction.
+
+**RED: File not vectorized** — The file exists but hasn't been processed. Try generating a message (Vector Storage processes files on generation), or check that your vectorization source is configured and working.
+
+**YELLOW: Chunk overlap is 0%** — Open Vector Storage → Data Bank files row → increase the overlap setting. 15% is a good starting point. Without overlap, `<memory>` blocks that land on a chunk boundary get split between two chunks, and neither half retrieves cleanly — this is the most common cause of duplicate memories in injected content.
+
+**YELLOW: Chunk size issues** — If too small, individual memory blocks get split across chunks. If too large, you lose retrieval granularity (Vector Storage retrieves whole chunks, so a huge chunk means lots of irrelevant context). See [Recommended Vector Storage Settings](#recommended-vector-storage-settings) for guidance.
+
+**YELLOW: Duplicates detected** — The same memory bullet appeared multiple times in the injected content. This usually means chunk boundaries are splitting `<memory>` blocks. Increase chunk overlap and/or adjust chunk size so blocks fit cleanly within chunks. After changing settings, purge vectors and revectorize the file.
 
 ---
 
@@ -672,13 +775,15 @@ After converting existing files or making manual edits, **purge vectors and reve
 
 **"0 memories" after extraction**: Check the Activity Log (Tools → Activity Log). It shows exactly what happened — whether the LLM returned NO_NEW_MEMORIES, produced unparseable output, or encountered an error. Enable **Verbose** mode to see the full prompt and response. If verbose mode shows `finish=length` with completion tokens used but 0 chars content, you're using a reasoning/thinking model that needs a higher **Max response length** — increase it to 2000–3000.
 
-**Memories extracted but character doesn't use them**: Vector Storage isn't set up, or "Enable for files" isn't checked. Open Diagnostics and verify the Vectorization line shows "Yes" and that Injected Memories shows entries after generating a message.
+**Memories extracted but character doesn't use them**: Vector Storage isn't set up, or "Enable for files" isn't checked. Open Diagnostics and verify the Vectorization line shows "Yes" and that Injected Memories shows entries after generating a message. The [Injection Health Score](#injection-health-score) in the stats bar will show RED if Vector Storage isn't configured — click the dot for details.
 
 **Extraction never fires automatically**: Check that "Enable automatic extraction" is checked, the message counter is actually incrementing (visible in the stats bar), and the cooldown timer isn't blocking it.
 
 **"No unprocessed messages" on Extract Now**: All messages have been processed. Click **Reset Extraction State** first to re-read from the beginning, then **Extract Now** again.
 
-**Duplicate or overlapping memories**: The extraction prompt includes existing memories as reference and instructs the LLM not to repeat them. If duplicates still appear, use **Consolidate** to merge them — review the preview before applying.
+**Duplicate or overlapping memories in the memory file**: The extraction prompt includes existing memories as reference and instructs the LLM not to repeat them. If duplicates still appear, use **Consolidate** to merge them — review the preview before applying.
+
+**Duplicate memories in injected content**: If the same memory bullet appears multiple times when injected (check the [Injection Viewer](#injection-viewer) on a character message), this is a Vector Storage chunking issue — not an extraction issue. A `<memory>` block is landing on a chunk boundary and getting split, so both halves contain overlapping bullets. Fix: increase **chunk overlap** (15% recommended) and adjust **chunk size** so blocks fit cleanly. After changing settings, purge vectors and revectorize. The health score flags this automatically as a YELLOW warning.
 
 **Memories contain facts from existing memories, not from the chat**: The model is too weak to respect the boundary markers. Switch to a larger model (DeepSeek V3.1+, GLM 4.7).
 
