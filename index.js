@@ -3056,7 +3056,7 @@ function captureDiagnostics(messageIndex) {
     if (context.extensionPrompts) {
         for (const [key, value] of Object.entries(context.extensionPrompts)) {
             if (value && value.value) {
-                const maxLen = key === '4_vectors_data_bank' ? 2000 : 300;
+                const maxLen = key === '4_vectors_data_bank' ? 16000 : 300;
                 lastDiagnostics.extensionPrompts[key] = {
                     label: key,
                     content: typeof value.value === 'string' ? value.value.substring(0, maxLen) : String(value.value).substring(0, maxLen),
@@ -3075,11 +3075,13 @@ function captureDiagnostics(messageIndex) {
     if (typeof messageIndex === 'number' && messageIndex >= 0) {
         ensureMetadata();
 
-        // Extract memory bullets from Data Bank vector injection
-        const dbPrompt = lastDiagnostics.extensionPrompts['4_vectors_data_bank'];
+        // Extract memory bullets from the FULL (untruncated) Data Bank vector content
+        // so we capture all injected memories, not just those within the 2000-char display limit
+        const fullDbContent = context.extensionPrompts?.['4_vectors_data_bank']?.value;
         const memories = [];
-        if (dbPrompt && dbPrompt.content) {
-            const bullets = dbPrompt.content.split('\n')
+        if (fullDbContent) {
+            const raw = typeof fullDbContent === 'string' ? fullDbContent : String(fullDbContent);
+            const bullets = raw.split('\n')
                 .map(line => line.trim())
                 .filter(line => line.startsWith('- '))
                 .map(line => line.slice(2).trim())
