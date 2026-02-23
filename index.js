@@ -5077,11 +5077,13 @@ function onViewInjectedClick() {
 function toggleInjectionDrawer(forceState) {
     const $drawer = $('#charMemory_injectionDrawer');
     const $toggle = $('#charMemory_drawerToggle');
+    const $backdrop = $('#charMemory_drawerBackdrop');
     const isOpen = $drawer.hasClass('open');
     const shouldOpen = forceState !== undefined ? forceState : !isOpen;
 
     $drawer.toggleClass('open', shouldOpen);
     $toggle.toggleClass('open', shouldOpen);
+    $backdrop.toggleClass('open', shouldOpen);
 
     // Persist state
     extension_settings[MODULE_NAME].injectionDrawerOpen = shouldOpen;
@@ -5381,6 +5383,7 @@ jQuery(async function () {
             </div>
             <div class="charMemory_drawerFooter" id="charMemory_drawerFooter"></div>
         </div>
+        <div id="charMemory_drawerBackdrop" class="charMemory_drawerBackdrop"></div>
         <div id="charMemory_drawerToggle" class="charMemory_drawerToggle" title="Toggle injection viewer">
             <i class="fa-solid fa-syringe"></i>
         </div>
@@ -5408,6 +5411,7 @@ jQuery(async function () {
 
     // Injection drawer controls
     $('#charMemory_drawerClose').on('click', () => toggleInjectionDrawer(false));
+    $('#charMemory_drawerBackdrop').on('click', () => toggleInjectionDrawer(false));
     $('#charMemory_drawerToggle').on('click', () => toggleInjectionDrawer());
 
     // Drawer "Open Diagnostics" link

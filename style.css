@@ -830,6 +830,21 @@
     transform: translateX(0);
 }
 
+/* Backdrop — click outside drawer to close (works on both touch and mouse) */
+.charMemory_drawerBackdrop {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 999;
+    background: rgba(0, 0, 0, 0.15);
+}
+.charMemory_drawerBackdrop.open {
+    display: block;
+}
+
 .charMemory_drawerHeader {
     display: flex;
     align-items: center;
@@ -853,10 +868,15 @@
 .charMemory_drawerClose {
     cursor: pointer;
     opacity: 0.6;
-    padding: 4px;
+    padding: 8px;
     margin-left: auto;
     transition: opacity 0.15s;
     color: var(--SmartThemeBodyColor, #ccc);
+    min-width: 32px;
+    min-height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     font-size: 1.1em;
 }
 .charMemory_drawerClose:hover {
