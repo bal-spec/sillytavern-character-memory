@@ -63,6 +63,27 @@
     text-overflow: ellipsis;
 }
 
+/* Health indicator in status bar */
+.charMemory_statHealth {
+    cursor: pointer;
+}
+.charMemory_statHealth:hover {
+    opacity: 0.85;
+}
+.charMemory_healthDot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: var(--SmartThemeBorderColor, #555);
+    transition: background 0.3s;
+}
+.charMemory_healthDot.health-green  { background: #4a4; }
+.charMemory_healthDot.health-yellow { background: #e8a33d; }
+.charMemory_healthDot.health-red    { background: #c44; }
+.charMemory_healthDot.health-unknown { background: var(--SmartThemeBorderColor, #555); }
+
 .charMemory_groupAvatar {
     width: 18px;
     height: 18px;
@@ -269,6 +290,30 @@
     opacity: 0.5;
     font-style: italic;
     margin: 4px 0;
+}
+
+/* Health check cards in diagnostics */
+.charMemory_healthCheck .charMemory_diagCardTitle {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* Per-message health notes in injection drawer */
+.charMemory_drawerHealthNote {
+    padding: 6px 8px;
+    margin-bottom: 8px;
+    font-size: 0.85em;
+    border-radius: 4px;
+    line-height: 1.4;
+}
+.charMemory_drawerHealthNote--red {
+    color: #c44;
+    background: rgba(204, 68, 68, 0.1);
+}
+.charMemory_drawerHealthNote--yellow {
+    color: #e8a33d;
+    background: rgba(232, 163, 61, 0.1);
 }
 
 /* Activity Log */

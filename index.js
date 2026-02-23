@@ -1605,6 +1605,7 @@ $('#charMemory_groupExtractionPrompt').val(extension_settings[MODULE_NAME].group
     toggleProviderSettings(extension_settings[MODULE_NAME].source);
 
     updateStatusDisplay();
+    updateHealthIndicator();
 }
 
 function ensureMetadata() {
@@ -3025,6 +3026,7 @@ async function onChatChanged() {
 
     updateStatusDisplay();
     updateAllIndicators();
+    updateHealthIndicator();
 
     // Inject buttons on already-rendered messages (with a small delay to
     // ensure the DOM has finished rendering the chat)
@@ -3117,6 +3119,7 @@ function captureDiagnostics(messageIndex) {
     }
 
     updateDiagnosticsDisplay();
+    updateHealthIndicator();
 
     // Auto-update injection drawer if open
     if ($('#charMemory_injectionDrawer').hasClass('open') && typeof messageIndex === 'number' && messageIndex >= 0) {
@@ -3152,6 +3155,203 @@ async function checkVectorizationStatus(fileUrl) {
         return hashes.length > 0 ? { chunks: hashes.length, source, model } : false;
     } catch {
         return null;
+    }
+}
+
+// ============ Injection Health Score ============
+
+/**
+ * Compute the injection health score by running a series of checks
+ * against Vector Storage settings and the current diagnostics state.
+ * @returns {Promise<{level: 'green'|'yellow'|'red'|'unknown', checks: {id: string, level: string, label: string, detail: string}[]}>}
+ */
+async function computeHealthScore() {
+    const checks = [];
+    const targets = getMemoryTargets();
+    if (targets.length === 0) return { level: 'unknown', checks: [] };
+
+    const target = targets[0];
+    const vecSettings = extension_settings.vectors;
+
+    // Check 1: Vector Storage enabled for files
+    const filesEnabled = vecSettings?.enabled_files;
+    checks.push({
+        id: 'vec_files_enabled',
+        level: filesEnabled ? 'green' : 'red',
+        label: 'Vector Storage for files',
+        detail: filesEnabled
+            ? 'Enabled — Data Bank files will be vectorized'
+            : 'Disabled — memories will not be vectorized or injected. Enable "Files" in Vector Storage settings.',
+    });
+
+    if (!filesEnabled) return { level: 'red', checks };
+
+    // Check 2: Memory file exists
+    const attachment = findMemoryAttachmentForCharacter(target.avatar, target.fileName);
+    checks.push({
+        id: 'memory_file_exists',
+        level: attachment ? 'green' : 'red',
+        label: 'Memory file in Data Bank',
+        detail: attachment
+            ? `Found: ${target.fileName}`
+            : `Not found: ${target.fileName}. Extract memories first.`,
+    });
+
+    if (!attachment) {
+        const level = checks.some(c => c.level === 'red') ? 'red'
+            : checks.some(c => c.level === 'yellow') ? 'yellow' : 'green';
+        return { level, checks };
+    }
+
+    // Check 3: File vectorized
+    const vecStatus = await checkVectorizationStatus(attachment.url);
+    if (vecStatus === null) {
+        checks.push({ id: 'file_vectorized', level: 'red', label: 'File vectorization',
+            detail: 'Could not check vectorization status. Vector Storage may not be enabled for files.' });
+    } else if (vecStatus === false) {
+        checks.push({ id: 'file_vectorized', level: 'red', label: 'File vectorization',
+            detail: 'File exists but has 0 vector chunks. It has not been vectorized yet.' });
+    } else {
+        const via = vecStatus.model ? `${vecStatus.source}/${vecStatus.model}` : vecStatus.source;
+        checks.push({ id: 'file_vectorized', level: 'green', label: 'File vectorization',
+            detail: `Vectorized: ${vecStatus.chunks} chunk${vecStatus.chunks === 1 ? '' : 's'} via ${via}` });
+    }
+
+    // Check 4: Chunk overlap
+    const overlapPct = vecSettings?.overlap_percent_db ?? 0;
+    const chunkSizeDb = vecSettings?.chunk_size_db ?? 2500;
+    if (overlapPct === 0) {
+        const recommended = Math.round(chunkSizeDb * 0.15);
+        checks.push({ id: 'chunk_overlap', level: 'yellow', label: 'Chunk overlap',
+            detail: `Overlap is 0%. Memory blocks that span chunk boundaries may be split. Recommended: 10-25% (~${recommended} chars at current chunk size).` });
+    } else {
+        const overlapChars = Math.round(chunkSizeDb * overlapPct / 100);
+        checks.push({ id: 'chunk_overlap', level: 'green', label: 'Chunk overlap',
+            detail: `${overlapPct}% (~${overlapChars} chars) — helps prevent memory blocks from being split.` });
+    }
+
+    // Check 5: Chunk size vs memory block size
+    try {
+        const content = await getFileAttachment(attachment.url);
+        const blocks = parseMemories(content || '');
+        if (blocks.length > 0) {
+            const totalChars = blocks.reduce((sum, b) => {
+                const blockText = b.bullets.map(bul => `- ${bul}`).join('\n');
+                return sum + blockText.length + 80; // ~80 chars for <memory> tag overhead
+            }, 0);
+            const avgBlockSize = Math.round(totalChars / blocks.length);
+
+            if (chunkSizeDb > 0 && chunkSizeDb < avgBlockSize) {
+                checks.push({ id: 'chunk_size', level: 'yellow', label: 'Chunk size',
+                    detail: `Chunk size (${chunkSizeDb}) is smaller than average memory block (${avgBlockSize} chars). Blocks will be split across chunks. Consider increasing chunk size.` });
+            } else if (chunkSizeDb > 0 && chunkSizeDb > avgBlockSize * 4) {
+                checks.push({ id: 'chunk_size', level: 'yellow', label: 'Chunk size',
+                    detail: `Chunk size (${chunkSizeDb}) is much larger than average memory block (${avgBlockSize} chars). Retrieval may be less selective as chunks grow.` });
+            } else {
+                checks.push({ id: 'chunk_size', level: 'green', label: 'Chunk size',
+                    detail: `Chunk size (${chunkSizeDb}) is appropriate for average memory block size (${avgBlockSize} chars).` });
+            }
+        }
+    } catch { /* file read failed, skip */ }
+
+    // Checks 6-7: Only run after a generation has been captured
+    const dbPrompt = lastDiagnostics.extensionPrompts?.['4_vectors_data_bank'];
+    if (dbPrompt && dbPrompt.content) {
+        const injectedBullets = dbPrompt.content.split('\n')
+            .map(line => line.trim())
+            .filter(line => line.startsWith('- '))
+            .map(line => line.slice(2).trim())
+            .filter(Boolean);
+
+        // Check 6: Memories actually injected
+        if (injectedBullets.length === 0) {
+            checks.push({ id: 'memories_injected', level: 'yellow', label: 'Memories in injection',
+                detail: 'Vector data was injected but no memory bullets found. The content may be from other Data Bank files.' });
+        } else {
+            checks.push({ id: 'memories_injected', level: 'green', label: 'Memories in injection',
+                detail: `${injectedBullets.length} memor${injectedBullets.length === 1 ? 'y' : 'ies'} found in last injection.` });
+
+            // Check 7: Duplicate detection
+            const uniqueBullets = new Set(injectedBullets);
+            const dupeCount = injectedBullets.length - uniqueBullets.size;
+            if (dupeCount > 0) {
+                checks.push({ id: 'duplicate_detection', level: 'yellow', label: 'Duplicate memories',
+                    detail: `${dupeCount} duplicate${dupeCount === 1 ? '' : 's'} found (${injectedBullets.length} total, ${uniqueBullets.size} unique). This typically means chunk boundaries are splitting memory blocks. Increase chunk overlap or chunk size.` });
+            } else {
+                checks.push({ id: 'duplicate_detection', level: 'green', label: 'Duplicate memories',
+                    detail: `No duplicates — all ${injectedBullets.length} injected memories are unique.` });
+            }
+        }
+    } else if (lastDiagnostics.timestamp) {
+        checks.push({ id: 'memories_injected', level: 'red', label: 'Memories in injection',
+            detail: 'No memory content was injected in the last generation. Check that Vector Storage is enabled and the file is vectorized.' });
+    }
+
+    const level = checks.some(c => c.level === 'red') ? 'red'
+        : checks.some(c => c.level === 'yellow') ? 'yellow' : 'green';
+    return { level, checks };
+}
+
+/**
+ * Update the health dot and label in the status bar.
+ */
+function renderHealthStatusBarItem(result) {
+    const $dot = $('#charMemory_healthDot');
+    const $label = $('#charMemory_healthLabel');
+
+    $dot.removeClass('health-green health-yellow health-red health-unknown')
+        .addClass(`health-${result.level}`);
+
+    const labels = { green: 'Healthy', yellow: 'Warnings', red: 'Issues', unknown: '\u2014' };
+    $label.text(labels[result.level] || '\u2014');
+
+    const tooltip = result.level === 'unknown'
+        ? 'No character selected'
+        : result.checks
+            .filter(c => c.level !== 'green')
+            .map(c => `[${c.level.toUpperCase()}] ${c.label}`)
+            .join('\n') || 'All checks passed';
+    $('#charMemory_statHealth').attr('title', tooltip);
+}
+
+/**
+ * Render the detailed health card in the diagnostics panel.
+ */
+function renderHealthDiagnosticsCard(result) {
+    const $card = $('#charMemory_healthCard');
+    if (!$card.length) return;
+
+    const colors = { green: '#4a4', yellow: '#e8a33d', red: '#c44', unknown: 'var(--SmartThemeBorderColor, #555)' };
+    const icons = { green: 'fa-circle-check', yellow: 'fa-triangle-exclamation', red: 'fa-circle-xmark', unknown: 'fa-circle-question' };
+    const titles = { green: 'All checks passed', yellow: 'Warnings detected', red: 'Issues found', unknown: 'No character selected' };
+
+    let html = `<strong style="color:${colors[result.level]};">
+        <i class="fa-solid ${icons[result.level]} fa-sm"></i>
+        Injection Health: ${titles[result.level]}
+    </strong>`;
+
+    for (const check of result.checks) {
+        html += `<div class="charMemory_diagCard charMemory_healthCheck">
+            <div class="charMemory_diagCardTitle" style="color:${colors[check.level]};">
+                <i class="fa-solid ${icons[check.level]} fa-xs"></i> ${escapeHtml(check.label)}
+            </div>
+            <div class="charMemory_diagCardContent">${escapeHtml(check.detail)}</div>
+        </div>`;
+    }
+
+    $card.html(html);
+}
+
+/**
+ * Run health checks and update both status bar and diagnostics display.
+ */
+async function updateHealthIndicator() {
+    try {
+        const result = await computeHealthScore();
+        renderHealthStatusBarItem(result);
+        renderHealthDiagnosticsCard(result);
+    } catch (err) {
+        console.warn(LOG_PREFIX, 'Health check failed:', err);
     }
 }
 
@@ -3199,6 +3399,9 @@ function updateDiagnosticsDisplay() {
     if (!container.length) return;
 
     let html = '';
+
+    // Health score placeholder — populated async by updateHealthIndicator()
+    html += '<div id="charMemory_healthCard" class="charMemory_diagSection"></div>';
 
     // Timestamp
     if (lastDiagnostics.timestamp) {
@@ -4609,6 +4812,16 @@ function setupListeners() {
         toastr.info('Diagnostics refreshed.', 'CharMemory');
     });
 
+    // Health indicator click — scroll to diagnostics
+    $('#charMemory_statHealth').off('click').on('click', function () {
+        const $diag = $('.charMemory_bottomDiagnostics');
+        if ($diag.length) {
+            $diag[0].scrollIntoView({ behavior: 'smooth', block: 'start' });
+            $diag.css('outline', '2px solid var(--SmartThemeQuoteColor, #e8a33d)');
+            setTimeout(() => $diag.css('outline', ''), 1500);
+        }
+    });
+
     $('#charMemory_clearLog').off('click').on('click', function () {
         activityLog = [];
         updateActivityLogDisplay();
@@ -4867,8 +5080,25 @@ function showInjectionDrawer(messageIndex) {
 
     let html = '';
 
-    // CharMemory section
+    // Per-message health notes
     const memCount = snapshot.memories?.length || 0;
+    if (memCount === 0) {
+        html += '<div class="charMemory_drawerHealthNote charMemory_drawerHealthNote--red">'
+            + '<i class="fa-solid fa-circle-xmark fa-xs"></i> No memories injected for this message. '
+            + 'Check the health indicator in the status bar.'
+            + '</div>';
+    } else {
+        const uniqueTexts = new Set(snapshot.memories.map(m => m.text));
+        const dupeCount = memCount - uniqueTexts.size;
+        if (dupeCount > 0) {
+            html += '<div class="charMemory_drawerHealthNote charMemory_drawerHealthNote--yellow">'
+                + `<i class="fa-solid fa-triangle-exclamation fa-xs"></i> ${dupeCount} duplicate memor${dupeCount === 1 ? 'y' : 'ies'} detected. `
+                + 'This may indicate chunk boundary issues in Vector Storage.'
+                + '</div>';
+        }
+    }
+
+    // CharMemory section
     html += '<div class="charMemory_drawerSection">';
     html += '<div class="charMemory_drawerSectionHeader" data-section="memories">';
     html += '<i class="fa-solid fa-chevron-down charMemory_drawerChevron"></i> ';
