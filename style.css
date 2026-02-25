@@ -84,6 +84,13 @@
 .charMemory_healthDot.health-red    { background: #c44; }
 .charMemory_healthDot.health-unknown { background: var(--SmartThemeBorderColor, #555); }
 
+/* Larger, more visible health dot for the drawer header */
+#charMemory_drawerHealthDot {
+    width: 10px;
+    height: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
 .charMemory_groupAvatar {
     width: 18px;
     height: 18px;
@@ -815,6 +822,7 @@
     top: 0;
     right: 0;
     width: 320px;
+    max-width: 40vw;
     height: 100vh;
     background: var(--SmartThemeBlurTintColor, #1a1a2e);
     color: var(--SmartThemeBodyColor, #ccc);
@@ -881,12 +889,18 @@
     padding: 8px 12px;
 }
 
-.charMemory_drawerFooter {
-    padding: 6px 12px;
+.charMemory_drawerToolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 12px;
     font-size: 0.8em;
-    opacity: 0.5;
-    border-top: 1px solid var(--SmartThemeBorderColor, rgba(128, 128, 128, 0.3));
+    opacity: 0.6;
+    border-bottom: 1px solid var(--SmartThemeBorderColor, rgba(128, 128, 128, 0.15));
     flex-shrink: 0;
+}
+.charMemory_drawerFooter {
+    display: none;
 }
 .charMemory_drawerDiagLink {
     cursor: pointer;
@@ -918,7 +932,7 @@
     opacity: 0.9;
 }
 .charMemory_drawerToggle.open {
-    right: 320px;
+    right: min(320px, 40vw);
 }
 
 /* Drawer sections */

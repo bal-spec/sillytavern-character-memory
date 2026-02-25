@@ -1,5 +1,15 @@
 # CharMemory — SillyTavern Extension
 
+## Git / GitHub
+
+This repo belongs to the `bal-spec` GitHub account. Before any `git push` or `gh` commands, run:
+
+```
+gh auth switch --user bal-spec
+```
+
+Do this at the start of every session — the active account resets to `dsayed` between sessions.
+
 ## What This Is
 
 A SillyTavern extension that automatically extracts structured character memories from chat messages, stores them as markdown in the character's Data Bank, and relies on Vector Storage for retrieval at generation time.

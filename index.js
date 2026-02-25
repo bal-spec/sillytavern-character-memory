@@ -2977,6 +2977,7 @@ async function onChatChanged() {
     // Clear injection drawer on chat switch
     $('#charMemory_drawerBody').html('<div class="charMemory_diagEmpty">Click the <i class="fa-solid fa-syringe"></i> icon on a message to view its injected context.</div>');
     $('#charMemory_drawerMsgLabel').text('');
+    $('#charMemory_drawerToolbar').html('');
     $('#charMemory_drawerFooter').text('');
 
     if (context.groupId) {
@@ -5098,13 +5099,13 @@ function showInjectionDrawer(messageIndex) {
 
     const $body = $('#charMemory_drawerBody');
     const $label = $('#charMemory_drawerMsgLabel');
-    const $footer = $('#charMemory_drawerFooter');
+    const $toolbar = $('#charMemory_drawerToolbar');
 
     $label.text(`\u2014 Message #${messageIndex}`);
 
     if (!snapshot) {
         $body.html('<div class="charMemory_diagEmpty">No injection data recorded for this message.</div>');
-        $footer.text('');
+        $toolbar.html('');
         toggleInjectionDrawer(true);
         return;
     }
@@ -5192,7 +5193,7 @@ function showInjectionDrawer(messageIndex) {
     html += '</div></div>';
 
     $body.html(html);
-    $footer.html(`Captured at ${escapeHtml(snapshot.timestamp)} &middot; <span class="charMemory_drawerDiagLink" title="Open CharMemory panel and scroll to Diagnostics">Open Diagnostics</span>`);
+    $toolbar.html(`<span>Captured at ${escapeHtml(snapshot.timestamp)}</span><span class="charMemory_drawerDiagLink" title="Open CharMemory panel and scroll to Diagnostics">Diagnostics</span>`);
 
     // Open the drawer
     toggleInjectionDrawer(true);
@@ -5376,6 +5377,7 @@ jQuery(async function () {
                 <span class="charMemory_drawerMsgLabel" id="charMemory_drawerMsgLabel"></span>
                 <div class="charMemory_drawerClose" id="charMemory_drawerClose" title="Close"><i class="fa-solid fa-xmark"></i></div>
             </div>
+            <div class="charMemory_drawerToolbar" id="charMemory_drawerToolbar"></div>
             <div class="charMemory_drawerBody" id="charMemory_drawerBody">
                 <div class="charMemory_diagEmpty">Click the <i class="fa-solid fa-syringe"></i> icon on a message to view its injected context.</div>
             </div>
