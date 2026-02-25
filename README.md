@@ -511,7 +511,14 @@ Injection data is captured automatically at generation time — when the charact
 
 ### Closing the Viewer
 
-Click the **X** button in the top-right corner of the drawer, or **swipe right** on the drawer (useful on touch devices like iPads where the X button may be near the screen edge).
+Click the **X** button in the top-right corner of the drawer, or **swipe right** on the drawer (touch devices).
+
+### Toolbar
+
+Just below the header, a toolbar shows the capture timestamp and a **Diagnostics** link:
+
+- **On desktop**: Clicking "Diagnostics" opens the Extensions panel and scrolls to the CharMemory diagnostics section.
+- **On touch devices** (iPad, phones): Clicking "Diagnostics" shows an inline health summary directly in the drawer — no need to navigate away from the chat. Tap it again to dismiss.
 
 ### Using Injection Viewer with Diagnostics
 
@@ -535,7 +542,7 @@ The **Health Score** is a traffic-light indicator that automatically checks whet
 ### Where It Appears
 
 - **Stats bar** — A colored dot as the 5th item in the CharMemory stats bar. Click it to scroll directly to the Diagnostics panel for details.
-- **Injection Viewer drawer** — A health dot in the drawer header, with a tooltip showing injection-specific stats (memories injected, duplicates detected). This dot stays gray until a generation has been captured.
+- **Injection Viewer drawer** — A colored dot in the drawer header, with a tooltip showing injection-specific stats (memories injected, duplicates detected). This dot stays gray until a generation has been captured. On touch devices, the "Diagnostics" link in the toolbar also shows the full health check results inline.
 - **Diagnostics panel** — A detailed health card showing each check with its status and recommendations.
 
 ### Health Levels
