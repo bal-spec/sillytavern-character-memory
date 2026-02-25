@@ -5413,13 +5413,38 @@ jQuery(async function () {
     $('#charMemory_drawerClose').on('click', () => toggleInjectionDrawer(false));
     $('#charMemory_drawerToggle').on('click', () => toggleInjectionDrawer());
 
-    // Drawer "Open Diagnostics" link
+    // Drawer "Open Diagnostics" link — opens extension panel and scrolls to diagnostics
     $(document).on('click', '.charMemory_drawerDiagLink', function () {
+        // First try to scroll to diagnostics if already visible
         const $diag = $('.charMemory_bottomDiagnostics');
-        if ($diag.length) {
+        if ($diag.length && $diag.is(':visible')) {
             $diag[0].scrollIntoView({ behavior: 'smooth', block: 'start' });
             $diag.css('outline', '2px solid var(--SmartThemeQuoteColor, #e8a33d)');
             setTimeout(() => $diag.css('outline', ''), 1500);
+            return;
+        }
+        // Try to open the extensions drawer and expand CharMemory
+        try {
+            const navButtons = document.querySelectorAll('#top-settings-holder .drawer-icon');
+            const extButton = Array.from(navButtons).find(b => b.title === 'Extensions');
+            if (extButton) extButton.click();
+            setTimeout(() => {
+                const charMemDrawer = document.querySelector('#charMemory_settings .inline-drawer');
+                if (charMemDrawer && !charMemDrawer.classList.contains('open')) {
+                    const toggle = charMemDrawer.querySelector('.inline-drawer-toggle');
+                    if (toggle) toggle.click();
+                }
+                setTimeout(() => {
+                    const $d = $('.charMemory_bottomDiagnostics');
+                    if ($d.length) {
+                        $d[0].scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        $d.css('outline', '2px solid var(--SmartThemeQuoteColor, #e8a33d)');
+                        setTimeout(() => $d.css('outline', ''), 1500);
+                    }
+                }, 300);
+            }, 300);
+        } catch (e) {
+            console.log(LOG_PREFIX, 'Could not open diagnostics panel:', e);
         }
     });
 

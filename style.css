@@ -88,8 +88,13 @@
 #charMemory_drawerHealthDot {
     width: 10px;
     height: 10px;
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    background: rgba(128, 128, 128, 0.4);
 }
+#charMemory_drawerHealthDot.health-green  { background: #4a4; }
+#charMemory_drawerHealthDot.health-yellow { background: #e8a33d; }
+#charMemory_drawerHealthDot.health-red    { background: #c44; }
+#charMemory_drawerHealthDot.health-unknown { background: rgba(128, 128, 128, 0.4); }
 
 .charMemory_groupAvatar {
     width: 18px;
