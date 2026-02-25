@@ -84,17 +84,16 @@
 .charMemory_healthDot.health-red    { background: #c44; }
 .charMemory_healthDot.health-unknown { background: var(--SmartThemeBorderColor, #555); }
 
-/* Larger, more visible health dot for the drawer header */
+/* Drawer health dot — uses FA icon colored via `color` property */
 #charMemory_drawerHealthDot {
-    width: 10px;
-    height: 10px;
-    border: 1px solid rgba(255, 255, 255, 0.25);
-    background: rgba(128, 128, 128, 0.4);
+    color: rgba(128, 128, 128, 0.6);
+    flex-shrink: 0;
+    line-height: 1;
 }
-#charMemory_drawerHealthDot.health-green  { background: #4a4; }
-#charMemory_drawerHealthDot.health-yellow { background: #e8a33d; }
-#charMemory_drawerHealthDot.health-red    { background: #c44; }
-#charMemory_drawerHealthDot.health-unknown { background: rgba(128, 128, 128, 0.4); }
+#charMemory_drawerHealthDot.health-green  { color: #4a4; }
+#charMemory_drawerHealthDot.health-yellow { color: #e8a33d; }
+#charMemory_drawerHealthDot.health-red    { color: #c44; }
+#charMemory_drawerHealthDot.health-unknown { color: rgba(128, 128, 128, 0.6); }
 
 .charMemory_groupAvatar {
     width: 18px;
@@ -914,6 +913,14 @@
 }
 .charMemory_drawerDiagLink:hover {
     opacity: 1;
+}
+
+/* Health popup shown inline on touch devices */
+.charMemory_drawerHealthPopup {
+    margin-bottom: 10px;
+    border: 1px solid var(--SmartThemeBorderColor, rgba(128, 128, 128, 0.3));
+    border-radius: 4px;
+    background: rgba(128, 128, 128, 0.05);
 }
 
 /* Drawer toggle button */

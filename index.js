@@ -5081,6 +5081,15 @@ function toggleInjectionDrawer(forceState) {
     const isOpen = $drawer.hasClass('open');
     const shouldOpen = forceState !== undefined ? forceState : !isOpen;
 
+    // Position drawer below ST's top bar so header isn't clipped by browser chrome
+    if (shouldOpen) {
+        const topBar = document.getElementById('top-settings-holder');
+        if (topBar) {
+            const topOffset = topBar.getBoundingClientRect().bottom;
+            $drawer.css({ top: topOffset + 'px', height: `calc(100vh - ${topOffset}px)` });
+        }
+    }
+
     $drawer.toggleClass('open', shouldOpen);
     $toggle.toggleClass('open', shouldOpen);
 
@@ -5372,7 +5381,7 @@ jQuery(async function () {
     $('body').append(`
         <div id="charMemory_injectionDrawer" class="charMemory_injectionDrawer">
             <div class="charMemory_drawerHeader">
-                <span class="charMemory_healthDot" id="charMemory_drawerHealthDot" title="Injection health"></span>
+                <i class="fa-solid fa-circle" id="charMemory_drawerHealthDot" title="Injection health" style="font-size:10px;"></i>
                 <span class="charMemory_drawerTitle">Injected Context</span>
                 <span class="charMemory_drawerMsgLabel" id="charMemory_drawerMsgLabel"></span>
                 <div class="charMemory_drawerClose" id="charMemory_drawerClose" title="Close"><i class="fa-solid fa-xmark"></i></div>
@@ -5414,8 +5423,48 @@ jQuery(async function () {
     $('#charMemory_drawerToggle').on('click', () => toggleInjectionDrawer());
 
     // Drawer "Open Diagnostics" link — opens extension panel and scrolls to diagnostics
-    $(document).on('click', '.charMemory_drawerDiagLink', function () {
-        // First try to scroll to diagnostics if already visible
+    // Drawer "Diagnostics" link — touch devices get an inline popup, desktop navigates to the panel
+    $(document).on('click', '.charMemory_drawerDiagLink', async function () {
+        const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+
+        if (isTouchDevice) {
+            // Show health summary inline in the drawer body
+            const result = await computeHealthScore();
+            let html = '<div class="charMemory_drawerHealthPopup">';
+            html += '<div class="charMemory_drawerSectionHeader" style="cursor:default;">';
+            html += '<strong>Injection Health</strong></div>';
+            if (result.level === 'unknown') {
+                html += '<div class="charMemory_diagEmpty">No character selected or no data available.</div>';
+            } else if (result.checks.length === 0) {
+                html += '<div class="charMemory_diagEmpty">No checks to run.</div>';
+            } else {
+                for (const check of result.checks) {
+                    const icon = check.level === 'green' ? 'fa-circle-check'
+                        : check.level === 'yellow' ? 'fa-triangle-exclamation' : 'fa-circle-xmark';
+                    const color = check.level === 'green' ? '#4a4'
+                        : check.level === 'yellow' ? '#e8a33d' : '#c44';
+                    html += `<div style="padding:4px 8px;display:flex;gap:6px;align-items:start;">`;
+                    html += `<i class="fa-solid ${icon}" style="color:${color};margin-top:2px;flex-shrink:0;"></i>`;
+                    html += `<div><strong>${escapeHtml(check.label)}</strong><br>`;
+                    html += `<span style="opacity:0.7;font-size:0.9em;">${escapeHtml(check.detail)}</span></div>`;
+                    html += `</div>`;
+                }
+            }
+            html += '<div style="padding:6px 8px;font-size:0.8em;opacity:0.5;">';
+            html += 'Full diagnostics: Extensions \u2192 Character Memory \u2192 Diagnostics</div>';
+            html += '</div>';
+
+            // Insert at top of drawer body
+            const $popup = $('#charMemory_drawerBody .charMemory_drawerHealthPopup');
+            if ($popup.length) {
+                $popup.remove(); // Toggle off if already showing
+            } else {
+                $('#charMemory_drawerBody').prepend(html);
+            }
+            return;
+        }
+
+        // Desktop: scroll to diagnostics if visible, otherwise open the extensions panel
         const $diag = $('.charMemory_bottomDiagnostics');
         if ($diag.length && $diag.is(':visible')) {
             $diag[0].scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -5423,7 +5472,6 @@ jQuery(async function () {
             setTimeout(() => $diag.css('outline', ''), 1500);
             return;
         }
-        // Try to open the extensions drawer and expand CharMemory
         try {
             const navButtons = document.querySelectorAll('#top-settings-holder .drawer-icon');
             const extButton = Array.from(navButtons).find(b => b.title === 'Extensions');
