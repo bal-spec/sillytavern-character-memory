@@ -183,6 +183,8 @@ As you chat, open the extension to watch the **stats bar** at the top of the Cha
 - **Status**: "Ready" when extraction can fire, or a cooldown timer
 - **Health**: A colored dot indicating injection health — green (all checks passed), yellow (warnings), red (problems detected), or gray (not yet evaluated). Click it to jump to the Diagnostics panel for details. See [Injection Health Score](#injection-health-score) below.
 
+![Stats bar showing file name, memory count, extraction progress, status, and green health dot](images/23-stats-bar-health.png)
+
 #### Your First Extraction
 
 You don't have to wait for the auto-extraction threshold. There are two ways to extract right away:
@@ -235,6 +237,8 @@ The Vector Storage panel has two rows of file settings: **Message attachments** 
 | **Chunk overlap** | 15% | ~450 chars of overlap at 3000 chunk size. Catches memory blocks that straddle a chunk boundary. Without overlap, a block landing exactly on the split gets half in one chunk and half in another, making neither retrievable cleanly. |
 | **Retrieve chunks** | 5 | How many memory chunks are retrieved per generation. At ~2 blocks per chunk, that's roughly 10 memory blocks — enough context without flooding the prompt. Going too high (20+) effectively dumps the whole file, defeating the purpose of semantic search. |
 
+Not sure if your settings are right? The [Injection Health Score](#injection-health-score) checks your chunk size, overlap, and other Vector Storage settings automatically — look for the colored dot in the stats bar.
+
 #### Local vs API-Based Vectorization
 
 **Local (Transformers)** runs the embedding model in your browser. It's the simplest option — no API key, no cost, no privacy concerns (memories never leave your machine). For retrieval quality, local is perfectly adequate: embedding is a much simpler task than generation, and for a typical CharMemory use case (dozens to low hundreds of memory bullets), the semantic gaps between relevant and irrelevant memories are wide enough that any reasonable model catches them.
@@ -255,7 +259,9 @@ The retrieval quality difference between local and hosted embeddings is negligib
 
 #### Verify It's Working
 
-After extracting some memories and chatting further, use the [Diagnostics](#using-diagnostics) tab to verify memories are being vectorized and injected. See the Diagnostics section below for details.
+After extracting some memories and chatting further, the quickest check is the **health dot** in the CharMemory stats bar — green means your Vector Storage settings are correct and memories are being injected. If it's yellow or red, click it to jump to Diagnostics where each issue is explained with a recommendation. See [Injection Health Score](#injection-health-score) for details on what it checks.
+
+For a deeper look, use [Diagnostics](#using-diagnostics) to see the exact memories that were injected in the last generation, or the [Injection Viewer](#injection-viewer) to inspect what any specific past message received.
 
 ---
 
@@ -500,6 +506,10 @@ The drawer has three collapsible sections:
 **Lorebook Entries** — Which World Info / lorebook entries were activated for this generation, based on keyword triggers matching the conversation. Each entry shows its name, trigger keys, and a preview of its content. If a lorebook entry you expected to fire isn't listed here, its keywords didn't match the recent conversation context.
 
 **Extension Prompts** — The raw content injected by all extensions, keyed by their injection position (e.g., `4_vectors_data_bank` for Vector Storage, `2_floating_prompt` for Author's Note). This is the unprocessed view — useful for seeing the exact text the LLM received, including `<memory>` block markup and chunk boundaries.
+
+![Injection Viewer showing lorebook entries that were activated for a message](images/21-injection-viewer-lorebooks.png)
+
+![Injection Viewer showing 17 extracted memories injected for a message](images/22-injection-viewer-memories.png)
 
 ### How Data is Captured
 

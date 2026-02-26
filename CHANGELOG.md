@@ -11,6 +11,24 @@
   - Drawer auto-updates on new generations and persists open/closed state across sessions
   - Injection data is stored per-message in chat metadata for historical review
   - Click any past message's indicator to see what was injected for that specific generation
+  - Toolbar with capture timestamp and diagnostics link
+  - Swipe-to-close on touch devices
+- **Injection Health Score**: Traffic-light indicator (green/yellow/red/gray) that automatically checks your Vector Storage configuration and flags issues like missing files, zero overlap, or duplicate memories.
+  - Health dot in the stats bar (5th item) — click to jump to Diagnostics
+  - Health dot in the Injection Viewer drawer header — shows injection-specific stats on hover
+  - Health card in the Diagnostics panel with per-check status and recommendations
+  - Runs up to 7 checks: files enabled, memory file exists, file vectorized, chunk overlap, chunk size, memories injected, duplicate detection
+
+### Improvements
+
+- **Full Data Bank content in diagnostics**: Extension Prompts section in both the Injection Viewer and Diagnostics now shows the complete injected content, not truncated previews.
+- **Touch-friendly diagnostics**: On iPad and other touch devices, the Diagnostics link in the Injection Viewer shows an inline health summary directly in the drawer instead of navigating to the Extensions panel.
+- **Theme-compatible icons**: Drawer icons and indicator dots are visible across all SillyTavern themes (dark, light, OLED).
+
+### Bug Fixes
+
+- **Fix iPad header clipping**: Drawer header no longer clips behind the iPad notch/safe area.
+- **Fix memory parsing in diagnostics**: Memories are now parsed from the full injected content rather than truncated diagnostic data.
 
 ## 1.5.0
 
