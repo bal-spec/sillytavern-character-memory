@@ -1992,6 +1992,16 @@ async function writeMemoriesForCharacter(content, avatar, fileName) {
     saveSettingsDebounced();
 }
 
+/** Strip non-diegetic content: code blocks, details, tables, HTML tags, excessive newlines. */
+function stripNonDiegetic(text) {
+    return text
+        .replace(/```[\s\S]*?```/g, '')
+        .replace(/<details[\s\S]*?<\/details>/gi, '')
+        .replace(/\|[^\n]*\|(?:\n\|[^\n]*\|)*/g, '')
+        .replace(/<[^>]*>/g, '')
+        .replace(/\n{3,}/g, '\n\n');
+}
+
 /**
  * Collect recent messages for extraction.
  * @param {Object} options
@@ -2028,12 +2038,7 @@ function collectRecentMessages({ endIndex = null, chatArray = null, lastExtracte
         // Skip true system messages (narrator/UI messages with no real content)
         if (msg.is_system && !msg.is_user && !msg.name) continue;
         // Strip non-diegetic content: markdown tables, code blocks (image prompts), HTML tags
-        let text = msg.mes;
-        text = text.replace(/```[\s\S]*?```/g, '');                    // code blocks (image prompts)
-        text = text.replace(/<details[\s\S]*?<\/details>/gi, '');      // collapsed details sections
-        text = text.replace(/\|[^\n]*\|(?:\n\|[^\n]*\|)*/g, '');       // markdown tables
-        text = text.replace(/<[^>]*>/g, '');                           // HTML tags
-        text = text.replace(/\n{3,}/g, '\n\n').trim();                 // collapse whitespace
+        let text = stripNonDiegetic(msg.mes).trim();
         if (!text) continue;
         lines.push(`${msg.name}: ${text}`);
     }
