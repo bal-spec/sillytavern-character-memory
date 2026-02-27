@@ -385,3 +385,26 @@ export function formatChatMessages(chatArray, startIndex, endIndex) {
         messageCount: lines.length,
     };
 }
+
+// --- Prompt template substitution ---
+
+/**
+ * Substitute CharMemory template variables in a prompt string.
+ * @param {string} template Prompt template with {{variable}} placeholders.
+ * @param {Object} vars Variable values to substitute.
+ * @param {string} [vars.charName]
+ * @param {string} [vars.charCard]
+ * @param {string} [vars.existingMemories]
+ * @param {string} [vars.recentMessages]
+ * @param {string} [vars.participants]
+ * @returns {string} Prompt with variables replaced.
+ */
+export function substitutePromptTemplate(template, vars) {
+    let result = template;
+    if (vars.charName != null) result = result.replace(/\{\{charName\}\}/g, vars.charName);
+    if (vars.charCard != null) result = result.replace(/\{\{charCard\}\}/g, vars.charCard);
+    result = result.replace(/\{\{existingMemories\}\}/g, vars.existingMemories || '(none yet)');
+    if (vars.recentMessages != null) result = result.replace(/\{\{recentMessages\}\}/g, vars.recentMessages);
+    if (vars.participants != null) result = result.replace(/\{\{participants\}\}/g, vars.participants);
+    return result;
+}

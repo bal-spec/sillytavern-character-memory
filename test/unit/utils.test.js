@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { truncateText, reindexEditingSet, stripNonDiegetic, formatChatMessages } from '../../lib.js';
+import { truncateText, reindexEditingSet, stripNonDiegetic, formatChatMessages, substitutePromptTemplate } from '../../lib.js';
 
 // ─── truncateText ──────────────────────────────────────────────────────
 
@@ -190,5 +190,46 @@ describe('formatChatMessages', () => {
         const chat = [makeMsg('A', 'msg')];
         const result = formatChatMessages(chat, 5, 10);
         expect(result.text).toBe('');
+    });
+});
+
+// ─── substitutePromptTemplate ───────────────────────────────────────
+
+describe('substitutePromptTemplate', () => {
+    const template = 'Name: {{charName}}\nCard: {{charCard}}\nMemories: {{existingMemories}}\nMessages: {{recentMessages}}';
+
+    it('substitutes all template variables', () => {
+        const result = substitutePromptTemplate(template, {
+            charName: 'Flux',
+            charCard: 'A cat',
+            existingMemories: '- Likes fish',
+            recentMessages: 'Alex: Hello\n\nFlux: Meow',
+        });
+        expect(result).toBe('Name: Flux\nCard: A cat\nMemories: - Likes fish\nMessages: Alex: Hello\n\nFlux: Meow');
+    });
+
+    it('replaces multiple occurrences of the same variable', () => {
+        const t = '{{charName}} says hi. {{charName}} waves.';
+        const result = substitutePromptTemplate(t, { charName: 'Flux' });
+        expect(result).toBe('Flux says hi. Flux waves.');
+    });
+
+    it('substitutes {{participants}} when provided', () => {
+        const t = 'Participants: {{participants}}';
+        const result = substitutePromptTemplate(t, { participants: 'Alice, Bob' });
+        expect(result).toBe('Participants: Alice, Bob');
+    });
+
+    it('leaves unmatched variables as-is', () => {
+        const t = '{{charName}} and {{unknownVar}}';
+        const result = substitutePromptTemplate(t, { charName: 'Flux' });
+        expect(result).toContain('{{unknownVar}}');
+    });
+
+    it('uses "(none yet)" default for missing existingMemories', () => {
+        const result = substitutePromptTemplate(template, {
+            charName: 'Flux', charCard: 'A cat', recentMessages: 'hi',
+        });
+        expect(result).toContain('(none yet)');
     });
 });

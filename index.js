@@ -2037,6 +2037,27 @@ function formatChatMessages(chatArray, startIndex, endIndex) {
 }
 
 /**
+ * Substitute CharMemory template variables in a prompt string.
+ * @param {string} template Prompt template with {{variable}} placeholders.
+ * @param {Object} vars Variable values to substitute.
+ * @param {string} [vars.charName]
+ * @param {string} [vars.charCard]
+ * @param {string} [vars.existingMemories]
+ * @param {string} [vars.recentMessages]
+ * @param {string} [vars.participants]
+ * @returns {string} Prompt with variables replaced.
+ */
+function substitutePromptTemplate(template, vars) {
+    let result = template;
+    if (vars.charName != null) result = result.replace(/\{\{charName\}\}/g, vars.charName);
+    if (vars.charCard != null) result = result.replace(/\{\{charCard\}\}/g, vars.charCard);
+    result = result.replace(/\{\{existingMemories\}\}/g, vars.existingMemories || '(none yet)');
+    if (vars.recentMessages != null) result = result.replace(/\{\{recentMessages\}\}/g, vars.recentMessages);
+    if (vars.participants != null) result = result.replace(/\{\{participants\}\}/g, vars.participants);
+    return result;
+}
+
+/**
  * Collect recent messages for extraction.
  * @param {Object} options
  * @param {number|null} options.endIndex Optional end message index (inclusive). Defaults to last message.
@@ -2676,12 +2697,8 @@ function buildExtractionPrompt(target, existingMemories, recentMessages, allTarg
         messages = truncateText(messages, messagesBudget);
     }
 
-    prompt = prompt.replace(/\{\{charName\}\}/g, charName);
-    prompt = prompt.replace(/\{\{charCard\}\}/g, charCard);
-    prompt = prompt.replace(/\{\{existingMemories\}\}/g, memories);
-    prompt = prompt.replace(/\{\{recentMessages\}\}/g, messages);
-
-    // Group-only: inject participants list (everyone except the target character)
+    // Build participants string for group chats
+    let participants = undefined;
     if (isGroup) {
         const context = getContext();
         const userName = context.name1 || 'User';
@@ -2689,8 +2706,16 @@ function buildExtractionPrompt(target, existingMemories, recentMessages, allTarg
             .filter(t => t.name !== charName)
             .map(t => t.name);
         otherNames.unshift(`${userName} (user)`);
-        prompt = prompt.replace(/\{\{participants\}\}/g, otherNames.join(', '));
+        participants = otherNames.join(', ');
     }
+
+    prompt = substitutePromptTemplate(prompt, {
+        charName,
+        charCard,
+        existingMemories: memories,
+        recentMessages: messages,
+        participants,
+    });
 
     // Let ST handle {{char}}, {{user}}, etc.
     prompt = substituteParamsExtended(prompt);
