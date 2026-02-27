@@ -350,6 +350,7 @@ const PROVIDER_PRESETS = {
         defaultModel: '',
         allowCustomUrl: true,
         helpUrl: '',
+        useProxy: true,
     },
     nvidia: {
         name: 'NVIDIA',
@@ -2207,19 +2208,22 @@ async function generateOpenAICompatibleResponse(baseUrl, apiKey, model, messages
 
     // Route through ST server proxy if provider requires it (CORS bypass)
     if (preset.useProxy) {
+        const proxyBody = {
+            chat_completion_source: 'custom',
+            custom_url: baseUrl,
+            model,
+            messages,
+            max_tokens: maxTokens,
+            temperature: 0.3,
+            stream: false,
+        };
+        if (apiKey) {
+            proxyBody.custom_include_headers = `Authorization: Bearer ${apiKey}`;
+        }
         const response = await fetch('/api/backends/chat-completions/generate', {
             method: 'POST',
             headers: getRequestHeaders(),
-            body: JSON.stringify({
-                chat_completion_source: 'custom',
-                custom_url: baseUrl,
-                custom_include_headers: `Authorization: Bearer ${apiKey}`,
-                model,
-                messages,
-                max_tokens: maxTokens,
-                temperature: 0.3,
-                stream: false,
-            }),
+            body: JSON.stringify(proxyBody),
         });
 
         if (!response.ok) {
@@ -2458,14 +2462,17 @@ async function fetchProviderModels(providerKey) {
 
     // Route through ST server proxy if provider requires it (CORS bypass)
     if (preset.useProxy) {
+        const proxyBody = {
+            chat_completion_source: 'custom',
+            custom_url: baseUrl,
+        };
+        if (providerSettings.apiKey) {
+            proxyBody.custom_include_headers = `Authorization: Bearer ${providerSettings.apiKey}`;
+        }
         const response = await fetch('/api/backends/chat-completions/status', {
             method: 'POST',
             headers: getRequestHeaders(),
-            body: JSON.stringify({
-                chat_completion_source: 'custom',
-                custom_url: baseUrl,
-                custom_include_headers: `Authorization: Bearer ${providerSettings.apiKey}`,
-            }),
+            body: JSON.stringify(proxyBody),
         });
         if (!response.ok) {
             if (verbose) logActivity(`Models (proxy) HTTP ${response.status} — ST server error`, 'error');
