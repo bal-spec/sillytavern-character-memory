@@ -1315,8 +1315,12 @@ function updateProviderUI() {
         $('#charMemory_providerBaseUrl').val('');
     }
 
+    // Connect button row: show when provider supports model fetching
+    const hasModelsEndpoint = preset.modelsEndpoint === 'standard' || preset.modelsEndpoint === 'custom';
+    $('#charMemory_providerConnectRow').toggle(hasModelsEndpoint);
+
     // Model: dropdown vs text input
-    const useDropdown = preset.modelsEndpoint === 'standard' || preset.modelsEndpoint === 'custom';
+    const useDropdown = hasModelsEndpoint;
     $('#charMemory_providerModelDropdownRow').toggle(useDropdown);
     $('#charMemory_providerModelInputRow').toggle(!useDropdown);
 
@@ -1331,7 +1335,12 @@ function updateProviderUI() {
     }
 
     if (useDropdown) {
-        populateProviderModels(providerKey);
+        // Clear stale model display from previous provider, show saved model for this provider
+        const savedModel = providerSettings.model || '';
+        $('#charMemory_providerModel').val(savedModel);
+        $('#charMemory_modelSearch').val(savedModel ? savedModel : '').attr('placeholder', 'Click Connect to fetch models');
+        currentModelList = [];
+        renderModelDropdown('');
     } else {
         $('#charMemory_providerModelInput').val(providerSettings.model || '');
     }
