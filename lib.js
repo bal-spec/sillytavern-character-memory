@@ -349,3 +349,39 @@ export function stripNonDiegetic(text) {
         .replace(/<[^>]*>/g, '')
         .replace(/\n{3,}/g, '\n\n');
 }
+
+// --- Chat message formatting ---
+
+/**
+ * Format chat messages for extraction prompt. Filters out empty/system-only
+ * messages, strips non-diegetic content, returns "Name: text" format.
+ * @param {Array<{name: string, mes: string, is_user?: boolean, is_system?: boolean}>} chatArray
+ * @param {number} startIndex Start index (inclusive) in chatArray.
+ * @param {number} endIndex End index (exclusive) in chatArray.
+ * @returns {{ text: string, startIndex: number, endIndex: number, messageCount: number }}
+ */
+export function formatChatMessages(chatArray, startIndex, endIndex) {
+    if (!chatArray || chatArray.length === 0) return { text: '', startIndex: -1, endIndex: -1, messageCount: 0 };
+
+    const safeStart = Math.max(0, startIndex);
+    const safeEnd = Math.min(chatArray.length, endIndex);
+    if (safeStart >= safeEnd) return { text: '', startIndex: -1, endIndex: -1, messageCount: 0 };
+
+    const slice = chatArray.slice(safeStart, safeEnd);
+    const lines = [];
+
+    for (const msg of slice) {
+        if (!msg.mes) continue;
+        if (msg.is_system && !msg.is_user && !msg.name) continue;
+        const text = stripNonDiegetic(msg.mes).trim();
+        if (!text) continue;
+        lines.push(`${msg.name}: ${text}`);
+    }
+
+    return {
+        text: lines.join('\n\n'),
+        startIndex: safeStart,
+        endIndex: safeEnd - 1,
+        messageCount: lines.length,
+    };
+}

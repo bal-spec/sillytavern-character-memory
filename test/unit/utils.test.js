@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { truncateText, reindexEditingSet, stripNonDiegetic } from '../../lib.js';
+import { truncateText, reindexEditingSet, stripNonDiegetic, formatChatMessages } from '../../lib.js';
 
 // ─── truncateText ──────────────────────────────────────────────────────
 
@@ -116,5 +116,79 @@ describe('stripNonDiegetic', () => {
     it('returns empty string for all-non-diegetic input', () => {
         const input = '```only code here```';
         expect(stripNonDiegetic(input).trim()).toBe('');
+    });
+});
+
+// ─── formatChatMessages ─────────────────────────────────────────────
+
+describe('formatChatMessages', () => {
+    const makeMsg = (name, mes, overrides = {}) => ({
+        name, mes, is_user: false, is_system: false, ...overrides,
+    });
+
+    it('formats messages as "Name: text"', () => {
+        const chat = [
+            makeMsg('Alice', 'Hello there'),
+            makeMsg('Bob', 'Hi Alice'),
+        ];
+        const result = formatChatMessages(chat, 0, chat.length);
+        expect(result.text).toBe('Alice: Hello there\n\nBob: Hi Alice');
+    });
+
+    it('skips empty messages', () => {
+        const chat = [
+            makeMsg('Alice', 'Hello'),
+            makeMsg('Bob', ''),
+            makeMsg('Alice', 'Still here'),
+        ];
+        const result = formatChatMessages(chat, 0, chat.length);
+        expect(result.text).toBe('Alice: Hello\n\nAlice: Still here');
+        expect(result.messageCount).toBe(2);
+    });
+
+    it('skips system-only messages (no name, no user)', () => {
+        const chat = [
+            makeMsg('Alice', 'Hello'),
+            makeMsg(null, 'System narrator text', { is_system: true }),
+            makeMsg('Bob', 'Hi'),
+        ];
+        const result = formatChatMessages(chat, 0, chat.length);
+        expect(result.text).not.toContain('System narrator');
+    });
+
+    it('keeps system messages that have a name', () => {
+        const chat = [
+            makeMsg('Extension', 'Some extension text', { is_system: true }),
+        ];
+        const result = formatChatMessages(chat, 0, chat.length);
+        expect(result.text).toContain('Extension: Some extension text');
+    });
+
+    it('strips non-diegetic content from messages', () => {
+        const chat = [
+            makeMsg('Alice', 'She smiled ```image prompt here``` and waved'),
+        ];
+        const result = formatChatMessages(chat, 0, chat.length);
+        expect(result.text).not.toContain('```');
+        expect(result.text).toContain('She smiled');
+    });
+
+    it('respects startIndex and endIndex', () => {
+        const chat = [
+            makeMsg('A', 'msg0'),
+            makeMsg('B', 'msg1'),
+            makeMsg('C', 'msg2'),
+            makeMsg('D', 'msg3'),
+        ];
+        const result = formatChatMessages(chat, 1, 3);
+        expect(result.text).toBe('B: msg1\n\nC: msg2');
+        expect(result.startIndex).toBe(1);
+        expect(result.endIndex).toBe(2);
+    });
+
+    it('returns empty for out-of-range indices', () => {
+        const chat = [makeMsg('A', 'msg')];
+        const result = formatChatMessages(chat, 5, 10);
+        expect(result.text).toBe('');
     });
 });

@@ -2003,6 +2003,40 @@ function stripNonDiegetic(text) {
 }
 
 /**
+ * Format chat messages for extraction prompt. Filters out empty/system-only
+ * messages, strips non-diegetic content, returns "Name: text" format.
+ * @param {Array<{name: string, mes: string, is_user?: boolean, is_system?: boolean}>} chatArray
+ * @param {number} startIndex Start index (inclusive) in chatArray.
+ * @param {number} endIndex End index (exclusive) in chatArray.
+ * @returns {{ text: string, startIndex: number, endIndex: number, messageCount: number }}
+ */
+function formatChatMessages(chatArray, startIndex, endIndex) {
+    if (!chatArray || chatArray.length === 0) return { text: '', startIndex: -1, endIndex: -1, messageCount: 0 };
+
+    const safeStart = Math.max(0, startIndex);
+    const safeEnd = Math.min(chatArray.length, endIndex);
+    if (safeStart >= safeEnd) return { text: '', startIndex: -1, endIndex: -1, messageCount: 0 };
+
+    const slice = chatArray.slice(safeStart, safeEnd);
+    const lines = [];
+
+    for (const msg of slice) {
+        if (!msg.mes) continue;
+        if (msg.is_system && !msg.is_user && !msg.name) continue;
+        const text = stripNonDiegetic(msg.mes).trim();
+        if (!text) continue;
+        lines.push(`${msg.name}: ${text}`);
+    }
+
+    return {
+        text: lines.join('\n\n'),
+        startIndex: safeStart,
+        endIndex: safeEnd - 1,
+        messageCount: lines.length,
+    };
+}
+
+/**
  * Collect recent messages for extraction.
  * @param {Object} options
  * @param {number|null} options.endIndex Optional end message index (inclusive). Defaults to last message.
@@ -2030,21 +2064,11 @@ function collectRecentMessages({ endIndex = null, chatArray = null, lastExtracte
 
     // Take a chunk of maxMessages starting from startIndex (NOT from end)
     const sliceEnd = Math.min(startIndex + maxMessages, end);
-    const slice = chat.slice(startIndex, sliceEnd);
 
-    const lines = [];
-    for (const msg of slice) {
-        if (!msg.mes) continue;
-        // Skip true system messages (narrator/UI messages with no real content)
-        if (msg.is_system && !msg.is_user && !msg.name) continue;
-        // Strip non-diegetic content: markdown tables, code blocks (image prompts), HTML tags
-        let text = stripNonDiegetic(msg.mes).trim();
-        if (!text) continue;
-        lines.push(`${msg.name}: ${text}`);
-    }
+    const result = formatChatMessages(chat, startIndex, sliceEnd);
 
-    logActivity(`Collected ${lines.length} messages (indices ${startIndex}-${sliceEnd - 1})`);
-    return { text: lines.join('\n\n'), startIndex, endIndex: sliceEnd - 1 };
+    logActivity(`Collected ${result.messageCount} messages (indices ${startIndex}-${sliceEnd - 1})`);
+    return { text: result.text, startIndex, endIndex: sliceEnd - 1 };
 }
 
 // ============ Server API Helpers ============
