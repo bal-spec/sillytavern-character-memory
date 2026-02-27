@@ -16,6 +16,12 @@
 
 - The standalone **Ollama** preset has been merged into **Local Server**. Existing users with Ollama selected are automatically migrated — your model, system prompt, and URL (`http://localhost:11434/v1`) are preserved.
 
+### Developer
+
+- **Automated test suite**: Three-tier Vitest setup — 90 unit tests for `lib.js` pure functions, 6 snapshot integration tests against a 1000-message chat fixture, and 3 live LLM integration tests that validate extraction output structure against a real OpenAI-compatible endpoint.
+- **Extraction pipeline refactor**: Extracted `stripNonDiegetic()`, `formatChatMessages()`, and `substitutePromptTemplate()` from inline code in `index.js` into testable pure functions in `lib.js`. No behavior change — `index.js` uses local copies.
+- **Live test configuration**: `TEST_LLM_URL`, `TEST_LLM_MODEL`, and `TEST_LLM_KEY` env vars support both local servers (LM Studio, Ollama) and authenticated remote APIs (OpenRouter, NanoGPT).
+
 ## 1.6.0
 
 ### New Features

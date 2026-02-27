@@ -2,13 +2,7 @@
 
 ## Git / GitHub
 
-This repo belongs to the `bal-spec` GitHub account. Before any `git push` or `gh` commands, run:
-
-```
-gh auth switch --user bal-spec
-```
-
-Do this at the start of every session — the active account resets to `dsayed` between sessions.
+This repo belongs to the `bal-spec` GitHub account. The `.envrc` file (via direnv) automatically sets `GH_TOKEN` for `bal-spec` when working in this directory — no manual `gh auth switch` needed.
 
 ## What This Is
 
@@ -18,15 +12,17 @@ A SillyTavern extension that automatically extracts structured character memorie
 
 ```
 index.js        — All extension logic: extraction, consolidation, provider API calls, UI controllers, event handlers (~3500 lines)
+lib.js          — Pure utility functions extracted from index.js for testing (parsing, serialization, formatting, stripping)
 settings.html   — Extension panel UI (settings, memory manager, diagnostics, batch extract)
 style.css       — All styling
 manifest.json   — ST extension manifest (version, loading order, author)
 README.md       — User-facing documentation (getting started guide + technical reference, combined)
 CHANGELOG.md    — Version history
 images/         — Screenshots for documentation
+test/           — Vitest test suites (unit, integration/snapshot, integration/live)
 ```
 
-`index.js` is a single-file architecture. All logic lives there — there are no separate modules.
+`index.js` is a single-file architecture. All runtime logic lives there. `lib.js` contains pure function copies for testing — it is not imported by `index.js` at runtime.
 
 ## Key Architecture
 
@@ -93,7 +89,35 @@ All settings live under `extension_settings.charMemory`. Key fields:
 
 ## Testing
 
-There are no automated tests. Testing is manual:
+### Automated Tests
+
+Vitest is the test framework. Three tiers:
+
+```bash
+npm test                # Unit tests (90 tests, ~200ms) — pure functions in lib.js
+npm run test:snapshot   # Snapshot tests (6 tests) — extraction pipeline against 1000-message fixture
+npm run test:live       # Live LLM tests (3 tests) — requires a running OpenAI-compatible server
+```
+
+**Unit tests** cover parsing, serialization, escaping, format detection, and the three extracted pipeline functions (`stripNonDiegetic`, `formatChatMessages`, `substitutePromptTemplate`).
+
+**Snapshot tests** process real chat data from `test/fixtures/flux-chat.jsonl` through the pipeline and snapshot the output. Update snapshots with `npm run test:snapshot -- --update` after intentional changes.
+
+**Live LLM tests** send extraction prompts to a real LLM and validate the response structure. Configured via env vars:
+
+- `TEST_LLM_URL` — endpoint (default: `http://127.0.0.1:1234/v1`)
+- `TEST_LLM_MODEL` — model name (default: auto-discover first available)
+- `TEST_LLM_KEY` — API key for authenticated endpoints like OpenRouter (default: none)
+
+Recommended local model: Gemma 2 9B or Qwen 2.5 7B. Avoid thinking models (Qwen3) — their `<think>` tags waste token budget.
+
+### `lib.js` and `index.js` Duplication
+
+`lib.js` exports pure functions for testing. `index.js` has local copies of the same functions because SillyTavern loads it as a browser extension (no ES module imports). When modifying `stripNonDiegetic`, `formatChatMessages`, or `substitutePromptTemplate`, update both files.
+
+### Manual Testing
+
+For UI and integration testing that requires SillyTavern:
 1. Install in SillyTavern's `public/scripts/extensions/third-party/CharMemory` (symlink or clone)
 2. Restart SillyTavern
 3. Test extraction with different providers
