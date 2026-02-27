@@ -20,7 +20,7 @@ CharMemory and lorebook-based memory extensions can coexist — they use differe
 ## What you need
 
 - A working **SillyTavern** installation
-- An **API key** for any LLM provider (OpenRouter, Groq, DeepSeek, NanoGPT, etc.) — or use **Pollinations** for free testing with no key
+- An **API key** for any LLM provider (OpenRouter, Groq, DeepSeek, NanoGPT, etc.) — or use **Pollinations** for free testing with no key, or a **local server** (Ollama, KoboldCpp, llama.cpp, LM Studio) with no key needed
 - **Vector Storage** extension (ships with SillyTavern — just needs to be enabled)
 
 ## Get started
@@ -149,7 +149,7 @@ You have three options for **LLM Used for Extraction**:
 Dedicated API is the default and recommended option. It sends *only* the extraction prompt to the LLM — no chat system prompts, jailbreaks, persona instructions, or other context gets mixed in. (The extraction prompt itself includes the character card as a bounded reference section so the LLM knows what not to re-extract — but that's intentional and controlled, unlike Main LLM where everything piles up.) This produces noticeably better memories.
 
 1. Open **Settings** in the CharMemory panel — **Dedicated API** is already selected
-2. Choose a **Provider** from the dropdown. Options include OpenAI, Anthropic, OpenRouter, Groq, DeepSeek, Mistral, xAI (Grok), NanoGPT, NVIDIA, Ollama, Pollinations (free, no key needed), and Custom.
+2. Choose a **Provider** from the dropdown. Options include OpenAI, Anthropic, OpenRouter, Groq, DeepSeek, Mistral, xAI (Grok), NanoGPT, NVIDIA, Local Server (Ollama / KoboldCpp / llama.cpp / LM Studio), Pollinations (free, no key needed), and Custom.
 3. Enter your **API Key** for that provider (click the **(get key)** link next to the field for a direct link to the provider's key page)
 4. Click **Connect** to fetch the list of available models
 5. Select a **Model** — the model picker is searchable: type to filter by name, which is especially helpful for providers with 100+ models like NanoGPT
@@ -160,6 +160,17 @@ Dedicated API is the default and recommended option. It sends *only* the extract
 ![Searching for models by typing in the model picker](images/16-model-search.png)
 
 If your provider isn't listed, select **Custom** from the Provider dropdown. You can enter any OpenAI-compatible API base URL and it will work as long as the endpoint supports the `/chat/completions` format. Most LLM providers use this standard.
+
+**Note on Local Server**: Select "Local Server" from the Provider dropdown to use Ollama, KoboldCpp, llama.cpp, or LM Studio. The Base URL field appears automatically — adjust the port to match your backend:
+
+| Backend | Default URL |
+|---------|-------------|
+| KoboldCpp | `http://localhost:5001/v1` |
+| llama.cpp | `http://localhost:8080/v1` |
+| LM Studio | `http://localhost:1234/v1` |
+| Ollama | `http://localhost:11434/v1` |
+
+You can also use a LAN IP (e.g., `http://192.168.1.50:5001/v1`) if the server is running on another machine. No API key is needed. Click **Connect** to fetch available models, then select one and **Test Model**.
 
 **Note on NVIDIA**: NVIDIA's API doesn't support CORS (browser-to-API requests), so CharMemory automatically routes NVIDIA requests through SillyTavern's server. This happens transparently — no extra setup is needed, just select NVIDIA, enter your API key, and go. Your API key is passed securely via headers and never touches SillyTavern's own configuration.
 

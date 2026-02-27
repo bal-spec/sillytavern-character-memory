@@ -340,15 +340,16 @@ const PROVIDER_PRESETS = {
         defaultModel: '',
         helpUrl: 'https://nano-gpt.com/api',
     },
-    ollama: {
-        name: 'Ollama (local)',
-        baseUrl: 'http://localhost:11434/v1',
+    local: {
+        name: 'Local Server (Ollama / KoboldCpp / llama.cpp / LM Studio)',
+        baseUrl: 'http://localhost:5001/v1',
         authStyle: 'none',
         modelsEndpoint: 'standard',
         requiresApiKey: false,
         extraHeaders: {},
         defaultModel: '',
-        helpUrl: 'https://ollama.com',
+        allowCustomUrl: true,
+        helpUrl: '',
     },
     nvidia: {
         name: 'NVIDIA',
@@ -1304,7 +1305,15 @@ function updateProviderUI() {
 
     // Custom base URL row
     $('#charMemory_providerBaseUrlRow').toggle(!!preset.allowCustomUrl);
-    $('#charMemory_providerBaseUrl').val(providerSettings.customBaseUrl || '');
+    if (preset.allowCustomUrl) {
+        const isLocal = preset.authStyle === 'none' && !preset.requiresApiKey;
+        const placeholder = isLocal ? 'http://localhost:5001/v1 or http://192.168.1.x:5001/v1' : 'https://your-server.com/v1';
+        $('#charMemory_providerBaseUrl')
+            .attr('placeholder', placeholder)
+            .val(providerSettings.customBaseUrl || preset.baseUrl || '');
+    } else {
+        $('#charMemory_providerBaseUrl').val('');
+    }
 
     // Model: dropdown vs text input
     const useDropdown = preset.modelsEndpoint === 'standard' || preset.modelsEndpoint === 'custom';
@@ -1572,6 +1581,20 @@ function loadSettings() {
         nanoSettings.nanogptFilterOpenSource = !!extension_settings[MODULE_NAME].nanogptFilterOpenSource;
         nanoSettings.nanogptFilterRoleplay = !!extension_settings[MODULE_NAME].nanogptFilterRoleplay;
         nanoSettings.nanogptFilterReasoning = !!extension_settings[MODULE_NAME].nanogptFilterReasoning;
+        saveSettingsDebounced();
+    }
+
+    // Migrate Ollama → combined local server preset
+    if (extension_settings[MODULE_NAME].selectedProvider === 'ollama') {
+        extension_settings[MODULE_NAME].selectedProvider = 'local';
+        const ollamaSettings = extension_settings[MODULE_NAME].providers?.ollama;
+        if (ollamaSettings) {
+            const localSettings = getProviderSettings('local');
+            if (ollamaSettings.model) localSettings.model = ollamaSettings.model;
+            if (ollamaSettings.systemPrompt) localSettings.systemPrompt = ollamaSettings.systemPrompt;
+            // Preserve the Ollama URL since the new default port differs
+            localSettings.customBaseUrl = ollamaSettings.customBaseUrl || 'http://localhost:11434/v1';
+        }
         saveSettingsDebounced();
     }
 

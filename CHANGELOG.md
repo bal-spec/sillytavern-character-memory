@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.6.1
+
+### New Features
+
+- **Local Server provider preset**: New combined "Local Server" preset in the Provider dropdown supports Ollama, KoboldCpp, llama.cpp, and LM Studio out of the box. The Base URL field is shown automatically so you can point it at any local IP or port (e.g., `http://192.168.1.50:8080/v1`). No API key required.
+
+### Improvements
+
+- **Dynamic Base URL placeholder**: The Base URL field now shows a contextual placeholder — local IP examples for local presets, cloud URL format for custom presets.
+- **Pre-filled default URL**: When selecting the Local Server preset, the Base URL is pre-filled with the default (`http://localhost:5001/v1`) so you only need to change the port for your backend (11434 for Ollama, 8080 for llama.cpp, 1234 for LM Studio).
+
+### Migration
+
+- The standalone **Ollama** preset has been merged into **Local Server**. Existing users with Ollama selected are automatically migrated — your model, system prompt, and URL (`http://localhost:11434/v1`) are preserved.
+
 ## 1.6.0
 
 ### New Features
