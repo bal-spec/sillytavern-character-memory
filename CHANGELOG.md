@@ -4,12 +4,13 @@
 
 ### New Features
 
-- **Local Server provider preset**: New combined "Local Server" preset in the Provider dropdown supports Ollama, KoboldCpp, llama.cpp, and LM Studio out of the box. The Base URL field is shown automatically so you can point it at any local IP or port (e.g., `http://192.168.1.50:8080/v1`). No API key required.
+- **Local Server provider preset**: New combined "Local Server" preset in the Provider dropdown supports Ollama, KoboldCpp, llama.cpp, and LM Studio out of the box. The Base URL field is shown automatically so you can point it at any local IP or port (e.g., `http://192.168.1.50:8080/v1`). No API key required. Requests are routed through SillyTavern's server proxy to avoid CORS issues.
 
 ### Improvements
 
-- **Dynamic Base URL placeholder**: The Base URL field now shows a contextual placeholder — local IP examples for local presets, cloud URL format for custom presets.
-- **Pre-filled default URL**: When selecting the Local Server preset, the Base URL is pre-filled with the default (`http://localhost:5001/v1`) so you only need to change the port for your backend (11434 for Ollama, 8080 for llama.cpp, 1234 for LM Studio).
+- **Base URL helper text**: Shows the expected URL format (`http://IP:port/v1`) below the Base URL field, noting that the `/v1` suffix is required.
+- **Connect button always visible**: The Connect button is no longer hidden when a provider doesn't require an API key. It appears after the Base URL field for a natural top-to-bottom flow: URL → Connect → Model.
+- **Clean provider switching**: Switching providers clears stale model names from the previous provider and prompts you to click Connect to fetch models.
 
 ### Migration
 
