@@ -1308,12 +1308,18 @@ function updateProviderUI() {
     $('#charMemory_providerBaseUrlRow').toggle(!!preset.allowCustomUrl);
     if (preset.allowCustomUrl) {
         const isLocal = preset.authStyle === 'none' && !preset.requiresApiKey;
-        const placeholder = isLocal ? 'http://localhost:5001/v1 or http://192.168.1.x:5001/v1' : 'https://your-server.com/v1';
+        const placeholder = isLocal ? 'http://localhost:5001/v1' : 'https://your-server.com/v1';
         $('#charMemory_providerBaseUrl')
             .attr('placeholder', placeholder)
             .val(providerSettings.customBaseUrl || preset.baseUrl || '');
+        $('#charMemory_providerBaseUrlHint').text(
+            isLocal
+                ? 'Format: http://hostname:port/v1 — Default ports: Ollama 11434, LM Studio 1234, llama.cpp 8080, KoboldCpp 5001'
+                : 'OpenAI-compatible base URL ending in /v1',
+        ).show();
     } else {
         $('#charMemory_providerBaseUrl').val('');
+        $('#charMemory_providerBaseUrlHint').hide();
     }
 
     // Connect button row: show when provider supports model fetching
