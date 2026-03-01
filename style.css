@@ -1241,3 +1241,104 @@
     font-size: 0.85em;
     resize: vertical;
 }
+
+/* ── Troubleshooter Modal ── */
+.charMemory_troubleshooter {
+    min-height: 400px;
+}
+
+.charMemory_tsOverallStatus {
+    font-size: 1.1em;
+    font-weight: bold;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.charMemory_tsCheck {
+    padding: 6px 8px;
+    margin: 4px 0;
+    border-radius: 4px;
+    background: var(--SmartThemeBlurTintColor, rgba(0, 0, 0, 0.05));
+}
+
+.charMemory_tsCheckHeader {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.9em;
+    font-weight: 600;
+}
+
+.charMemory_tsCheckDetail {
+    font-size: 0.85em;
+    opacity: 0.8;
+    margin-top: 2px;
+    padding-left: 20px;
+}
+
+.charMemory_tsFileList {
+    margin: 8px 0;
+}
+
+.charMemory_tsFileRow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--SmartThemeBorderColor, rgba(128, 128, 128, 0.15));
+    gap: 8px;
+}
+
+.charMemory_tsFileRow:last-child {
+    border-bottom: none;
+}
+
+.charMemory_tsFileName {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.9em;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.charMemory_tsFileName > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.charMemory_tsBadge {
+    font-size: 0.75em;
+    padding: 1px 6px;
+    border-radius: 8px;
+    background: var(--SmartThemeQuoteColor, #e8a33d);
+    color: #fff;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.charMemory_tsFileActions {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.charMemory_tsFileActions .menu_button {
+    padding: 3px 7px;
+    font-size: 0.85em;
+}
+
+.charMemory_tsImportRow {
+    margin-top: 10px;
+}
+
+.charMemory_tsResetSection {
+    margin: 12px 0;
+}
+
+.charMemory_tsResetSection .menu_button {
+    margin-bottom: 4px;
+}

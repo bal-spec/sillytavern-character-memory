@@ -4455,6 +4455,396 @@ function updateModalProviderUI() {
     updateProviderUI();
 }
 
+// ============ Troubleshooter Modal ============
+
+/**
+ * Build and display the Troubleshooter modal.
+ * Sections: Health Checks, Data Bank Browser, Diagnostic Report, Reset/Clear.
+ */
+async function showTroubleshooter() {
+    const charName = getCharacterName();
+    const targets = getMemoryTargets();
+    const target = targets[0];
+
+    // Run health checks
+    const healthResult = await computeHealthScore();
+
+    // Build health checks HTML
+    const colors = { green: '#4a4', yellow: '#e8a33d', red: '#c44', unknown: 'var(--SmartThemeBorderColor, #555)' };
+    const icons = { green: 'fa-circle-check', yellow: 'fa-triangle-exclamation', red: 'fa-circle-xmark', unknown: 'fa-circle-question' };
+    const titles = { green: 'All checks passed', yellow: 'Warnings detected', red: 'Issues found', unknown: 'No character selected' };
+
+    let healthHtml = `<div class="charMemory_tsOverallStatus" style="color:${colors[healthResult.level]};">
+        <i class="fa-solid ${icons[healthResult.level]}"></i>
+        ${titles[healthResult.level]}
+    </div>`;
+
+    for (const check of healthResult.checks) {
+        healthHtml += `<div class="charMemory_tsCheck">
+            <div class="charMemory_tsCheckHeader">
+                <i class="fa-solid ${icons[check.level]} fa-xs" style="color:${colors[check.level]};"></i>
+                <span>${escapeHtml(check.label)}</span>
+            </div>
+            <div class="charMemory_tsCheckDetail">${escapeHtml(check.detail)}</div>
+        </div>`;
+    }
+
+    // Build Data Bank browser HTML
+    let dataBankHtml = '';
+    if (!charName || !target) {
+        dataBankHtml = '<div class="charMemory_diagEmpty">No character selected.</div>';
+    } else {
+        const avatar = target.avatar;
+        ensureCharacterAttachments(avatar);
+        const attachments = extension_settings.character_attachments[avatar] || [];
+        const memoryFileName = getMemoryFileName();
+
+        if (attachments.length === 0) {
+            dataBankHtml = '<div class="charMemory_diagEmpty">No files in this character\'s Data Bank.</div>';
+        } else {
+            dataBankHtml = '<div class="charMemory_tsFileList">';
+            for (const att of attachments) {
+                const isMemFile = att.name === memoryFileName;
+                const badge = isMemFile ? '<span class="charMemory_tsBadge">CharMemory</span>' : '';
+                dataBankHtml += `<div class="charMemory_tsFileRow" data-url="${escapeAttr(att.url)}" data-name="${escapeAttr(att.name || '')}">
+                    <div class="charMemory_tsFileName">
+                        <i class="fa-solid fa-file-lines fa-sm"></i>
+                        <span>${escapeHtml(att.name || att.url)}</span>
+                        ${badge}
+                    </div>
+                    <div class="charMemory_tsFileActions">
+                        <button class="menu_button charMemory_tsViewBtn" title="View file contents"><i class="fa-solid fa-eye fa-sm"></i></button>
+                        <button class="menu_button charMemory_tsExportBtn" title="Download file"><i class="fa-solid fa-download fa-sm"></i></button>
+                        <button class="menu_button charMemory_tsDeleteBtn" title="Delete file"><i class="fa-solid fa-trash fa-sm"></i></button>
+                        <button class="menu_button charMemory_tsConvertBtn" title="Convert file format"><i class="fa-solid fa-arrows-rotate fa-sm"></i></button>
+                    </div>
+                </div>`;
+            }
+            dataBankHtml += '</div>';
+        }
+        dataBankHtml += `<div class="charMemory_tsImportRow">
+            <input type="file" id="cm_ts_fileImport" style="display:none;" accept=".md,.txt,.json" />
+            <button class="menu_button" id="cm_ts_importBtn"><i class="fa-solid fa-upload fa-sm"></i> Import file</button>
+        </div>`;
+    }
+
+    // Build full modal
+    const html = `<div class="charMemory_modal charMemory_troubleshooter">
+        <div class="charMemory_modalNav">
+            <button class="charMemory_modalNavItem active" data-section="health">Health Checks</button>
+            <button class="charMemory_modalNavItem" data-section="databank">Data Bank</button>
+            <button class="charMemory_modalNavItem" data-section="report">Diagnostic Report</button>
+            <button class="charMemory_modalNavItem" data-section="reset">Reset / Clear</button>
+        </div>
+        <div class="charMemory_modalContent">
+            <div class="charMemory_modalSection active" data-section="health">
+                <h4 class="charMemory_modalSectionTitle">Health Checks</h4>
+                <div id="cm_ts_healthChecks">${healthHtml}</div>
+                <div style="margin-top:10px;">
+                    <button class="menu_button" id="cm_ts_rerunHealth"><i class="fa-solid fa-arrows-rotate fa-sm"></i> Re-run checks</button>
+                </div>
+            </div>
+            <div class="charMemory_modalSection" data-section="databank">
+                <h4 class="charMemory_modalSectionTitle">Data Bank Browser</h4>
+                <small class="charMemory_helperText">${charName ? escapeHtml(charName) + '\'s Data Bank files' : 'No character selected'}</small>
+                <div id="cm_ts_dataBankList">${dataBankHtml}</div>
+            </div>
+            <div class="charMemory_modalSection" data-section="report">
+                <h4 class="charMemory_modalSectionTitle">Diagnostic Report</h4>
+                <small class="charMemory_helperText">Copy a full diagnostic report to your clipboard for sharing with support or debugging.</small>
+                <div style="margin-top:10px;">
+                    <button class="menu_button" id="cm_ts_copyReport"><i class="fa-solid fa-clipboard fa-sm"></i> Copy diagnostic report</button>
+                    <small id="cm_ts_reportStatus" class="charMemory_helperText" style="display:none;"></small>
+                </div>
+            </div>
+            <div class="charMemory_modalSection" data-section="reset">
+                <h4 class="charMemory_modalSectionTitle">Reset / Clear</h4>
+                <div class="charMemory_tsResetSection">
+                    <button class="menu_button" id="cm_ts_resetTracking">Reset Extraction State</button>
+                    <small class="charMemory_helperText">Resets extraction tracking for the current character. Next extraction will re-read all messages from the beginning.</small>
+                </div>
+                <div class="charMemory_tsResetSection">
+                    <button class="menu_button charMemory_dangerBtn" id="cm_ts_clearMemories">Clear All Memories</button>
+                    <small class="charMemory_helperText">Deletes the memory file and resets extraction tracking. This cannot be undone.</small>
+                </div>
+            </div>
+        </div>
+    </div>`;
+
+    const popup = callGenericPopup(html, POPUP_TYPE.TEXT, '', { wide: true, allowVerticalScrolling: true });
+
+    // Wire nav switching
+    const $modal = $('.charMemory_troubleshooter').last();
+    $modal.on('click', '.charMemory_modalNavItem', function () {
+        const section = $(this).data('section');
+        $modal.find('.charMemory_modalNavItem').removeClass('active');
+        $(this).addClass('active');
+        $modal.find('.charMemory_modalSection').removeClass('active');
+        $modal.find(`.charMemory_modalSection[data-section="${section}"]`).addClass('active');
+    });
+
+    // Re-run health checks
+    $('#cm_ts_rerunHealth').off('click').on('click', async function () {
+        $(this).prop('disabled', true).find('i').addClass('fa-spin');
+        try {
+            const result = await computeHealthScore();
+            let newHtml = `<div class="charMemory_tsOverallStatus" style="color:${colors[result.level]};">
+                <i class="fa-solid ${icons[result.level]}"></i>
+                ${titles[result.level]}
+            </div>`;
+            for (const check of result.checks) {
+                newHtml += `<div class="charMemory_tsCheck">
+                    <div class="charMemory_tsCheckHeader">
+                        <i class="fa-solid ${icons[check.level]} fa-xs" style="color:${colors[check.level]};"></i>
+                        <span>${escapeHtml(check.label)}</span>
+                    </div>
+                    <div class="charMemory_tsCheckDetail">${escapeHtml(check.detail)}</div>
+                </div>`;
+            }
+            $('#cm_ts_healthChecks').html(newHtml);
+        } finally {
+            $(this).prop('disabled', false).find('i').removeClass('fa-spin');
+        }
+    });
+
+    // Data Bank: View file
+    $modal.on('click', '.charMemory_tsViewBtn', async function () {
+        const $row = $(this).closest('.charMemory_tsFileRow');
+        const url = $row.data('url');
+        const name = $row.data('name');
+        try {
+            const content = await getFileAttachment(url);
+            if (!content) {
+                toastr.warning('File is empty or could not be read.', 'CharMemory');
+                return;
+            }
+            const displayContent = content.length > 10000
+                ? content.substring(0, 10000) + '\n\n... (truncated, ' + content.length + ' chars total)'
+                : content;
+            const viewHtml = `<div style="max-height:60vh;overflow:auto;">
+                <pre style="white-space:pre-wrap;word-break:break-word;font-size:0.85em;">${escapeHtml(displayContent)}</pre>
+            </div>`;
+            callGenericPopup(viewHtml, POPUP_TYPE.TEXT, escapeHtml(name || 'File contents'), { wide: true, allowVerticalScrolling: true });
+        } catch (err) {
+            console.error(LOG_PREFIX, 'Failed to read file:', err);
+            toastr.error('Could not read file.', 'CharMemory');
+        }
+    });
+
+    // Data Bank: Export file
+    $modal.on('click', '.charMemory_tsExportBtn', async function () {
+        const $row = $(this).closest('.charMemory_tsFileRow');
+        const url = $row.data('url');
+        const name = $row.data('name') || 'download.txt';
+        try {
+            const content = await getFileAttachment(url);
+            if (!content) {
+                toastr.warning('File is empty or could not be read.', 'CharMemory');
+                return;
+            }
+            const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = name;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(a.href);
+            toastr.success(`Downloaded: ${name}`, 'CharMemory');
+        } catch (err) {
+            console.error(LOG_PREFIX, 'Failed to export file:', err);
+            toastr.error('Could not export file.', 'CharMemory');
+        }
+    });
+
+    // Data Bank: Delete file
+    $modal.on('click', '.charMemory_tsDeleteBtn', async function () {
+        const $row = $(this).closest('.charMemory_tsFileRow');
+        const url = $row.data('url');
+        const name = $row.data('name') || url;
+        const confirmed = await callGenericPopup(
+            `Delete "${escapeHtml(name)}" from the Data Bank?\n\nThis cannot be undone.`,
+            POPUP_TYPE.CONFIRM,
+        );
+        if (!confirmed) return;
+        try {
+            const avatar = target?.avatar;
+            if (!avatar) return;
+            await deleteFileFromServer(url, true);
+            ensureCharacterAttachments(avatar);
+            extension_settings.character_attachments[avatar] =
+                (extension_settings.character_attachments[avatar] || []).filter(a => a.url !== url);
+            saveSettingsDebounced();
+            $row.fadeOut(200, () => $row.remove());
+            toastr.success(`Deleted: ${name}`, 'CharMemory');
+            updateStatusDisplay();
+        } catch (err) {
+            console.error(LOG_PREFIX, 'Failed to delete file:', err);
+            toastr.error('Could not delete file.', 'CharMemory');
+        }
+    });
+
+    // Data Bank: Convert file
+    $modal.on('click', '.charMemory_tsConvertBtn', function () {
+        const $row = $(this).closest('.charMemory_tsFileRow');
+        const url = $row.data('url');
+        // Select 'databank' source in the Convert tool and set the file
+        $('input[name="charMemory_formatSource"][value="databank"]').prop('checked', true);
+        $('#charMemory_convertSource').val(url);
+        toastr.info('File selected in Convert tool. Open the Convert section to proceed.', 'CharMemory', { timeOut: 4000 });
+    });
+
+    // Data Bank: Import file
+    $('#cm_ts_importBtn').off('click').on('click', function () {
+        $('#cm_ts_fileImport').click();
+    });
+    $('#cm_ts_fileImport').off('change').on('change', async function () {
+        const file = this.files?.[0];
+        if (!file) return;
+        const avatar = target?.avatar;
+        if (!avatar) {
+            toastr.warning('No character selected.', 'CharMemory');
+            return;
+        }
+        try {
+            const text = await file.text();
+            const base64 = convertTextToBase64(text);
+            const uniqueName = file.name;
+            await uploadFileAttachmentToServer(base64, uniqueName);
+            ensureCharacterAttachments(avatar);
+            extension_settings.character_attachments[avatar].push({
+                url: `/api/files/get?name=${encodeURIComponent(uniqueName)}`,
+                name: uniqueName,
+            });
+            saveSettingsDebounced();
+            toastr.success(`Imported: ${file.name}`, 'CharMemory');
+            // Refresh the Data Bank browser section by re-opening
+            // (simpler than rebuilding the list in-place)
+        } catch (err) {
+            console.error(LOG_PREFIX, 'Failed to import file:', err);
+            toastr.error('Could not import file.', 'CharMemory');
+        }
+        // Reset input so the same file can be re-imported
+        $(this).val('');
+    });
+
+    // Diagnostic Report: copy to clipboard
+    $('#cm_ts_copyReport').off('click').on('click', async function () {
+        try {
+            const report = await buildDiagnosticReport();
+            await navigator.clipboard.writeText(report);
+            const $status = $('#cm_ts_reportStatus');
+            $status.text('Copied to clipboard!').show();
+            setTimeout(() => $status.fadeOut(300), 2000);
+        } catch (err) {
+            console.error(LOG_PREFIX, 'Failed to copy report:', err);
+            toastr.error('Could not copy report to clipboard.', 'CharMemory');
+        }
+    });
+
+    // Reset / Clear actions
+    $('#cm_ts_resetTracking').off('click').on('click', function () {
+        // Delegate to existing sidebar handler
+        $('#charMemory_resetTracking').click();
+    });
+    $('#cm_ts_clearMemories').off('click').on('click', function () {
+        // Delegate to existing sidebar handler
+        $('#charMemory_resetExtraction').click();
+    });
+
+    return popup;
+}
+
+/**
+ * Build a text diagnostic report for clipboard sharing.
+ * Gathers settings, health checks, activity log, memory count,
+ * VS configuration, last injection data, and version info.
+ * @returns {Promise<string>}
+ */
+async function buildDiagnosticReport() {
+    const s = extension_settings[MODULE_NAME];
+    const targets = getMemoryTargets();
+    const target = targets[0];
+    const charName = getCharacterName() || '(none)';
+    const vecSettings = extension_settings.vectors || {};
+
+    // Health checks
+    const healthResult = await computeHealthScore();
+    const healthLines = healthResult.checks.map(c =>
+        `  [${c.level.toUpperCase()}] ${c.label}: ${c.detail}`
+    ).join('\n');
+
+    // Memory count
+    let memoryInfo = 'No memory file';
+    if (target) {
+        const attachment = findMemoryAttachmentForCharacter(target.avatar, target.fileName);
+        if (attachment) {
+            try {
+                const content = await getFileAttachment(attachment.url);
+                const blocks = parseMemories(content || '');
+                const count = countMemories(blocks);
+                memoryInfo = `${count} memories in ${blocks.length} blocks (file: ${target.fileName})`;
+            } catch {
+                memoryInfo = `File exists but could not be read (${target.fileName})`;
+            }
+        } else {
+            memoryInfo = `No file found (expected: ${target.fileName})`;
+        }
+    }
+
+    // Last injection
+    const dbPrompt = lastDiagnostics.extensionPrompts?.['4_vectors_data_bank'];
+    let injectionInfo = 'No injection data captured';
+    if (dbPrompt?.content) {
+        const bullets = dbPrompt.content.split('\n')
+            .map(l => l.trim()).filter(l => l.startsWith('- ')).length;
+        injectionInfo = `${bullets} memories injected (${dbPrompt.content.length} chars total)`;
+    }
+
+    // Activity log (last 10)
+    const logLines = activityLog.slice(0, 10).map(e =>
+        `  [${e.timestamp}] ${e.type}: ${e.message.split('\n')[0]}`
+    ).join('\n');
+
+    const report = `=== CharMemory Diagnostic Report ===
+Generated: ${new Date().toISOString()}
+Version: 1.8.0
+
+--- Character ---
+Name: ${charName}
+Group chat: ${targets.length > 1 ? 'Yes (' + targets.length + ' members)' : 'No'}
+
+--- Settings ---
+Source: ${s.source || 'provider'}
+Provider: ${s.selectedProvider || '(none)'}
+Interval: ${s.interval}
+Chunk size: ${s.maxMessagesPerExtraction}
+Response length: ${s.responseLength}
+Per-chat: ${s.perChat ? 'Yes' : 'No'}
+
+--- Memories ---
+${memoryInfo}
+
+--- Health Checks (${healthResult.level}) ---
+${healthLines || '  No checks run'}
+
+--- Vector Storage ---
+Enabled (files): ${vecSettings.enabled_files ? 'Yes' : 'No'}
+Chunk size: ${vecSettings.chunk_size_db ?? 'default'}
+Overlap: ${vecSettings.overlap_percent_db ?? 0}%
+Retrieve chunks: ${vecSettings.chunk_count_db ?? 'default'}
+Score threshold: ${vecSettings.score_threshold ?? 'not set'}
+
+--- Last Injection ---
+${injectionInfo}
+Timestamp: ${lastDiagnostics.timestamp || 'none'}
+
+--- Recent Activity (last 10) ---
+${logLines || '  No activity logged'}
+`;
+    return report;
+}
+
 // ============ Memory Manager ============
 
 /**
@@ -6070,6 +6460,12 @@ function setupListeners() {
     $('#charMemory_openSettingsModal').off('click').on('click', function (e) {
         e.stopPropagation(); // Prevent toggling the inline-drawer
         showSettingsModal();
+    });
+
+    // Wrench icon → Troubleshooter modal
+    $('#charMemory_openTroubleshooter').off('click').on('click', function (e) {
+        e.stopPropagation();
+        showTroubleshooter();
     });
 }
 
