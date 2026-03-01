@@ -83,9 +83,11 @@ let activityLog = [];
 function logActivity(message, type = 'info') {
     const now = new Date();
     const timestamp = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
-    activityLog.unshift({ timestamp, message, type });
+    const entry = { timestamp, message, type };
+    activityLog.unshift(entry);
     if (activityLog.length > MAX_LOG_ENTRIES) activityLog.pop();
     updateActivityLogDisplay();
+    updateLogDrawer(entry);
 }
 
 function updateActivityLogDisplay() {
@@ -6278,6 +6280,80 @@ function toggleInjectionDrawer(forceState) {
 }
 
 /**
+ * Toggle the log drawer open/closed.
+ * @param {boolean} [forceState] If provided, force open (true) or closed (false).
+ */
+function toggleLogDrawer(forceState) {
+    const $drawer = $('#charMemory_logDrawer');
+    const isOpen = $drawer.hasClass('open');
+    const shouldOpen = forceState !== undefined ? forceState : !isOpen;
+
+    // Position drawer below ST's top bar so header isn't clipped by browser chrome
+    if (shouldOpen) {
+        const topBar = document.getElementById('top-settings-holder');
+        if (topBar) {
+            const topOffset = topBar.getBoundingClientRect().bottom;
+            $drawer.css({ top: topOffset + 'px', height: `calc(100vh - ${topOffset}px)` });
+        }
+
+        // Populate log entries and sync verbose toggle
+        $('#charMemory_logDrawerVerbose').prop('checked', !!extension_settings[MODULE_NAME].verboseLogging);
+        renderLogDrawerEntries();
+    }
+
+    $drawer.toggleClass('open', shouldOpen);
+}
+
+/**
+ * Render all log entries into the log drawer body.
+ */
+function renderLogDrawerEntries() {
+    const $body = $('#charMemory_logDrawerBody');
+    if (!$body.length) return;
+
+    if (activityLog.length === 0) {
+        $body.html('<div class="charMemory_diagEmpty">No activity yet.</div>');
+        return;
+    }
+
+    const html = activityLog.map(entry => {
+        const typeClass = `charMemory_log_${entry.type}`;
+        const isVerbose = entry.message.includes('\n');
+        const msgHtml = isVerbose
+            ? `<details><summary>${escapeHtml(entry.message.split('\n')[0])}</summary><pre class="charMemory_logVerbose">${escapeHtml(entry.message)}</pre></details>`
+            : escapeHtml(entry.message);
+        return `<div class="charMemory_logEntry ${typeClass}"><span class="charMemory_logTime">${entry.timestamp}</span> ${msgHtml}</div>`;
+    }).join('');
+    $body.html(html);
+}
+
+/**
+ * Update the log drawer with a new entry if it is currently open.
+ * Called from logActivity() for live updates.
+ * @param {{timestamp: string, message: string, type: string}} entry The new log entry.
+ */
+function updateLogDrawer(entry) {
+    const $drawer = $('#charMemory_logDrawer');
+    if (!$drawer.hasClass('open')) return;
+
+    const $body = $('#charMemory_logDrawerBody');
+    if (!$body.length) return;
+
+    // Remove empty-state placeholder if present
+    $body.find('.charMemory_diagEmpty').remove();
+
+    const typeClass = `charMemory_log_${entry.type}`;
+    const isVerbose = entry.message.includes('\n');
+    const msgHtml = isVerbose
+        ? `<details><summary>${escapeHtml(entry.message.split('\n')[0])}</summary><pre class="charMemory_logVerbose">${escapeHtml(entry.message)}</pre></details>`
+        : escapeHtml(entry.message);
+    const entryHtml = `<div class="charMemory_logEntry ${typeClass}"><span class="charMemory_logTime">${entry.timestamp}</span> ${msgHtml}</div>`;
+
+    // Prepend since activityLog stores newest first
+    $body.prepend(entryHtml);
+}
+
+/**
  * Show the injection drawer for a specific message.
  * @param {number} messageIndex The chat message index to display.
  */
@@ -6577,6 +6653,27 @@ jQuery(async function () {
         </div>
     `);
 
+    // Log drawer — appended to body, outside extension panel
+    $('body').append(`
+        <div id="charMemory_logDrawer" class="charMemory_logDrawer">
+            <div class="charMemory_drawerHeader">
+                <span class="charMemory_drawerTitle">Activity Log</span>
+                <div style="display:flex; gap:6px; align-items:center; margin-left:auto;">
+                    <label class="checkbox_label" style="font-size:0.85em;">
+                        <input type="checkbox" id="charMemory_logDrawerVerbose" />
+                        <span>Verbose</span>
+                    </label>
+                    <button id="charMemory_logDrawerClear" class="menu_button" style="font-size:0.8em; padding:2px 8px;">Clear</button>
+                    <button id="charMemory_logDrawerSave" class="menu_button" style="font-size:0.8em; padding:2px 8px;">Save</button>
+                    <div class="charMemory_drawerClose" id="charMemory_logDrawerClose" title="Close"><i class="fa-solid fa-xmark"></i></div>
+                </div>
+            </div>
+            <div class="charMemory_drawerBody" id="charMemory_logDrawerBody">
+                <div class="charMemory_diagEmpty">No activity yet.</div>
+            </div>
+        </div>
+    `);
+
     loadSettings();
     setupListeners();
     registerSlashCommands();
@@ -6600,6 +6697,49 @@ jQuery(async function () {
     // Injection drawer controls
     $('#charMemory_drawerClose').on('click', () => toggleInjectionDrawer(false));
     $('#charMemory_drawerToggle').on('click', () => toggleInjectionDrawer());
+
+    // Log drawer controls
+    $('#charMemory_logDrawerClose').on('click', () => toggleLogDrawer(false));
+    $('#charMemory_logDrawerClear').on('click', function () {
+        activityLog = [];
+        updateActivityLogDisplay();
+        renderLogDrawerEntries();
+    });
+    $('#charMemory_logDrawerSave').on('click', function () {
+        if (activityLog.length === 0) {
+            toastr.info('Activity log is empty.', 'CharMemory');
+            return;
+        }
+        const lines = activityLog.map(e => `[${e.timestamp}] [${e.type}] ${e.message}`).join('\n');
+        const blob = new Blob([lines], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `charMemory-log-${new Date().toISOString().slice(0, 19).replace(/:/g, '')}.txt`;
+        a.click();
+        URL.revokeObjectURL(url);
+    });
+    $('#charMemory_logDrawerVerbose').on('change', function () {
+        extension_settings[MODULE_NAME].verboseLogging = !!$(this).prop('checked');
+        // Sync the sidebar verbose toggle too
+        $('#charMemory_verboseLog').prop('checked', extension_settings[MODULE_NAME].verboseLogging);
+        saveSettingsDebounced();
+    });
+    // "View full log" link (wired from sidebar dashboard, Task 5)
+    $(document).on('click', '#charMemory_viewFullLog', () => toggleLogDrawer(true));
+
+    // Swipe left to close log drawer (touch devices)
+    const logDrawerEl = document.getElementById('charMemory_logDrawer');
+    if (logDrawerEl) {
+        let logTouchStartX = 0;
+        logDrawerEl.addEventListener('touchstart', (e) => {
+            logTouchStartX = e.touches[0].clientX;
+        }, { passive: true });
+        logDrawerEl.addEventListener('touchend', (e) => {
+            const deltaX = e.changedTouches[0].clientX - logTouchStartX;
+            if (deltaX > 60) toggleLogDrawer(false);
+        }, { passive: true });
+    }
 
     // Drawer "Open Diagnostics" link — opens extension panel and scrolls to diagnostics
     // Drawer "Diagnostics" link — touch devices get an inline popup, desktop navigates to the panel

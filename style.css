@@ -1071,6 +1071,34 @@
     transition: outline-color 1.5s ease;
 }
 
+/* ===== Log Drawer ===== */
+
+.charMemory_logDrawer {
+    position: fixed;
+    top: 0;
+    right: 0;
+    width: 380px;
+    max-width: 45vw;
+    height: 100vh;
+    background: var(--SmartThemeBlurTintColor, #1a1a2e);
+    color: var(--SmartThemeBodyColor, #ccc);
+    border-left: 1px solid var(--SmartThemeBorderColor, rgba(128, 128, 128, 0.3));
+    z-index: 1001;
+    display: flex;
+    flex-direction: column;
+    transform: translateX(100%);
+    transition: transform 0.2s ease;
+    font-size: 0.9em;
+}
+.charMemory_logDrawer.open {
+    transform: translateX(0);
+}
+
+.charMemory_logDrawer .charMemory_drawerBody {
+    font-family: monospace;
+    font-size: 0.85em;
+}
+
 /* ── Header Gear Icon ── */
 .charMemory_headerGear {
     cursor: pointer;
