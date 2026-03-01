@@ -33,7 +33,6 @@ import { world_info, loadWorldInfo } from '../../../world-info.js';
 import { isWebLlmSupported, generateWebLlmChatPrompt } from '../../shared.js';
 import {
     escapeAttr,
-    unescapeAttr,
     escapeHtml,
     parseMemories,
     splitMultiTagBullets,
@@ -41,7 +40,6 @@ import {
     mergeMemoryBlocks,
     migrateMemoriesIfNeeded,
     convertHeuristic,
-    stripNonDiegetic,
     formatChatMessages,
     substitutePromptTemplate,
     truncateText,

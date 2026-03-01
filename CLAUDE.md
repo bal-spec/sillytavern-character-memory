@@ -11,8 +11,8 @@ A SillyTavern extension that automatically extracts structured character memorie
 ## File Structure
 
 ```
-index.js        — All extension logic: extraction, consolidation, provider API calls, UI controllers, event handlers (~3500 lines)
-lib.js          — Pure utility functions extracted from index.js for testing (parsing, serialization, formatting, stripping)
+index.js        — All extension logic: extraction, consolidation, provider API calls, UI controllers, event handlers (~5700 lines)
+lib.js          — Pure utility functions imported by index.js at runtime and used by tests (parsing, serialization, formatting, stripping)
 settings.html   — Extension panel UI (settings, memory manager, diagnostics, batch extract)
 style.css       — All styling
 manifest.json   — ST extension manifest (version, loading order, author)
@@ -22,7 +22,7 @@ images/         — Screenshots for documentation
 test/           — Vitest test suites (unit, integration/snapshot, integration/live)
 ```
 
-`index.js` is a single-file architecture. All runtime logic lives there. `lib.js` contains pure function copies for testing — it is not imported by `index.js` at runtime.
+`index.js` is the main runtime module. `lib.js` is the canonical source for pure utility functions — `index.js` imports them via ES modules. Only `serializeMemories()` is kept local in `index.js` because it uses `getFormatOptions()` for runtime settings.
 
 ## Key Architecture
 
@@ -94,7 +94,7 @@ All settings live under `extension_settings.charMemory`. Key fields:
 Vitest is the test framework. Three tiers:
 
 ```bash
-npm test                # Unit tests (90 tests, ~200ms) — pure functions in lib.js
+npm test                # Unit tests (97 tests, ~200ms) — pure functions in lib.js
 npm run test:snapshot   # Snapshot tests (6 tests) — extraction pipeline against 1000-message fixture
 npm run test:live       # Live LLM tests (3 tests) — requires a running OpenAI-compatible server
 ```
@@ -111,9 +111,9 @@ npm run test:live       # Live LLM tests (3 tests) — requires a running OpenAI
 
 Recommended local model: Gemma 2 9B or Qwen 2.5 7B. Avoid thinking models (Qwen3) — their `<think>` tags waste token budget.
 
-### `lib.js` and `index.js` Duplication
+### `lib.js` as Single Source of Truth
 
-`lib.js` exports pure functions for testing. `index.js` has local copies of the same functions because SillyTavern loads it as a browser extension (no ES module imports). When modifying `stripNonDiegetic`, `formatChatMessages`, or `substitutePromptTemplate`, update both files.
+`lib.js` is the canonical source for pure utility functions. `index.js` imports them via ES modules (`import { ... } from './lib.js'`). When modifying these functions, edit `lib.js` only — `index.js` picks up changes automatically. Exception: `serializeMemories()` in `index.js` is a separate implementation that uses `getFormatOptions()` for runtime format settings.
 
 ### Manual Testing
 
