@@ -4011,11 +4011,27 @@ async function showSettingsModal() {
     });
 
     // Reset / Clear handlers
-    $('#cm_modal_resetTracking').off('click').on('click', function () {
+    $('#cm_modal_resetTracking').off('click').on('click', async function () {
+        const charName = getCharacterName() || 'this character';
+        const confirmed = await callGenericPopup(
+            `Extraction tracking for <strong>${escapeHtml(charName)}</strong> will be reset. The extension will re-process messages from the beginning on next extraction.`,
+            POPUP_TYPE.CONFIRM, 'Reset Extraction State',
+        );
+        if (!confirmed) return;
         resetExtractionTracking();
     });
 
     $('#cm_modal_resetExtraction').off('click').on('click', async function () {
+        const charName = getCharacterName() || 'this character';
+        const sLocal = extension_settings[MODULE_NAME];
+        const scopeNote = sLocal.perChat
+            ? `This will delete memories for the current chat only.`
+            : `In default mode, this includes memories from <em>all</em> of ${escapeHtml(charName)}'s chats.`;
+        const confirmed = await callGenericPopup(
+            `<strong>${escapeHtml(charName)}'s</strong> memory file will be deleted and extraction tracking will be reset. This cannot be undone.<br><br>${scopeNote}`,
+            POPUP_TYPE.CONFIRM, 'Clear All Memories',
+        );
+        if (!confirmed) return;
         await clearAllMemories();
     });
 
@@ -4605,16 +4621,39 @@ async function showSetupWizard(startStep = 1) {
             </div>
         </div>`;
 
-    // Step 2: Vector Storage
+    // Step 2: Configure
     const step2Html = `
         <div class="charMemory_wizardStep" data-step="2">
-            <div class="charMemory_wizardExplanation">
-                <strong>Vector Storage</strong> is how SillyTavern retrieves the right memories at the right time.
-                When your character speaks, Vector Storage finds the most relevant stored memories and injects them into the prompt.
-                CharMemory stores its memories in the character's Data Bank; Vector Storage handles the rest automatically.
+            <div class="charMemory_wizardSection">
+                <div class="charMemory_wizardSectionTitle">Memory Storage</div>
+                <div class="charMemory_wizardExplanation" style="margin-top:0;">
+                    Each character gets their own memory file in their Data Bank
+                    (e.g., <code>Flux_the_Cat-memories.md</code>). Memories from all of that character's chats are
+                    stored together. You can change storage options in Settings later.
+                </div>
             </div>
-            <div id="cm_wiz_healthChecks">
-                <div class="charMemory_diagEmpty">Checking Vector Storage configuration...</div>
+            <div class="charMemory_wizardSection">
+                <div class="charMemory_wizardSectionTitle">Extraction Frequency</div>
+                <div class="charMemory_wizardIntervalRow">
+                    <span>Extract memories every</span>
+                    <input type="number" id="cm_wiz_interval" class="charMemory_wizIntervalInput" min="3" max="200" step="1" value="${s.interval || 20}" />
+                    <span>messages.</span>
+                </div>
+                <small class="charMemory_helperText">Lower = more frequent, more API calls. Higher = less frequent, bigger batches. 20 is a good starting point.</small>
+            </div>
+            <div class="charMemory_wizardSection">
+                <div class="charMemory_wizardSectionTitle">Retrieval (Vector Storage)</div>
+                <div class="charMemory_wizardExplanation" style="margin-top:0;">
+                    Vector Storage finds the right memories at the right time and injects them into the prompt
+                    when your character speaks. Without it, memories are stored but never used.
+                </div>
+                <div id="cm_wiz_vsStatus"></div>
+            </div>
+            <div id="cm_wiz_vsAdvisory" style="display:none;">
+                <small class="charMemory_helperText" style="color:#e8a33d;">
+                    <i class="fa-solid fa-triangle-exclamation fa-xs"></i>
+                    You can continue without fixing these \u2014 memories will be stored but not retrieved until Vector Storage is configured.
+                </small>
             </div>
             <div class="charMemory_wizardNav">
                 <input type="button" id="cm_wiz_back2" class="menu_button" value="\u2190 Back" />
@@ -4622,25 +4661,34 @@ async function showSetupWizard(startStep = 1) {
             </div>
         </div>`;
 
-    // Step 3: Ready
+    // Step 3: Review & Go
     const step3Html = `
         <div class="charMemory_wizardStep" data-step="3">
-            <div class="charMemory_wizardExplanation">
-                <strong>You're all set!</strong> CharMemory is configured and ready to go.
-            </div>
             <div id="cm_wiz_summary" class="charMemory_wizardSummary"></div>
-            <div style="font-size:0.9em; line-height:1.5; opacity:0.85; margin-bottom:10px;">
-                <strong>What happens next:</strong>
-                <ul style="margin:6px 0; padding-left:1.5em;">
-                    <li>Every <strong>${s.interval || 20} messages</strong>, CharMemory will automatically extract memories from the conversation.</li>
-                    <li>Memories are stored as bullet points in a Data Bank file for each character.</li>
-                    <li>Vector Storage retrieves the most relevant memories and injects them into the prompt, so your character remembers past events.</li>
-                    <li>You can also click <strong>Extract Now</strong> on the dashboard to extract manually at any time.</li>
-                </ul>
+            <div class="charMemory_wizardCallout">
+                <i class="fa-solid fa-circle-info fa-sm"></i>
+                <span>Open the <strong>Injection Sidebar</strong> from the dashboard to see which memories are being used in your character's prompt in real time.</span>
+            </div>
+            <div id="cm_wiz_existingMemories" style="display:none;">
+                <div class="charMemory_wizardExistingMemSection">
+                    <i class="fa-solid fa-database fa-sm" style="color:#e8a33d;"></i>
+                    <div>
+                        <strong>Existing memories found</strong>
+                        <div id="cm_wiz_existingMemDetail" class="charMemory_wizardCheckText"></div>
+                        <div style="margin-top:6px;display:flex;gap:8px;">
+                            <input type="button" id="cm_wiz_convertNow" class="menu_button" value="Convert Now" title="Reformat memories for better retrieval" />
+                            <input type="button" id="cm_wiz_convertSkip" class="menu_button" value="Skip \u2014 I'll do this later" />
+                        </div>
+                    </div>
+                </div>
             </div>
             <div class="charMemory_wizardNav">
                 <input type="button" id="cm_wiz_back3" class="menu_button" value="\u2190 Back" />
                 <input type="button" id="cm_wiz_done" class="menu_button" value="Get Started" />
+            </div>
+            <div class="charMemory_wizardScopeNote">
+                <i class="fa-solid fa-circle-info fa-xs"></i>
+                Tools like Clear Memories and Reset Extraction State only affect the current character.
             </div>
         </div>`;
 
@@ -4929,65 +4977,105 @@ async function showSetupWizard(startStep = 1) {
         renderWizModelList($wizard.find('#cm_wiz_modelSearch').val());
     });
 
-    // --- Step 2: Vector Storage ---
-    async function initStep2() {
-        const $container = $wizard.find('#cm_wiz_healthChecks');
-        $container.html('<div class="charMemory_diagEmpty">Checking Vector Storage configuration...</div>');
+    // --- Step 2: Configure ---
+    function initStep2() {
+        // Sync interval input from settings
+        $wizard.find('#cm_wiz_interval').val(extension_settings[MODULE_NAME].interval || 20);
 
-        try {
-            wizHealthResult = await computeHealthScore();
-        } catch (err) {
-            console.warn(LOG_PREFIX, 'Wizard health check failed:', err);
-            $container.html('<div class="charMemory_diagEmpty">Could not check Vector Storage. You can skip this step.</div>');
-            return;
-        }
-        const healthResult = wizHealthResult;
-        const colors = { green: '#4a4', yellow: '#e8a33d', red: '#c44', unknown: 'var(--SmartThemeBorderColor, #555)' };
-        const icons = { green: 'fa-circle-check', yellow: 'fa-triangle-exclamation', red: 'fa-circle-xmark', unknown: 'fa-circle-question' };
+        // Three-tier VS detection: read settings directly (no file checks — new user may have no memory file)
+        const vecSettings = extension_settings.vectors;
+        const $vsStatus = $wizard.find('#cm_wiz_vsStatus');
+        const $vsAdvisory = $wizard.find('#cm_wiz_vsAdvisory');
 
-        const fixHints = {
-            vec_files_enabled: 'Go to Extensions \u2192 Vector Storage and enable "Files".',
-            memory_file_exists: 'Run "Extract Now" on the dashboard to create the memory file.',
-            file_vectorized: 'Open the character\'s Data Bank and re-vectorize the file.',
-            chunk_overlap: 'Set overlap to 10-25% in Vector Storage settings.',
-            chunk_size: 'Set chunk size to 800-1000 chars in Vector Storage settings.',
-        };
+        const filesEnabled = !!vecSettings?.enabled_files;
 
-        let checksHtml = '';
-        if (healthResult.level === 'unknown') {
-            checksHtml = `<div class="charMemory_wizardCheck">
-                <i class="fa-solid fa-circle-question fa-sm" style="color:var(--SmartThemeBorderColor,#555);"></i>
+        if (!filesEnabled) {
+            // Tier 1: VS not enabled at all
+            $vsStatus.html(`<div class="charMemory_wizardCheck">
+                <i class="fa-solid fa-circle-xmark fa-sm" style="color:#c44;"></i>
                 <div class="charMemory_wizardCheckDetail">
-                    <div class="charMemory_wizardCheckLabel">No character selected</div>
-                    <div class="charMemory_wizardCheckText">Select a character first, then Vector Storage checks will run automatically. You can skip this step for now.</div>
+                    <div class="charMemory_wizardCheckLabel">Vector Storage is not enabled</div>
+                    <div class="charMemory_wizardCheckText">CharMemory will store memories but your character won't recall them.
+                        Enable it in <strong>Extensions \u2192 Vector Storage</strong> when you're ready.</div>
                 </div>
-            </div>`;
+            </div>`);
+            $vsAdvisory.show();
         } else {
-            for (const check of healthResult.checks) {
-                const fixHtml = (check.level !== 'green' && fixHints[check.id])
-                    ? `<div class="charMemory_wizardCheckFix"><i class="fa-solid fa-lightbulb fa-xs"></i> ${escapeHtml(fixHints[check.id])}</div>`
-                    : '';
-                checksHtml += `<div class="charMemory_wizardCheck">
-                    <i class="fa-solid ${icons[check.level] || icons.unknown} fa-sm" style="color:${colors[check.level] || colors.unknown};"></i>
+            // Check settings quality
+            const chunkSize = vecSettings?.chunk_size_db ?? 2500;
+            const overlapPct = vecSettings?.overlap_percent_db ?? 0;
+            const retrieveChunks = vecSettings?.chunk_count_db ?? 0;
+
+            const issues = [];
+            if (chunkSize < 500 || chunkSize > 1500) {
+                issues.push(`Chunk size is ${chunkSize} chars — recommended 800–1000 for CharMemory.`);
+            }
+            if (overlapPct === 0) {
+                issues.push('Overlap is 0% — memory blocks that span chunk boundaries may be split. Recommended: 10–25%.');
+            }
+            if (retrieveChunks > 5) {
+                issues.push(`Retrieve chunks is ${retrieveChunks} — recommended 2–3 for CharMemory.`);
+            }
+            if (retrieveChunks === 0) {
+                issues.push('Retrieve chunks is 0 — no memories will be injected.');
+            }
+
+            if (issues.length > 0) {
+                // Tier 2: VS enabled but settings need tuning
+                const issueItems = issues.map(i => `<li>${escapeHtml(i)}</li>`).join('');
+                $vsStatus.html(`<div class="charMemory_wizardCheck">
+                    <i class="fa-solid fa-triangle-exclamation fa-sm" style="color:#e8a33d;"></i>
                     <div class="charMemory_wizardCheckDetail">
-                        <div class="charMemory_wizardCheckLabel">${escapeHtml(check.label)}</div>
-                        <div class="charMemory_wizardCheckText">${escapeHtml(check.detail)}</div>
-                        ${fixHtml}
+                        <div class="charMemory_wizardCheckLabel">Vector Storage is active, but settings may need tuning</div>
+                        <ul class="charMemory_wizardIssueList">${issueItems}</ul>
+                        <div class="charMemory_wizardCheckFix"><i class="fa-solid fa-lightbulb fa-xs"></i> Adjust these in <strong>Extensions \u2192 Vector Storage</strong>.</div>
                     </div>
-                </div>`;
+                </div>`);
+                $vsAdvisory.show();
+            } else {
+                // Tier 3: VS fully configured
+                $vsStatus.html(`<div class="charMemory_wizardCheck">
+                    <i class="fa-solid fa-circle-check fa-sm" style="color:#4a4;"></i>
+                    <div class="charMemory_wizardCheckDetail">
+                        <div class="charMemory_wizardCheckLabel">Vector Storage is configured</div>
+                        <div class="charMemory_wizardCheckText">CharMemory memories will be automatically retrieved and injected into the prompt.</div>
+                    </div>
+                </div>`);
+                $vsAdvisory.hide();
             }
         }
-
-        $container.html(checksHtml);
     }
 
-    // --- Step 3: Ready ---
+    $wizard.on('input change', '#cm_wiz_interval', function () {
+        const val = Math.max(3, Math.min(200, parseInt($(this).val(), 10) || 20));
+        extension_settings[MODULE_NAME].interval = val;
+        saveSettingsDebounced();
+    });
+
+    // --- Step 3: Review & Go ---
     function initStep3() {
         const pk = extension_settings[MODULE_NAME].selectedProvider;
         const p = PROVIDER_PRESETS[pk] || {};
         const ps = getProviderSettings(pk);
         const modelName = ps.model || p.defaultModel || '(default)';
         const modelShort = modelName.length > 40 ? modelName.slice(0, 40) + '\u2026' : modelName;
+        const interval = extension_settings[MODULE_NAME].interval || 20;
+
+        // VS summary from extension_settings.vectors
+        const vecSettings = extension_settings.vectors;
+        const filesEnabled = !!vecSettings?.enabled_files;
+        let vsSummaryHtml;
+        if (!filesEnabled) {
+            vsSummaryHtml = `<span style="color:#c44;">\u26A0 Not enabled</span>`;
+        } else {
+            const chunkSize = vecSettings?.chunk_size_db ?? 2500;
+            const overlapPct = vecSettings?.overlap_percent_db ?? 0;
+            const retrieveChunks = vecSettings?.chunk_count_db ?? 0;
+            const hasIssues = chunkSize < 500 || chunkSize > 1500 || overlapPct === 0 || retrieveChunks > 5 || retrieveChunks === 0;
+            vsSummaryHtml = hasIssues
+                ? `<span style="color:#e8a33d;">\u26A0 Active \u2014 settings may need tuning</span>`
+                : `<span style="color:#4a4;">\u2714 Configured</span>`;
+        }
 
         $wizard.find('#cm_wiz_summary').html(`
             <div class="charMemory_wizardSummaryRow">
@@ -5000,13 +5088,35 @@ async function showSetupWizard(startStep = 1) {
             </div>
             <div class="charMemory_wizardSummaryRow">
                 <span class="label">Connection</span>
-                <span class="charMemory_wizardHighlight">${wizConnectionOk ? '\u2714 Connected' : '\u26A0 Not tested'}</span>
+                <span>${wizConnectionOk ? '<span style="color:#4a4;">\u2714 Connected</span>' : '<span style="color:#e8a33d;">\u26A0 Not tested</span>'}</span>
+            </div>
+            <div class="charMemory_wizardSummaryRow">
+                <span class="label">Extraction</span>
+                <span>Every ${escapeHtml(String(interval))} messages</span>
             </div>
             <div class="charMemory_wizardSummaryRow">
                 <span class="label">Vector Storage</span>
-                <span class="charMemory_wizardHighlight">${wizHealthResult ? (wizHealthResult.level === 'green' ? '\u2714 All checks passing' : `\u26A0 ${wizHealthResult.checks.filter(c => c.level !== 'green').length} issue(s)`) : '\u2014 Not checked'}</span>
+                <span>${vsSummaryHtml}</span>
             </div>
         `);
+
+        // Check for existing memories for the current character
+        const targets = getMemoryTargets();
+        const $existingSection = $wizard.find('#cm_wiz_existingMemories');
+        if (targets.length > 0) {
+            const target = targets[0];
+            const attachment = findMemoryAttachmentForCharacter(target.avatar, target.fileName);
+            if (attachment) {
+                $wizard.find('#cm_wiz_existingMemDetail').text(
+                    `We found an existing memory file for ${target.name}: ${target.fileName}. The Convert tool can reformat it for better retrieval.`
+                );
+                $existingSection.show();
+            } else {
+                $existingSection.hide();
+            }
+        } else {
+            $existingSection.hide();
+        }
     }
 
     // --- Navigation handlers ---
@@ -5017,6 +5127,15 @@ async function showSetupWizard(startStep = 1) {
     $wizard.on('click', '#cm_wiz_back2', function () { showStep(1); });
     $wizard.on('click', '#cm_wiz_next2', function () { showStep(3); });
     $wizard.on('click', '#cm_wiz_back3', function () { showStep(2); });
+
+    $wizard.on('click', '#cm_wiz_convertNow', function () {
+        $wizard.find('#cm_wiz_existingMemories').hide();
+        showReformatPreview();
+    });
+
+    $wizard.on('click', '#cm_wiz_convertSkip', function () {
+        $wizard.find('#cm_wiz_existingMemories').hide();
+    });
 
     $wizard.on('click', '#cm_wiz_done', function () {
         extension_settings[MODULE_NAME].wizardCompleted = true;
@@ -5435,16 +5554,22 @@ async function showTroubleshooter(initialSection = 'health') {
 
     // Reset / Clear actions (with confirmation dialogs)
     $('#cm_ts_resetTracking').off('click').on('click', async function () {
+        const charName = getCharacterName() || 'this character';
         const confirmed = await callGenericPopup(
-            'Reset extraction tracking for the current character? Next extraction will re-read all messages.',
+            `Extraction tracking for <strong>${escapeHtml(charName)}</strong> will be reset. The extension will re-process messages from the beginning on next extraction.`,
             POPUP_TYPE.CONFIRM, 'Reset Extraction State',
         );
         if (!confirmed) return;
         resetExtractionTracking();
     });
     $('#cm_ts_clearMemories').off('click').on('click', async function () {
+        const charName = getCharacterName() || 'this character';
+        const s = extension_settings[MODULE_NAME];
+        const scopeNote = s.perChat
+            ? `This will delete memories for the current chat only.`
+            : `In default mode, this includes memories from <em>all</em> of ${escapeHtml(charName)}'s chats.`;
         const confirmed = await callGenericPopup(
-            'Delete ALL memories for this character and reset extraction tracking? This cannot be undone.',
+            `<strong>${escapeHtml(charName)}'s</strong> memory file will be deleted and extraction tracking will be reset. This cannot be undone.<br><br>${scopeNote}`,
             POPUP_TYPE.CONFIRM, 'Clear All Memories',
         );
         if (!confirmed) return;

@@ -1468,6 +1468,50 @@
     font-weight: 600;
 }
 
+.charMemory_wizardCallout {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 8px 10px;
+    margin-bottom: 12px;
+    background: rgba(74, 170, 74, 0.08);
+    border: 1px solid rgba(74, 170, 74, 0.2);
+    border-radius: 6px;
+    font-size: 0.875em;
+    line-height: 1.4;
+}
+
+.charMemory_wizardCallout i {
+    color: #4a4;
+    margin-top: 2px;
+    flex-shrink: 0;
+}
+
+.charMemory_wizardExistingMemSection {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px;
+    margin-bottom: 12px;
+    background: rgba(232, 163, 61, 0.08);
+    border: 1px solid rgba(232, 163, 61, 0.2);
+    border-radius: 6px;
+    font-size: 0.875em;
+}
+
+.charMemory_wizardExistingMemSection i {
+    margin-top: 2px;
+    flex-shrink: 0;
+}
+
+.charMemory_wizardScopeNote {
+    font-size: 0.8em;
+    opacity: 0.55;
+    text-align: center;
+    margin-top: 8px;
+    line-height: 1.4;
+}
+
 /* Wizard always-visible model list */
 .charMemory_wizModelPicker {
     display: flex;
@@ -1575,6 +1619,50 @@
     background: rgba(196, 68, 68, 0.15);
     color: #c77;
     border: 1px solid rgba(196, 68, 68, 0.25);
+}
+
+/* Wizard step sections */
+.charMemory_wizardSection {
+    margin-bottom: 14px;
+}
+
+.charMemory_wizardSectionTitle {
+    font-size: 0.8em;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    opacity: 0.6;
+    margin-bottom: 6px;
+}
+
+.charMemory_wizardIntervalRow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.9em;
+    margin-bottom: 4px;
+}
+
+.charMemory_wizIntervalInput {
+    width: 60px;
+    text-align: center;
+    padding: 3px 6px;
+    background: var(--SmartThemeBlurTintColor, rgba(0, 0, 0, 0.4));
+    border: 1px solid var(--SmartThemeBorderColor, #555);
+    border-radius: 4px;
+    color: inherit;
+    font-size: inherit;
+}
+
+.charMemory_wizardIssueList {
+    margin: 4px 0 4px 1.2em;
+    padding: 0;
+    font-size: 0.88em;
+    opacity: 0.85;
+}
+
+.charMemory_wizardIssueList li {
+    margin-bottom: 2px;
 }
 
 /* Nudge banner */
