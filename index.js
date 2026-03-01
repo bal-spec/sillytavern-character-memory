@@ -1462,7 +1462,6 @@ function loadSettings() {
     toggleProviderSettings(extension_settings[MODULE_NAME].source);
 
     updateStatusDisplay();
-    updateDashboardFileInfo();
     updateHealthIndicator();
 }
 
@@ -5461,7 +5460,7 @@ async function consolidateMemories() {
     logActivity(`Consolidation started for ${target.name}: ${beforeCount} memories in ${memories.length} blocks`);
 
     // Show busy state on button
-    const $btn = $('#charMemory_consolidate');
+    const $btn = $('#charMemory_consolidateBtn');
     $btn.val('Consolidating…').prop('disabled', true);
 
     // Run initial consolidation — returns serialized text, parse to blocks
