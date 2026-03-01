@@ -4203,75 +4203,56 @@ async function showReformatPreview(originalBlocks, reformattedBlocks, charName, 
     const originalCount = countMemories(originalBlocks);
 
     // Editor state lives in closure
-    let editorBlocks = cloneMemoryBlocks(reformattedBlocks);
-    const versionStack = [];
-    const editingSet = new Set();
+    const editor = createMemoryEditor({ blocks: reformattedBlocks });
+    const rerunBackups = []; // separate stack for re-run undo
     let dialogClosed = false;
 
     const refreshEditor = () => {
-        $('#charMemory_reformatEditorPane').html(renderConsolidatedCards(editorBlocks, editingSet));
-        $('#charMemory_reformatAfterCount').text(countMemories(editorBlocks));
-        $('#charMemory_reformatBlockCount').text(editorBlocks.length);
-        $('#charMemory_reformatAddBlock').toggleClass('charMemory_editorAddBlock--hidden', editingSet.size === 0);
+        const blocks = editor.getBlocks();
+        $('#charMemory_reformatEditorPane').html(renderConsolidatedCards(blocks, editor.getEditingSet()));
+        $('#charMemory_reformatAfterCount').text(countMemories(blocks));
+        $('#charMemory_reformatBlockCount').text(blocks.length);
+        $('#charMemory_reformatAddBlock').toggleClass('charMemory_editorAddBlock--hidden', editor.getEditingSet().size === 0);
     };
 
     // Build and show dialog
-    const dialogHtml = buildReformatDialog(originalBlocks, originalCount, editorBlocks, editingSet);
+    const dialogHtml = buildReformatDialog(originalBlocks, originalCount, editor.getBlocks(), editor.getEditingSet());
     const popup = callGenericPopup(dialogHtml, POPUP_TYPE.CONFIRM, '', { wide: true, allowVerticalScrolling: true });
 
     // === Editor event delegation (unique namespace to avoid conflicts) ===
 
     $(document).off('click.charMemoryRefToggle').on('click.charMemoryRefToggle', '.charMemory_editorToggleEdit', function () {
-        const bi = Number($(this).data('block'));
-        if (editingSet.has(bi)) editingSet.delete(bi);
-        else editingSet.add(bi);
+        editor.toggleEdit(Number($(this).data('block')));
         refreshEditor();
     });
 
     $(document).off('input.charMemoryRefBullet').on('input.charMemoryRefBullet', '.charMemory_editorBulletInput', function () {
-        const bi = Number($(this).data('block'));
-        const bui = Number($(this).data('bullet'));
-        if (editorBlocks[bi]) editorBlocks[bi].bullets[bui] = $(this).val();
+        editor.updateBullet(Number($(this).data('block')), Number($(this).data('bullet')), $(this).val());
     });
 
     $(document).off('input.charMemoryRefTheme').on('input.charMemoryRefTheme', '.charMemory_editorThemeInput', function () {
-        const bi = Number($(this).data('block'));
-        if (editorBlocks[bi]) editorBlocks[bi].chat = $(this).val();
+        editor.updateTheme(Number($(this).data('block')), $(this).val());
     });
 
     $(document).off('click.charMemoryRefDelBullet').on('click.charMemoryRefDelBullet', '.charMemory_editorDeleteBullet', function () {
-        const bi = Number($(this).data('block'));
-        const bui = Number($(this).data('bullet'));
-        if (editorBlocks[bi]) {
-            editorBlocks[bi].bullets.splice(bui, 1);
-            if (editorBlocks[bi].bullets.length === 0) {
-                editorBlocks.splice(bi, 1);
-                reindexEditingSet(editingSet, bi);
-            }
-            refreshEditor();
-        }
+        editor.deleteBullet(Number($(this).data('block')), Number($(this).data('bullet')));
+        refreshEditor();
     });
 
     $(document).off('click.charMemoryRefDelBlock').on('click.charMemoryRefDelBlock', '.charMemory_editorDeleteBlock', function () {
-        const bi = Number($(this).data('block'));
-        editorBlocks.splice(bi, 1);
-        reindexEditingSet(editingSet, bi);
+        editor.deleteBlock(Number($(this).data('block')));
         refreshEditor();
     });
 
     $(document).off('click.charMemoryRefAddBullet').on('click.charMemoryRefAddBullet', '.charMemory_editorAddBullet', function () {
         const bi = Number($(this).data('block'));
-        if (editorBlocks[bi]) {
-            editorBlocks[bi].bullets.push('');
-            refreshEditor();
-            $(`#charMemory_reformatEditorPane .charMemory_editorCard[data-block="${bi}"] .charMemory_editorBulletInput:last`).focus();
-        }
+        editor.addBullet(bi);
+        refreshEditor();
+        $(`#charMemory_reformatEditorPane .charMemory_editorCard[data-block="${bi}"] .charMemory_editorBulletInput:last`).focus();
     });
 
     $(document).off('click.charMemoryRefAddBlock').on('click.charMemoryRefAddBlock', '#charMemory_reformatAddBlock', function () {
-        const newIdx = editorBlocks.length;
-        editorBlocks.push({ chat: 'New Group', date: getTimestamp(), bullets: [''] });
-        editingSet.add(newIdx);
+        editor.addBlock();
         refreshEditor();
         $('#charMemory_reformatEditorPane .charMemory_editorCard:last .charMemory_editorBulletInput:last').focus();
     });
@@ -4279,7 +4260,7 @@ async function showReformatPreview(originalBlocks, reformattedBlocks, charName, 
     // === Re-run button ===
     $('#charMemory_rerunReformat').off('click').on('click', async () => {
         if (inApiCall) return;
-        const currentBlocks = cloneMemoryBlocks(editorBlocks);
+        const backupBlocks = editor.getBlocks();
 
         $('#charMemory_reformatRerunSpinner').show();
         $('#charMemory_rerunReformat').prop('disabled', true);
@@ -4305,10 +4286,9 @@ async function showReformatPreview(originalBlocks, reformattedBlocks, charName, 
         $('#charMemory_reformatEditorPane').removeClass('charMemory_editorDisabled');
 
         if (newResult && newResult.blocks.length > 0) {
-            versionStack.push(currentBlocks);
+            rerunBackups.push(backupBlocks);
             $('#charMemory_undoReformatRerun').prop('disabled', false);
-            editorBlocks = cloneMemoryBlocks(newResult.blocks);
-            editingSet.clear();
+            editor.replaceAll(newResult.blocks);
             refreshEditor();
             for (const w of newResult.warnings) {
                 toastr.warning(w, 'CharMemory');
@@ -4318,11 +4298,10 @@ async function showReformatPreview(originalBlocks, reformattedBlocks, charName, 
 
     // === Undo button ===
     $('#charMemory_undoReformatRerun').off('click').on('click', () => {
-        if (versionStack.length === 0) return;
-        editorBlocks = versionStack.pop();
-        editingSet.clear();
+        if (rerunBackups.length === 0) return;
+        editor.replaceAll(rerunBackups.pop());
         refreshEditor();
-        if (versionStack.length === 0) $('#charMemory_undoReformatRerun').prop('disabled', true);
+        if (rerunBackups.length === 0) $('#charMemory_undoReformatRerun').prop('disabled', true);
     });
 
     // === Wait for Accept/Cancel ===
@@ -4347,7 +4326,7 @@ async function showReformatPreview(originalBlocks, reformattedBlocks, charName, 
     }
 
     // Filter out empty bullets and empty blocks before returning
-    const cleanBlocks = editorBlocks
+    const cleanBlocks = editor.getBlocks()
         .map(b => ({ ...b, bullets: b.bullets.filter(bullet => bullet.trim() !== '') }))
         .filter(b => b.bullets.length > 0);
 
