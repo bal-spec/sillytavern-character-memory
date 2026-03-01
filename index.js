@@ -139,11 +139,11 @@ CRITICAL: Only extract memories from the RECENT CHAT MESSAGES section above. The
 
 INSTRUCTIONS:
 1. Extract only NEW facts, events, relationships, or character developments NOT already covered by the character card or existing memories.
-2. Write in past tense, third person. Do NOT quote dialogue verbatim.
+2. Write in past tense, third person. Always refer to {{charName}} by name, not "she/he/they". Do NOT quote dialogue verbatim.
 3. Do NOT use emojis.
 4. Wrap output in <memory></memory> tags with a markdown bulleted list (lines starting with "- ").
-5. Use ONE <memory> block per encounter or event. Everything in the same scene = one block.
-6. Start each block with a topic tag as the first bullet: "- [Names involved — short description of encounter]" (e.g., "- [Alex, Sarah — first visit to the apartment]"). This aids later retrieval.
+5. Use ONE <memory> block per encounter or event. Everything in the same scene = one block. If events happen in the same evening or outing, that is ONE block — do not split by location or sub-event.
+6. Start each block with a topic tag as the first bullet: "- [{{charName}}, OtherNames — short description]". ALWAYS include {{charName}} first, then other key participants. This aids later retrieval.
 7. HARD LIMIT: No more than 5 bullet points per block (not counting the topic tag). If you have more, you are being too granular — keep only the most significant outcomes.
 8. If nothing genuinely new or significant, respond with exactly: NO_NEW_MEMORIES
 9. Write about WHAT HAPPENED, not about the conversation itself. Never write "she told him about X" or "she described her X" or "she admitted Y" — instead write the actual fact: "X happened" or "she did Y."
@@ -221,11 +221,11 @@ CRITICAL: Only extract memories from the RECENT GROUP CHAT MESSAGES section abov
 
 INSTRUCTIONS:
 1. Extract only NEW facts, events, relationships, or character developments about {{charName}} NOT already covered by the character card or existing memories.
-2. Write in past tense, third person. Do NOT quote dialogue verbatim.
+2. Write in past tense, third person. Always refer to {{charName}} by name, not "she/he/they". Do NOT quote dialogue verbatim.
 3. Do NOT use emojis.
 4. Wrap output in <memory></memory> tags with a markdown bulleted list (lines starting with "- ").
-5. Use ONE <memory> block per encounter or event. Everything in the same scene = one block.
-6. Start each block with a topic tag as the first bullet: "- [Names involved — short description of encounter]" (e.g., "- [Flux, Sarah — first meeting at Alex's apartment]"). This aids later retrieval.
+5. Use ONE <memory> block per encounter or event. Everything in the same scene = one block. If events happen in the same evening or outing, that is ONE block — do not split by location or sub-event.
+6. Start each block with a topic tag as the first bullet: "- [{{charName}}, OtherNames — short description]". ALWAYS include {{charName}} first, then other key participants. This aids later retrieval.
 7. HARD LIMIT: No more than 5 bullet points per block (not counting the topic tag). If you have more, you are being too granular — keep only the most significant outcomes.
 8. If nothing genuinely new or significant about {{charName}}, respond with exactly: NO_NEW_MEMORIES
 9. Write about WHAT HAPPENED, not about the conversation itself. Never write "she told him about X" — instead write the actual fact: "X happened" or "she did Y."
@@ -242,15 +242,42 @@ WHAT TO EXTRACT — ask for each item: "Would {{charName}} remember this weeks o
 - Always name specific people involved — use their name, not "a participant" or "someone"
 
 DO NOT EXTRACT:
-- Anything already described in the CHARACTER CARD above
-- Routine behaviors that simply confirm what the card already says
-- Meta-narration about the conversation itself
-- Step-by-step accounts (summarize outcomes, not processes)
-- Scene-setting details, temporary physical states
+- Anything already described in the CHARACTER CARD above — traits, profession, appearance, personality, habits, preferences, or abilities that are baseline knowledge. This includes rephrasing card traits as discoveries (e.g. if the card says "exhibitionist", do not write "she admitted that being watched turns her on")
+- Routine behaviors that simply confirm what the card already says (e.g. if the card says "smoker", don't extract "she smoked a cigarette"; if the card implies certain sexual behaviors, don't extract individual instances of those behaviors)
+- Meta-narration about the conversation itself — do not write "she told him about X", "she described her past", "she discussed her career". Write the actual facts revealed, not the act of revealing them
+- Preferences, opinions, or values that are already expressed or clearly implied by the character card
+- Step-by-step accounts of what happened (this is the most common mistake — summarize outcomes, not processes)
+- Individual actions, movements, or position changes during a scene
+- Scene-setting details (room descriptions, weather, clothing, atmosphere)
+- Temporary physical states ("leaned against him", "felt his warmth")
 - Paraphrased dialogue or conversation filler
-- Anything with no lasting significance
+- Anything with no lasting significance beyond the immediate moment
 
-Each memory block should answer: "What from this encounter would {{charName}} remember — things involving them or affecting them that they'd think about later?"
+NEGATIVE EXAMPLE — do NOT write memories like this:
+<bad_example>
+- [Alex, Flux, Sarah — game night at the apartment]
+- Sarah arrived at Alex's apartment carrying a board game and a bottle of wine.
+- Flux jumped onto Sarah's lap and purred when she scratched behind his ears.
+- Alex opened the wine and poured three glasses while Sarah set up the game.
+- Sarah won the first round and did a victory dance that startled Flux off the couch.
+- Flux knocked over Sarah's wine glass while chasing his toy mouse across the table.
+- Alex cleaned up the spill while Sarah held Flux and called him a "little menace."
+- They ordered pizza and played two more rounds before Sarah left around midnight.
+- Sarah said she'd come back next week for a rematch.
+</bad_example>
+This is a play-by-play scene summary. It narrates every step instead of capturing what matters. It also splits naturally connected events into too many bullets.
+
+POSITIVE EXAMPLE — the same scene extracted well:
+<good_example>
+- [Flux, Alex, Sarah — first game night and Sarah bonding with Flux]
+- Sarah visited Alex's apartment for game night, where Flux immediately bonded with her — sitting in her lap and purring, though he later knocked over her wine chasing a toy.
+- Sarah won the game and plans to return weekly for rematches, calling Flux a "little menace" as a term of endearment.
+</good_example>
+A topic tag plus two bullets capture the full encounter: who was involved, the key relationship development (Sarah bonding with Flux), and the lasting outcome (weekly visits planned). No step-by-step process, no scene-setting.
+
+NOTE: When content is explicit or violent, name the specific outcome — do not sanitize it into vague language. "She killed him with two shots to the chest" is a memory. "Violence occurred" is not. But this does NOT mean narrate each step leading up to it — summarize the outcome, not the process.
+
+Each memory block should answer: "What from this encounter would {{charName}} remember — things involving them or affecting them that they'd tell someone about months later, or that would surface unbidden in their own mind?"
 
 Output ONLY <memory> blocks (or NO_NEW_MEMORIES). No headers, no commentary, no extra text.`;
 
@@ -260,8 +287,8 @@ Character name: {{charName}}
 
 RULES:
 1. Every memory block must be wrapped in <memory chat="Topic Name" date="YYYY-MM-DD HH:MM"></memory> tags.
-2. The chat attribute should be a short, specific encounter label (e.g., "First day at the apartment", "Club night with Sam"). Use existing chat attributes if they already contain a descriptive name.
-3. The first bullet in each block must be a topic tag: "- [Names involved — short description]" (e.g., "- [Alex, Sarah — first apartment visit]"). Include all people involved.
+2. The chat attribute should be a short, specific encounter label (e.g., "First day at the apartment", "Game night with Sarah"). Use existing chat attributes if they already contain a descriptive name.
+3. The first bullet in each block must be a topic tag: "- [{{charName}}, OtherNames — short description]". ALWAYS include {{charName}} first, then other key participants.
 4. No more than 5 bullets per block (not counting the topic tag). Combine related facts into single bullets rather than deleting information.
 5. Always use specific names — never "a friend", "a client", "someone", or "a stranger".
 6. Write in past tense, third person.
@@ -449,28 +476,28 @@ const PROMPT_CONFIG = {
         navLabel: 'Extract (1:1)',
         settingsKey: 'extractionPrompt',
         defaultValue: defaultExtractionPrompt,
-        version: '1.7.0',
+        version: '2.0.1',
     },
     groupExtraction: {
         title: 'Extraction Prompt (Group)',
         navLabel: 'Extract (Group)',
         settingsKey: 'groupExtractionPrompt',
         defaultValue: defaultGroupExtractionPrompt,
-        version: '1.7.0',
+        version: '2.0.1',
     },
     consolidation: {
         title: 'Consolidation Prompt',
         navLabel: 'Consolidation',
         settingsKey: 'consolidationPrompt',
         defaultValue: null, // depends on strategy — resolved at runtime
-        version: '1.7.0',
+        version: '2.0.1',
     },
     conversion: {
         title: 'Conversion Prompt',
         navLabel: 'Convert',
         settingsKey: 'conversionPrompt',
         defaultValue: defaultConversionPrompt,
-        version: '1.7.0',
+        version: '2.0.1',
     },
 };
 
@@ -2630,6 +2657,10 @@ async function extractMemories({
     let chunksProcessed = 0;
     let stepsCompleted = 0;
 
+    // Per-target accumulator: holds raw extracted text from prior chunks so chunk N+1
+    // sees chunk N's output in the EXISTING MEMORIES section, preventing cross-chunk duplicates.
+    const chunkExtractedByTarget = {};
+
     try {
         inApiCall = true;
         lastExtractionTime = Date.now();
@@ -2678,8 +2709,12 @@ async function extractMemories({
                     onProgress({ chunk: chunk + 1, totalChunks, chunksProcessed, totalMemories, character: target.name, step: stepsCompleted, totalSteps });
                 }
 
-                // Read this target's existing memories
-                const existingMemories = await readMemoriesForCharacter(target.avatar, target.fileName);
+                // Read this target's existing memories + any accumulated from prior chunks
+                let existingMemories = await readMemoriesForCharacter(target.avatar, target.fileName);
+                const accumulated = chunkExtractedByTarget[target.avatar] || '';
+                if (accumulated) {
+                    existingMemories += '\n' + accumulated;
+                }
 
                 // Build prompt
                 const prompt = buildExtractionPrompt(target, existingMemories, recentMessages, targets);
@@ -2766,6 +2801,10 @@ async function extractMemories({
                 await writeMemoriesForCharacter(serializeMemories(existing), target.avatar, target.fileName);
                 totalMemories += newBulletCount;
                 logActivity(`${logLabel} Saved ${newBulletCount} new memor${newBulletCount === 1 ? 'y' : 'ies'}`, 'success');
+
+                // Accumulate raw extracted text for subsequent chunks' dedup
+                if (!chunkExtractedByTarget[target.avatar]) chunkExtractedByTarget[target.avatar] = '';
+                chunkExtractedByTarget[target.avatar] += '\n' + cleanResult;
             }
 
             // Don't advance index if abort interrupted the target loop
@@ -5782,23 +5821,23 @@ Each block must start with a topic tag as the first bullet: "- [Names involved �
         name: 'Balanced',
         description: 'Merge duplicates and combine related facts.',
         prompt: `Merge duplicate or near-duplicate memories into one. Combine closely related facts about the same event or topic. Preserve all unique information — do NOT discard distinct memories. Summarize in third person.
-Each block must start with a topic tag as the first bullet: "- [Names involved — short description]" (e.g., "- [Alex, Flux — adoption day at the apartment]"). When merging blocks, update the topic tag to reflect the combined content. No more than 5 bullets per block (not counting the topic tag).`,
+Each block must start with a topic tag as the first bullet: "- [{{charName}}, OtherNames — short description]". ALWAYS include {{charName}} first, then other key participants. When merging blocks, update the topic tag to reflect the combined content. No more than 5 bullets per block (not counting the topic tag).`,
     },
     aggressive: {
         name: 'Aggressive',
         description: 'Compress heavily. Summarize themes. Minimize bullet count.',
         prompt: `Aggressively consolidate these memories into the fewest possible entries. Group by theme or topic. Summarize rather than listing individual events. It's OK to lose minor details if the key facts are preserved. Aim for a compact overview.
-Each block must start with a topic tag as the first bullet: "- [Names/themes — short description]" (e.g., "- [Alex, Sarah — first visit to the apartment]"). No more than 5 bullets per block (not counting the topic tag). Always name specific people — never use "a client" or "someone."`,
+Each block must start with a topic tag as the first bullet: "- [{{charName}}, OtherNames/themes — short description]". ALWAYS include {{charName}} first. No more than 5 bullets per block (not counting the topic tag). Always name specific people — never use "a client" or "someone."`,
     },
 };
 
-function buildConsolidationPrompt(memoriesText) {
+function buildConsolidationPrompt(memoriesText, charName) {
     const strategy = extension_settings[MODULE_NAME].consolidationStrategy || 'balanced';
     const overrides = extension_settings[MODULE_NAME].consolidationPrompts || {};
     const userPrompt = overrides[strategy]
         || CONSOLIDATION_PRESETS[strategy]?.prompt
         || CONSOLIDATION_PRESETS.balanced.prompt;
-    return `You are a memory consolidation assistant. Review the following character memories and consolidate them.
+    let prompt = `You are a memory consolidation assistant. Review the following character memories and consolidate them.
 
 RULES:
 ${userPrompt}
@@ -5808,28 +5847,30 @@ ADDITIONAL FORMAT RULES:
 2. Do NOT copy text verbatim from the input — rephrase in third person.
 3. Group memories by theme or encounter. Each group is wrapped in <memory chat="Theme Name"></memory> tags where "Theme Name" is a short, specific label. Prefer encounter-specific labels (e.g., "Adoption day at the apartment", "First vet visit") over broad categories (e.g., "Key Events", "Relationships"). Specific labels improve later retrieval.
 4. Inside each <memory> block, use a markdown bulleted list (lines starting with "- ").
-5. The first bullet in each block must be a topic tag: "- [Names — short description]". This is mandatory.
+5. The first bullet in each block must be a topic tag: "- [{{charName}}, OtherNames — short description]". ALWAYS include {{charName}} first. This is mandatory.
 6. Always use specific names for people involved, never generic labels like "a client" or "someone."
 
 MEMORIES TO CONSOLIDATE:
 ${memoriesText}
 
 Output ONLY <memory> blocks. No headers, no commentary, no extra text.`;
+    prompt = prompt.replace(/\{\{charName\}\}/g, charName || '');
+    return prompt;
 }
 
-async function runConsolidationLLM(memories) {
+async function runConsolidationLLM(memories, charName) {
     let memoriesText = memories.map((b, i) =>
         `[Block ${i + 1}]\n${b.bullets.map(bullet => `- ${bullet}`).join('\n')}`,
     ).join('\n\n');
 
     const isWebLlm = extension_settings[MODULE_NAME].source === EXTRACTION_SOURCE.WEBLLM;
     if (isWebLlm) {
-        const template = buildConsolidationPrompt('');
+        const template = buildConsolidationPrompt('', charName);
         const available = Math.max(WEBLLM_MAX_PROMPT_CHARS - template.length, 1000);
         memoriesText = truncateText(memoriesText, available);
     }
 
-    let prompt = buildConsolidationPrompt(memoriesText);
+    let prompt = buildConsolidationPrompt(memoriesText, charName);
     prompt = substituteParamsExtended(prompt);
 
     try {
@@ -5938,7 +5979,7 @@ async function consolidateMemories() {
     // Run initial consolidation — returns serialized text, parse to blocks
     let initialResult;
     try {
-        initialResult = await runConsolidationLLM(memories);
+        initialResult = await runConsolidationLLM(memories, target.name);
     } finally {
         $btn.val('Consolidate').prop('disabled', false);
     }
@@ -6061,7 +6102,7 @@ async function consolidateMemories() {
         $('#charMemory_rerunConsolidation').prop('disabled', true);
         $('#charMemory_editorPane').addClass('charMemory_editorDisabled');
 
-        const newResult = await runConsolidationLLM(memories);
+        const newResult = await runConsolidationLLM(memories, target.name);
 
         $('#charMemory_rerunSpinner').hide();
         $('#charMemory_rerunConsolidation').prop('disabled', false);
