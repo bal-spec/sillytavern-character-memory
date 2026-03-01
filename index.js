@@ -5155,6 +5155,10 @@ async function showTroubleshooter(initialSection = 'health') {
             <div class="charMemory_modalSection${navActive('reset')}" data-section="reset">
                 <h4 class="charMemory_modalSectionTitle">Reset / Clear</h4>
                 <div class="charMemory_tsResetSection">
+                    <button class="menu_button" id="cm_ts_openWizard">Re-run Setup Wizard</button>
+                    <small class="charMemory_helperText">Walk through the setup steps again to reconfigure your LLM connection, storage, or retrieval settings.</small>
+                </div>
+                <div class="charMemory_tsResetSection">
                     <button class="menu_button" id="cm_ts_resetTracking">Reset Extraction State</button>
                     <small class="charMemory_helperText">Resets extraction tracking for the current character. Next extraction will re-read all messages from the beginning.</small>
                 </div>
@@ -5364,6 +5368,12 @@ async function showTroubleshooter(initialSection = 'health') {
             console.error(LOG_PREFIX, 'Failed to copy report:', err);
             toastr.error('Could not copy report to clipboard.', 'CharMemory');
         }
+    });
+
+    // Re-run Setup Wizard
+    $('#cm_ts_openWizard').off('click').on('click', function () {
+        $modal.closest('.popup').find('.popup-button-ok, .popup-button-close').first().trigger('click');
+        setTimeout(() => showSetupWizard(1), 200);
     });
 
     // Reset / Clear actions (with confirmation dialogs)
@@ -7654,6 +7664,11 @@ jQuery(async function () {
     if (!extension_settings[MODULE_NAME].wizardCompleted) {
         showSetupWizard(1);
     }
+
+    // Dashboard wizard button
+    $('#charMemory_openWizard').on('click', function () {
+        showSetupWizard(1);
+    });
 
     // Nudge banner: fix button opens wizard to the relevant step
     $('#charMemory_nudgeFix').on('click', function () {
