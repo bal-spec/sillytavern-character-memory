@@ -44,6 +44,8 @@ import {
     substitutePromptTemplate,
     truncateText,
     reindexEditingSet,
+    getTimestamp,
+    cloneMemoryBlocks,
 } from './lib.js';
 
 const MODULE_NAME = 'charMemory';
@@ -622,10 +624,8 @@ async function convertWithLLM(content, charName) {
         // LLM may have returned plain bullets without <memory> tags — wrap them
         const lines = response.split('\n').map(l => l.trim()).filter(l => l.startsWith('- '));
         if (lines.length > 0) {
-            const now = new Date();
-            const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
             return {
-                blocks: [{ chat: 'imported', date: today, bullets: lines.map(l => l.slice(2).trim()) }],
+                blocks: [{ chat: 'imported', date: getTimestamp(), bullets: lines.map(l => l.slice(2).trim()) }],
                 warnings: ['LLM did not use <memory> tags — bullets wrapped automatically.'],
             };
         }
@@ -774,13 +774,12 @@ async function previewConversion() {
     }
 
     // === Editor state (lives in closure, survives popup DOM lifecycle) ===
-    let editorBlocks = result.blocks.map(b => ({ ...b, bullets: [...b.bullets] }));
+    let editorBlocks = cloneMemoryBlocks(result.blocks);
     const versionStack = [];
     const editingSet = new Set();
     let destType = 'auto';
     let destCustomName = '';
     let dialogClosed = false; // cancellation flag for in-flight re-run callbacks
-    const cloneBlocks = (blocks) => blocks.map(b => ({ ...b, bullets: [...b.bullets] }));
 
     const refreshEditor = () => {
         $('#charMemory_convEditorPane').html(renderConsolidatedCards(editorBlocks, editingSet));
@@ -845,10 +844,8 @@ async function previewConversion() {
     });
 
     $(document).off('click.charMemoryConvAddBlock').on('click.charMemoryConvAddBlock', '#charMemory_convAddBlock', function () {
-        const now = new Date();
-        const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
         const newIdx = editorBlocks.length;
-        editorBlocks.push({ chat: 'New Group', date: timestamp, bullets: [''] });
+        editorBlocks.push({ chat: 'New Group', date: getTimestamp(), bullets: [''] });
         editingSet.add(newIdx);
         refreshEditor();
         $('#charMemory_convEditorPane .charMemory_editorCard:last .charMemory_editorBulletInput:last').focus();
@@ -869,7 +866,7 @@ async function previewConversion() {
 
     $('#charMemory_rerunConversion').off('click').on('click', async () => {
         if (inApiCall) return;
-        const currentBlocks = cloneBlocks(editorBlocks);
+        const currentBlocks = cloneMemoryBlocks(editorBlocks);
         const llmChecked = $('#charMemory_convDialogLLM').prop('checked');
 
         $('#charMemory_convRerunSpinner').show();
@@ -903,7 +900,7 @@ async function previewConversion() {
         if (newResult && newResult.blocks.length > 0) {
             versionStack.push(currentBlocks);
             $('#charMemory_undoConvRerun').prop('disabled', false);
-            editorBlocks = newResult.blocks.map(b => ({ ...b, bullets: [...b.bullets] }));
+            editorBlocks = cloneMemoryBlocks(newResult.blocks);
             editingSet.clear();
             refreshEditor();
             for (const w of newResult.warnings) {
@@ -2680,8 +2677,7 @@ async function extractMemories({
                 // Parse and save memories to this target's Data Bank
                 const currentMemories = await readMemoriesForCharacter(target.avatar, target.fileName);
                 const existing = parseMemories(currentMemories);
-                const now = new Date();
-                const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+                const timestamp = getTimestamp();
 
                 const memoryRegex = /<memory[^>]*>([\s\S]*?)<\/memory>/gi;
                 const matches = [...cleanResult.matchAll(memoryRegex)];
@@ -3914,8 +3910,7 @@ async function runConsolidationLLM(memories) {
         }
 
         // Parse into memory format, then serialize back to plain text for the editor
-        const now = new Date();
-        const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+        const timestamp = getTimestamp();
 
         const consolidationRegex = /<memory(?:\s+chat="([^"]*)")?>([\s\S]*?)<\/memory>/gi;
         const consolidationMatches = [...cleanResult.matchAll(consolidationRegex)];
@@ -3996,9 +3991,6 @@ async function consolidateMemories() {
     let editorBlocks = parseMemories(initialResult);
     const versionStack = [];
     const editingSet = new Set();
-
-    // Deep copy blocks array
-    const cloneBlocks = (blocks) => blocks.map(b => ({ ...b, bullets: [...b.bullets] }));
 
     // Re-render the editor pane from editorBlocks
     const refreshEditor = () => {
@@ -4083,10 +4075,8 @@ async function consolidateMemories() {
 
     // Add new block
     $(document).off('click.charMemoryEditorAddBlock').on('click.charMemoryEditorAddBlock', '#charMemory_editorAddBlock', function () {
-        const now = new Date();
-        const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
         const newIdx = editorBlocks.length;
-        editorBlocks.push({ chat: 'New Group', date: timestamp, bullets: [''] });
+        editorBlocks.push({ chat: 'New Group', date: getTimestamp(), bullets: [''] });
         editingSet.add(newIdx);
         refreshEditor();
         $('#charMemory_editorPane .charMemory_editorCard:last .charMemory_editorBulletInput:last').focus();
@@ -4127,7 +4117,7 @@ async function consolidateMemories() {
     $('#charMemory_rerunConsolidation').off('click').on('click', async () => {
         if (inApiCall) return;
 
-        const currentBlocks = cloneBlocks(editorBlocks);
+        const currentBlocks = cloneMemoryBlocks(editorBlocks);
 
         const dialogStrategy = $('#charMemory_consolidationDialogStrategy').val();
         extension_settings[MODULE_NAME].consolidationStrategy = dialogStrategy;
@@ -4261,11 +4251,10 @@ async function showReformatPreview(originalBlocks, reformattedBlocks, charName, 
     const originalCount = countMemories(originalBlocks);
 
     // Editor state lives in closure
-    let editorBlocks = reformattedBlocks.map(b => ({ ...b, bullets: [...b.bullets] }));
+    let editorBlocks = cloneMemoryBlocks(reformattedBlocks);
     const versionStack = [];
     const editingSet = new Set();
     let dialogClosed = false;
-    const cloneBlocks = (blocks) => blocks.map(b => ({ ...b, bullets: [...b.bullets] }));
 
     const refreshEditor = () => {
         $('#charMemory_reformatEditorPane').html(renderConsolidatedCards(editorBlocks, editingSet));
@@ -4328,10 +4317,8 @@ async function showReformatPreview(originalBlocks, reformattedBlocks, charName, 
     });
 
     $(document).off('click.charMemoryRefAddBlock').on('click.charMemoryRefAddBlock', '#charMemory_reformatAddBlock', function () {
-        const now = new Date();
-        const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
         const newIdx = editorBlocks.length;
-        editorBlocks.push({ chat: 'New Group', date: timestamp, bullets: [''] });
+        editorBlocks.push({ chat: 'New Group', date: getTimestamp(), bullets: [''] });
         editingSet.add(newIdx);
         refreshEditor();
         $('#charMemory_reformatEditorPane .charMemory_editorCard:last .charMemory_editorBulletInput:last').focus();
@@ -4340,7 +4327,7 @@ async function showReformatPreview(originalBlocks, reformattedBlocks, charName, 
     // === Re-run button ===
     $('#charMemory_rerunReformat').off('click').on('click', async () => {
         if (inApiCall) return;
-        const currentBlocks = cloneBlocks(editorBlocks);
+        const currentBlocks = cloneMemoryBlocks(editorBlocks);
 
         $('#charMemory_reformatRerunSpinner').show();
         $('#charMemory_rerunReformat').prop('disabled', true);
@@ -4368,7 +4355,7 @@ async function showReformatPreview(originalBlocks, reformattedBlocks, charName, 
         if (newResult && newResult.blocks.length > 0) {
             versionStack.push(currentBlocks);
             $('#charMemory_undoReformatRerun').prop('disabled', false);
-            editorBlocks = newResult.blocks.map(b => ({ ...b, bullets: [...b.bullets] }));
+            editorBlocks = cloneMemoryBlocks(newResult.blocks);
             editingSet.clear();
             refreshEditor();
             for (const w of newResult.warnings) {
@@ -5258,8 +5245,7 @@ async function onPinMemoryClick() {
 
     if (bullets.length === 0) return;
 
-    const now = new Date();
-    const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const timestamp = getTimestamp();
     const chatId = context.chatId || 'unknown';
 
     // Find the target matching the message sender (for groups, match by name)

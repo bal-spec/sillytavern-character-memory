@@ -184,8 +184,7 @@ export function migrateMemoriesIfNeeded(content) {
 
     if (/<memory\b[^>]*>/i.test(content)) return content;
 
-    const now = new Date();
-    const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const timestamp = getTimestamp();
 
     if (/^## Memory \d+/m.test(content)) {
         const parts = content.split(/^## Memory \d+\s*$/m);
@@ -251,8 +250,7 @@ export function detectFileFormat(content) {
  * @returns {{blocks: {chat: string, date: string, bullets: string[]}[], warnings: string[]}}
  */
 export function convertHeuristic(content, format) {
-    const now = new Date();
-    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const today = getTimestamp();
     const warnings = [];
 
     if (format === 'memory_tags') {
@@ -435,4 +433,27 @@ export function substitutePromptTemplate(template, vars) {
     if (vars.recentMessages != null) result = result.replace(/\{\{recentMessages\}\}/g, vars.recentMessages);
     if (vars.participants != null) result = result.replace(/\{\{participants\}\}/g, vars.participants);
     return result;
+}
+
+// ─── Timestamp utility ──────────────────────────────────────────────────
+
+/**
+ * Generate a YYYY-MM-DD HH:MM timestamp string.
+ * @param {Date} [date] - Date to format. Defaults to now.
+ * @returns {string}
+ */
+export function getTimestamp(date) {
+    const now = date || new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+}
+
+// ─── Memory block cloning ───────────────────────────────────────────────
+
+/**
+ * Deep-clone an array of memory blocks (shallow object clone + bullet array copy).
+ * @param {Array<{chat: string, date: string, bullets: string[]}>} blocks
+ * @returns {Array<{chat: string, date: string, bullets: string[]}>}
+ */
+export function cloneMemoryBlocks(blocks) {
+    return blocks.map(b => ({ ...b, bullets: [...b.bullets] }));
 }

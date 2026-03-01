@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { truncateText, reindexEditingSet, stripNonDiegetic, formatChatMessages, substitutePromptTemplate } from '../../lib.js';
+import { truncateText, reindexEditingSet, stripNonDiegetic, formatChatMessages, substitutePromptTemplate, getTimestamp, cloneMemoryBlocks } from '../../lib.js';
 
 // ─── truncateText ──────────────────────────────────────────────────────
 
@@ -231,5 +231,41 @@ describe('substitutePromptTemplate', () => {
             charName: 'Flux', charCard: 'A cat', recentMessages: 'hi',
         });
         expect(result).toContain('(none yet)');
+    });
+});
+
+// ─── getTimestamp ──────────────────────────────────────────────────────
+
+describe('getTimestamp', () => {
+    it('returns YYYY-MM-DD HH:MM format', () => {
+        const ts = getTimestamp();
+        expect(ts).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
+    });
+
+    it('accepts a Date argument', () => {
+        const ts = getTimestamp(new Date(2026, 0, 15, 9, 5));
+        expect(ts).toBe('2026-01-15 09:05');
+    });
+});
+
+// ─── cloneMemoryBlocks ────────────────────────────────────────────────
+
+describe('cloneMemoryBlocks', () => {
+    it('deep clones blocks without shared references', () => {
+        const original = [
+            { chat: 'test', date: '2026-01-01', bullets: ['a', 'b'] },
+        ];
+        const cloned = cloneMemoryBlocks(original);
+        cloned[0].bullets.push('c');
+        expect(original[0].bullets).toEqual(['a', 'b']);
+    });
+
+    it('preserves all block properties', () => {
+        const original = [
+            { chat: 'test', date: '2026-01-01 14:30', bullets: ['a'] },
+        ];
+        const cloned = cloneMemoryBlocks(original);
+        expect(cloned[0].chat).toBe('test');
+        expect(cloned[0].date).toBe('2026-01-01 14:30');
     });
 });
