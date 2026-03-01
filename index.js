@@ -1434,36 +1434,6 @@ function loadSettings() {
     // Bind dashboard UI elements to settings
     $('#charMemory_enabled').prop('checked', extension_settings[MODULE_NAME].enabled);
 
-    // Legacy sidebar bindings — these elements may not exist in the dashboard
-    // but are populated here in case the Settings Modal reuses them, and jQuery
-    // silently no-ops on missing selectors.
-    $('#charMemory_mergeChunks').prop('checked', extension_settings[MODULE_NAME].mergeChunks);
-    $('#charMemory_perChat').prop('checked', extension_settings[MODULE_NAME].perChat);
-    $('#charMemory_interval').val(extension_settings[MODULE_NAME].interval);
-    $('#charMemory_intervalCounter').val(extension_settings[MODULE_NAME].interval);
-    $('#charMemory_maxMessages').val(extension_settings[MODULE_NAME].maxMessagesPerExtraction);
-    $('#charMemory_maxMessagesCounter').val(extension_settings[MODULE_NAME].maxMessagesPerExtraction);
-    $('#charMemory_responseLength').val(extension_settings[MODULE_NAME].responseLength);
-    $('#charMemory_responseLengthCounter').val(extension_settings[MODULE_NAME].responseLength);
-    $('#charMemory_minCooldown').val(extension_settings[MODULE_NAME].minCooldownMinutes);
-    $('#charMemory_minCooldownCounter').val(extension_settings[MODULE_NAME].minCooldownMinutes);
-    $('#charMemory_extractionPrompt').val(extension_settings[MODULE_NAME].extractionPrompt);
-    $('#charMemory_groupExtractionPrompt').val(extension_settings[MODULE_NAME].groupExtractionPrompt);
-    $('#charMemory_consolidationStrategy').val(extension_settings[MODULE_NAME].consolidationStrategy || 'balanced');
-    updateConsolidationStrategyUI();
-    $('#charMemory_source').val(extension_settings[MODULE_NAME].source);
-    $('#charMemory_fileName').val(extension_settings[MODULE_NAME].fileName);
-    $('#charMemory_verboseLog').prop('checked', extension_settings[MODULE_NAME].verboseLogging);
-    $('#charMemory_chunkBoundary').val(extension_settings[MODULE_NAME].chunkBoundary || 'block');
-    $('#charMemory_customSeparator').val(extension_settings[MODULE_NAME].customSeparator || '\\n\\n');
-    $('#charMemory_chunkMetadata').prop('checked', !!extension_settings[MODULE_NAME].chunkMetadata);
-    toggleChunkBoundaryUI(extension_settings[MODULE_NAME].chunkBoundary || 'block');
-    $('#charMemory_convertPrompt').val(extension_settings[MODULE_NAME].conversionPrompt || defaultConversionPrompt);
-
-    // Provider settings
-    populateProviderDropdown();
-    toggleProviderSettings(extension_settings[MODULE_NAME].source);
-
     updateStatusDisplay();
     updateHealthIndicator();
 }
@@ -3047,7 +3017,6 @@ function captureDiagnostics(messageIndex) {
         }
     }
 
-    updateDiagnosticsDisplay();
     updateHealthIndicator();
 
     // Auto-update injection drawer if open
@@ -3391,188 +3360,6 @@ async function fetchCharacterLorebooks() {
         }
     }
     return results;
-}
-
-function updateDiagnosticsDisplay() {
-    const container = $('#charMemory_diagnosticsContent');
-    if (!container.length) return;
-
-    let html = '';
-
-    // Health score placeholder — populated async by updateHealthIndicator()
-    html += '<div id="charMemory_healthCard" class="charMemory_diagSection"></div>';
-
-    // Timestamp
-    if (lastDiagnostics.timestamp) {
-        html += `<div class="charMemory_diagTimestamp">Last capture: ${lastDiagnostics.timestamp}</div>`;
-    }
-
-    // Memory Info
-    html += '<div class="charMemory_diagSection"><strong>Memories</strong>';
-    const diagTargets = getMemoryTargets();
-    const diagTarget = diagTargets[0]; // Show first target (1:1) or primary target (group)
-    const memFileName = diagTarget?.fileName || '(none)';
-    const memAttachment = diagTarget ? findMemoryAttachmentForCharacter(diagTarget.avatar, diagTarget.fileName) : null;
-    html += `<div class="charMemory_diagCard">
-        <div class="charMemory_diagCardTitle">Active file name${diagTargets.length > 1 ? ` (${diagTarget.name})` : ''}</div>
-        <div class="charMemory_diagCardContent">${escapeHtml(memFileName)}</div>
-    </div>`;
-    html += `<div class="charMemory_diagCard">
-        <div class="charMemory_diagCardTitle">File status</div>
-        <div class="charMemory_diagCardContent">${memAttachment ? 'Exists in Data Bank' : 'Not found in Data Bank'}</div>
-    </div>`;
-
-    if (memAttachment) {
-        // Async read and update when available
-        getFileAttachment(memAttachment.url).then(content => {
-            const blocks = parseMemories(content || '');
-            const count = countMemories(blocks);
-            const countEl = document.getElementById('charMemory_diagMemoryCount');
-            if (countEl) countEl.textContent = `${count} (in ${blocks.length} block${blocks.length === 1 ? '' : 's'})`;
-        }).catch(() => {});
-
-        // Vectorization status (async)
-        checkVectorizationStatus(memAttachment.url).then(result => {
-            const vecEl = document.getElementById('charMemory_diagVectorization');
-            if (!vecEl) return;
-            if (result === null) {
-                vecEl.textContent = 'N/A (vectors not enabled for files)';
-            } else if (result === false) {
-                vecEl.textContent = 'No';
-            } else {
-                const via = result.model ? `${result.source}/${result.model}` : result.source;
-                vecEl.textContent = `Yes (${result.chunks} chunk${result.chunks === 1 ? '' : 's'}) via ${via}`;
-            }
-        }).catch(() => {});
-    }
-    const countDisplay = memAttachment ? '...' : '0';
-    html += `<div class="charMemory_diagCard">
-        <div class="charMemory_diagCardTitle">Memory count</div>
-        <div class="charMemory_diagCardContent" id="charMemory_diagMemoryCount">${countDisplay}</div>
-    </div>`;
-    html += `<div class="charMemory_diagCard">
-        <div class="charMemory_diagCardTitle">Vectorization</div>
-        <div class="charMemory_diagCardContent" id="charMemory_diagVectorization">${memAttachment ? '...' : 'N/A'}</div>
-    </div>`;
-
-    if (lastExtractionResult) {
-        const truncated = lastExtractionResult.length > 500
-            ? lastExtractionResult.substring(0, 500) + '...'
-            : lastExtractionResult;
-        html += `<div class="charMemory_diagCard">
-            <div class="charMemory_diagCardTitle">Last extraction result</div>
-            <div class="charMemory_diagCardContent">${escapeHtml(truncated)}</div>
-        </div>`;
-    }
-    html += '</div>';
-
-    // Injected Memories — last generation
-    const dbPrompt = lastDiagnostics.extensionPrompts?.['4_vectors_data_bank'];
-    html += '<div class="charMemory_diagSection"><strong>Injected Memories — Last Generation</strong>';
-    if (dbPrompt && dbPrompt.content) {
-        html += '<div id="charMemory_diagInjected"><div class="charMemory_diagEmpty">Matching...</div></div></div>';
-    } else {
-        html += '<div class="charMemory_diagEmpty">No memory chunks injected yet (generate a message first)</div></div>';
-    }
-
-    if (dbPrompt && dbPrompt.content) {
-        // Extract bullet lines directly from injected text — works regardless of
-        // chunk boundaries splitting <memory> tags or Injection Template wrappers
-        const bullets = dbPrompt.content.split('\n')
-            .map(line => line.trim())
-            .filter(line => line.startsWith('- '))
-            .map(line => line.slice(2).trim())
-            .filter(Boolean);
-
-        setTimeout(() => {
-            const el = document.getElementById('charMemory_diagInjected');
-            if (!el) return;
-
-            if (bullets.length > 0) {
-                let bulletHtml = `<div class="charMemory_diagCard"><div class="charMemory_diagCardTitle">${bullets.length} memor${bullets.length === 1 ? 'y' : 'ies'} injected</div>`;
-                for (const bullet of bullets) {
-                    bulletHtml += `<div class="charMemory_diagCardContent">- ${escapeHtml(bullet)}</div>`;
-                }
-                bulletHtml += '</div>';
-                el.innerHTML = bulletHtml;
-            } else {
-                const preview = dbPrompt.content.length > 800 ? dbPrompt.content.substring(0, 800) + '...' : dbPrompt.content;
-                let fallbackHtml = '<div class="charMemory_diagCard">';
-                fallbackHtml += '<div class="charMemory_diagCardTitle">Injected text (no memory bullets found):</div>';
-                fallbackHtml += `<div class="charMemory_diagCardContent" style="white-space:pre-wrap;">${escapeHtml(preview)}</div>`;
-                fallbackHtml += '</div>';
-                el.innerHTML = fallbackHtml;
-            }
-        }, 0);
-    }
-
-    // Character Lorebooks (static)
-    html += '<div class="charMemory_diagSection"><strong>Character Lorebooks</strong>';
-    html += '<div id="charMemory_diagLorebooks"><div class="charMemory_diagEmpty">Loading...</div></div></div>';
-
-    fetchCharacterLorebooks().then(books => {
-        const el = document.getElementById('charMemory_diagLorebooks');
-        if (!el) return;
-        if (books.length === 0) {
-            el.textContent = 'No lorebooks bound to this character';
-            el.classList.add('charMemory_diagEmpty');
-            return;
-        }
-        let booksHtml = '';
-        for (const book of books) {
-            booksHtml += `<div class="charMemory_diagCard">
-                <div class="charMemory_diagCardTitle">${escapeHtml(book.name)} (${book.entries.length} entries)</div>`;
-            for (const entry of book.entries) {
-                const keysStr = entry.keys.length > 0 ? entry.keys.join(', ') : '(no keys)';
-                booksHtml += `<div class="charMemory_diagCardKeys">Keys: ${escapeHtml(keysStr)}</div>`;
-            }
-            booksHtml += '</div>';
-        }
-        el.innerHTML = booksHtml;
-    }).catch(() => {
-        const el = document.getElementById('charMemory_diagLorebooks');
-        if (el) {
-            el.textContent = 'Failed to load lorebooks';
-            el.classList.add('charMemory_diagEmpty');
-        }
-    });
-
-    // Activated Lorebook Entries (runtime)
-    const wiEntries = lastDiagnostics.worldInfoEntries;
-    html += `<div class="charMemory_diagSection"><strong>Activated Entries — Last Generation (${wiEntries.length})</strong>`;
-    if (wiEntries.length > 0) {
-        for (const entry of wiEntries) {
-            const keysStr = entry.keys.length > 0 ? entry.keys.join(', ') : '(no keys)';
-            html += `<div class="charMemory_diagCard">
-                <div class="charMemory_diagCardTitle">${escapeHtml(entry.comment)}</div>
-                <div class="charMemory_diagCardKeys">Keys: ${escapeHtml(keysStr)}</div>
-                <div class="charMemory_diagCardContent">${escapeHtml(entry.content)}${entry.content.length >= 200 ? '...' : ''}</div>
-            </div>`;
-        }
-    } else {
-        html += '<div class="charMemory_diagEmpty">No entries activated yet (generate a message first)</div>';
-    }
-    html += '</div>';
-
-    // Extension Prompts
-    const prompts = lastDiagnostics.extensionPrompts;
-    const promptKeys = Object.keys(prompts);
-    html += `<div class="charMemory_diagSection"><strong>Extension Prompts (${promptKeys.length})</strong>`;
-    if (promptKeys.length > 0) {
-        for (const key of promptKeys) {
-            const p = prompts[key];
-            const isTruncated = key !== '4_vectors_data_bank' && p.content.length >= 300;
-            html += `<div class="charMemory_diagCard">
-                <div class="charMemory_diagCardTitle">${escapeHtml(p.label)}</div>
-                <div class="charMemory_diagCardContent" style="white-space:pre-wrap;">${escapeHtml(p.content)}${isTruncated ? '...' : ''}</div>
-            </div>`;
-        }
-    } else {
-        html += '<div class="charMemory_diagEmpty">No extension prompts active</div>';
-    }
-    html += '</div>';
-
-    container.html(html);
 }
 
 // ============ Settings Modal ============
@@ -5979,7 +5766,6 @@ async function undoConsolidation() {
 
     await writeMemoriesForCharacter(consolidationBackup.content, consolidationBackup.avatar, consolidationBackup.fileName);
     consolidationBackup = null;
-    $('#charMemory_undoConsolidate').prop('disabled', true);
     toastr.success('Consolidation undone. Memories restored.', 'CharMemory');
     updateStatusDisplay();
 }
@@ -6334,7 +6120,6 @@ async function consolidateMemories() {
 
     consolidationBackup = { content, avatar: target.avatar, fileName: target.fileName };
     await writeMemoriesForCharacter(serializeMemories(cleanBlocks), target.avatar, target.fileName);
-    $('#charMemory_undoConsolidate').prop('disabled', false);
 
     const afterCount = countMemories(cleanBlocks);
     logActivity(`Consolidation complete: ${beforeCount} → ${afterCount} memories`, 'success');
@@ -7021,70 +6806,7 @@ function setupToolControls() {
     // Diagnostics link → open troubleshooter
     $('#charMemory_viewDiagDetails').off('click').on('click', () => showTroubleshooter('health'));
 
-    // Consolidation controls (used in consolidation dialog, still active)
-    $('#charMemory_consolidate').off('click').on('click', () => consolidateMemories());
-    $('#charMemory_undoConsolidate').off('click').on('click', () => undoConsolidation());
-
-    $('#charMemory_consolidationStrategy').off('change').on('change', function () {
-        extension_settings[MODULE_NAME].consolidationStrategy = String($(this).val());
-        updateConsolidationStrategyUI();
-        saveSettingsDebounced();
-    });
-
-    // Consolidation prompt editing — save override for current strategy
-    $('#charMemory_consolidationPrompt').off('input').on('input', function () {
-        const strategy = extension_settings[MODULE_NAME].consolidationStrategy || 'balanced';
-        if (!extension_settings[MODULE_NAME].consolidationPrompts) {
-            extension_settings[MODULE_NAME].consolidationPrompts = {};
-        }
-        extension_settings[MODULE_NAME].consolidationPrompts[strategy] = $(this).val();
-        $('#charMemory_restorePresetDefault').show();
-        saveSettingsDebounced();
-    });
-
-    // Restore preset default prompt
-    $('#charMemory_restorePresetDefault').off('click').on('click', function () {
-        const strategy = extension_settings[MODULE_NAME].consolidationStrategy || 'balanced';
-        if (extension_settings[MODULE_NAME].consolidationPrompts) {
-            delete extension_settings[MODULE_NAME].consolidationPrompts[strategy];
-        }
-        updateConsolidationStrategyUI();
-        saveSettingsDebounced();
-    });
-
-    $('#charMemory_convertPreview').off('click').on('click', () => previewConvert());
-    $('#charMemory_undoReformat').off('click').on('click', () => undoReformat());
-
-    // Format tool source picker toggle
-    $('input[name="charMemory_formatSource"]').off('change').on('change', function () {
-        const isDataBank = $(this).val() === 'databank';
-        $('#charMemory_convertSource').toggle(isDataBank);
-        $('#charMemory_formatLLMRow').toggle(isDataBank);
-        if (isDataBank) populateConvertSourceDropdown();
-    });
-
-    // Format tool prompt controls
-    $('#charMemory_restoreConvertPrompt').off('click').on('click', () => {
-        $('#charMemory_convertPrompt').val(defaultConversionPrompt);
-        extension_settings[MODULE_NAME].conversionPrompt = '';
-        saveSettingsDebounced();
-    });
-    $('#charMemory_convertPrompt').off('input').on('input', function () {
-        extension_settings[MODULE_NAME].conversionPrompt = $(this).val();
-        saveSettingsDebounced();
-    });
-
-    // Batch Extract controls (used in batch dialog/troubleshooter)
-    $('#charMemory_batchRefresh').off('click').on('click', loadBatchChatList);
-    $('#charMemory_batchExtract').off('click').on('click', runBatchExtraction);
-    $('#charMemory_batchStop').off('click').on('click', function () {
-        if (batchAbortController) batchAbortController.abort();
-    });
-    $('#charMemory_batchSelectAll').off('change').on('change', function () {
-        const checked = $(this).prop('checked');
-        $('.charMemory_batchChatCheck').prop('checked', checked);
-        updateBatchButtons();
-    });
+    // Delegated handler for batch chat checkboxes (created dynamically in showBatchPopup)
     $(document).off('change', '.charMemory_batchChatCheck').on('change', '.charMemory_batchChatCheck', updateBatchButtons);
 }
 
@@ -7126,23 +6848,12 @@ function setupStorageControls() {
 }
 
 /**
- * Wire event handlers for diagnostics, health indicator, and reset controls.
- * Covers: verbose log toggle, health stat click, recommendation accordion,
- * reset tracking, and reset extraction (clear all).
+ * Wire event handlers for health indicator click.
  */
 function setupLogControls() {
-    $('#charMemory_verboseLog').off('change').on('change', function () {
-        extension_settings[MODULE_NAME].verboseLogging = !!$(this).prop('checked');
-        saveSettingsDebounced();
-    });
-
     // Health indicator click — open troubleshooter
     $('#charMemory_statHealth').off('click').on('click', function () {
         showTroubleshooter('health');
-    });
-
-    $('.charMemory_recommendationHeader').off('click').on('click', function () {
-        $(this).next('.charMemory_recommendationBody').slideToggle(200);
     });
 
 }
@@ -7951,8 +7662,6 @@ jQuery(async function () {
     });
     $('#charMemory_logDrawerVerbose').on('change', function () {
         extension_settings[MODULE_NAME].verboseLogging = !!$(this).prop('checked');
-        // Sync the sidebar verbose toggle too
-        $('#charMemory_verboseLog').prop('checked', extension_settings[MODULE_NAME].verboseLogging);
         saveSettingsDebounced();
     });
     // "View full log" link (wired from sidebar dashboard, Task 5)

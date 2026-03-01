@@ -20,16 +20,6 @@
     width: 100%;
 }
 
-.charMemory_promptSection {
-    margin: 8px 0;
-}
-
-.charMemory_promptSection textarea {
-    width: 100%;
-    resize: vertical;
-    min-height: 100px;
-}
-
 /* Stats bar */
 .charMemory_statsBar {
     display: flex;
@@ -228,13 +218,6 @@
     justify-content: space-between;
 }
 
-/* Format tool source picker */
-.charMemory_formatSourceRow {
-    display: flex;
-    gap: 12px;
-    margin: 4px 0;
-}
-
 /* Helper text */
 .charMemory_helperText {
     display: block;
@@ -265,13 +248,6 @@
 }
 
 /* Diagnostics */
-.charMemory_diagnosticsContent {
-    max-height: 400px;
-    overflow-y: auto;
-    overflow-x: hidden;
-    word-break: break-word;
-}
-
 .charMemory_diagTimestamp {
     font-size: 0.85em;
     opacity: 0.7;
@@ -732,44 +708,10 @@
     opacity: 0.5;
 }
 
-/* Activity Log — always visible */
-.charMemory_miniLog {
-    border-top: 1px solid var(--SmartThemeBorderColor, rgba(255,255,255,0.1));
-    margin-top: 8px;
-    padding-top: 4px;
-}
-
-.charMemory_miniLogContent {
-    font-size: 0.8em;
-    font-family: monospace;
-    height: 60px;
-    overflow-y: auto;
-    overflow-x: hidden;
-    resize: vertical;
-    min-height: 30px;
-    max-height: 400px;
-    word-break: break-word;
-}
-
 .charMemory_miniLogEmpty {
     padding: 2px 0;
     font-size: 0.9em;
     opacity: 0.5;
-}
-
-/* Bottom Diagnostics — always visible */
-.charMemory_bottomDiagnostics {
-    border-top: 1px solid var(--SmartThemeBorderColor, rgba(255,255,255,0.1));
-    margin-top: 8px;
-    padding-top: 4px;
-}
-
-.charMemory_bottomDiagnostics .charMemory_buttonRow {
-    align-items: center;
-}
-
-.charMemory_bottomDiagnostics .charMemory_diagnosticsContent {
-    max-height: 300px;
 }
 
 /* Convert tool */
@@ -1021,53 +963,6 @@
     word-break: break-word;
     max-height: 120px;
     overflow-y: auto;
-}
-
-/* Recommended Vector Storage Settings card */
-.charMemory_settingsRecommendation {
-    margin-top: 8px;
-    border: 1px solid var(--SmartThemeBorderColor, rgba(128, 128, 128, 0.2));
-    border-radius: 4px;
-}
-
-.charMemory_recommendationHeader {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 8px;
-    cursor: pointer;
-    font-size: 0.85em;
-    opacity: 0.7;
-    user-select: none;
-    background: rgba(128, 128, 128, 0.05);
-}
-
-.charMemory_recommendationHeader:hover {
-    opacity: 1;
-}
-
-.charMemory_recommendationBody {
-    padding: 6px 8px;
-}
-
-.charMemory_recommendationTable {
-    width: 100%;
-    font-size: 0.85em;
-    border-collapse: collapse;
-}
-
-.charMemory_recommendationTable td {
-    padding: 3px 6px;
-    border-bottom: 1px solid var(--SmartThemeBorderColor, rgba(128, 128, 128, 0.1));
-}
-
-.charMemory_recommendationTable tr:last-child td {
-    border-bottom: none;
-}
-
-.charMemory_recommendationTable td:first-child {
-    opacity: 0.7;
-    white-space: nowrap;
 }
 
 /* Message highlight when selected in drawer */

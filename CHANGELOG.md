@@ -1,5 +1,28 @@
 # Changelog
 
+## 2.0.0
+
+### UX Redesign
+
+Complete UI overhaul replacing the 4-tab sidebar (Main, Tools, Settings, Log) with a streamlined dashboard + modal architecture.
+
+- **Single-view dashboard**: Sidebar is now a compact dashboard with stats bar, file info, extraction toggle, Extract Now button, tool launchers (Consolidate, Batch, Format), mini activity log, and diagnostics summary
+- **Settings modal**: All settings moved to a center-screen modal with left-nav sections (Connection, Extraction, Storage, Advanced). Opens via gear icon in sidebar header
+- **Prompts modal**: Dedicated full-width editor for extraction and consolidation prompts with prompt version tracking and update notifications when defaults change
+- **Log drawer**: Activity log moved to a slide-out right-side drawer with verbose toggle, export, and swipe-to-close on touch devices
+- **Troubleshooter modal**: Replaces the old Diagnostics panel. Includes automated health checks, Data Bank file browser with export/delete/convert actions, diagnostic report, and reset/clear tools. Opens via wrench icon in sidebar header
+- **Setup wizard**: First-run 3-step flow (LLM Connection, Vector Storage, Ready) that guides new users through initial configuration. Detects unconfigured state and shows a nudge banner
+- **Prompt version tracking**: When default prompts are updated between versions, users with customized prompts see an update banner with options to view changes, adopt the new default, or dismiss
+- **Health indicator in stats bar**: Traffic-light dot showing injection health status — click to open Troubleshooter
+
+### Developer
+
+- Removed dead CSS for old tab/pill layout (`.charMemory_tabs`, `.charMemory_toolPills`, etc.)
+- Removed dead JS handlers binding to old sidebar element IDs (`#charMemory_consolidate`, `#charMemory_undoConsolidate`, `#charMemory_verboseLog`, etc.)
+- Removed unused `updateDiagnosticsDisplay()` function (~180 lines)
+- Cleaned up `loadSettings()` — removed jQuery no-ops targeting elements that no longer exist in the sidebar HTML
+- Settings modal uses `cm_modal_*` prefixed IDs to avoid conflicts with sidebar dashboard elements
+
 ## 1.8.0
 
 ### Developer

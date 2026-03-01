@@ -11,10 +11,11 @@ A SillyTavern extension that automatically extracts structured character memorie
 ## File Structure
 
 ```
-index.js        — All extension logic: extraction, consolidation, provider API calls, UI controllers, event handlers (~5700 lines)
+index.js        — All extension logic: extraction, consolidation, provider API calls, UI controllers, event handlers, modals (~7800 lines)
 lib.js          — Pure utility functions imported by index.js at runtime and used by tests (parsing, serialization, formatting, stripping)
-settings.html   — Extension panel UI (settings, memory manager, diagnostics, batch extract)
-style.css       — All styling
+editor.js       — Shared memory block editor factory (createMemoryEditor) with state management and undo
+settings.html   — Sidebar dashboard HTML (stats bar, extraction controls, tool launchers, activity, diagnostics)
+style.css       — All styling (dashboard, modals, drawers, wizard, troubleshooter)
 manifest.json   — ST extension manifest (version, loading order, author)
 README.md       — User-facing documentation (getting started guide + technical reference, combined)
 CHANGELOG.md    — Version history
@@ -59,6 +60,17 @@ Per-provider settings (API key, model, system prompt, custom URL) are stored in 
 </memory>
 ```
 
+### UI Layout (v2.0)
+
+The sidebar (`settings.html`) is a single-view dashboard — no tabs. All complex UI is in center-screen modals and drawers built dynamically in `index.js`:
+
+- **Dashboard** (sidebar): Stats bar, file info, extraction toggle, Extract Now, tool launcher buttons (Consolidate, Batch, Format), mini activity log, diagnostics summary
+- **Settings Modal** (`showSettingsModal()`): Left-nav with sections — Connection, Extraction, Storage, Advanced. Uses `cm_modal_*` prefixed IDs to avoid conflicts with sidebar elements.
+- **Prompts Modal** (`showPromptsModal()`): Full-width editor for extraction/consolidation prompts with version tracking and update banners
+- **Log Drawer** (`toggleLogDrawer()`): Slide-out right-side drawer for the full activity log with verbose toggle and export
+- **Troubleshooter Modal** (`showTroubleshooter()`): Health checks, Data Bank file browser, diagnostic report, reset/clear tools
+- **Setup Wizard** (`showSetupWizard()`): 3-step first-run flow — LLM Connection, Vector Storage, Ready
+
 ### Settings Storage
 
 All settings live under `extension_settings.charMemory`. Key fields:
@@ -68,6 +80,7 @@ All settings live under `extension_settings.charMemory`. Key fields:
 - `extractionPrompt` — customizable prompt template
 - `interval`, `cooldownMinutes`, `chunkSize`, `responseLength` — extraction tuning
 - `perChat`, `fileName` — storage options
+- `promptVersions` — tracks which prompt versions the user has seen (for update notifications)
 
 ## Conventions
 
@@ -121,11 +134,12 @@ For UI and integration testing that requires SillyTavern:
 1. Install in SillyTavern's `public/scripts/extensions/third-party/CharMemory` (symlink or clone)
 2. Restart SillyTavern
 3. Test extraction with different providers
-4. Check Activity Log (verbose mode) for LLM prompts/responses
-5. Use Diagnostics tab to verify injected memories
+4. Check Activity Log (verbose mode via Log Drawer) for LLM prompts/responses
+5. Open Troubleshooter to verify health checks and injected memories
 
 ## Common Tasks
 
 - **Adding a new provider**: Add entry to `PROVIDER_PRESETS`, no other changes needed if it's OpenAI-compatible with standard `/models` endpoint
-- **Modifying the extraction prompt**: Edit `defaultExtractionPrompt` constant. Users can also customize via the UI, so changes to the default only affect new installations or users who click "Restore Default"
-- **Adding UI elements**: Add HTML to `settings.html`, add event handler in `setupListeners()`, add controller logic. Follow the `charMemory_` ID prefix convention
+- **Modifying the extraction prompt**: Edit `defaultExtractionPrompt` constant. Bump `PROMPT_VERSIONS.extraction` to trigger update notifications for existing users. Users can also customize via the Prompts modal, so changes to the default only affect new installations or users who click "Restore Default"
+- **Adding dashboard UI elements**: Add HTML to `settings.html`, add event handler in the appropriate `setup*Controls()` function. Follow the `charMemory_` ID prefix convention
+- **Adding modal UI elements**: Build the HTML dynamically in the modal's show function (e.g., `showSettingsModal()`). Use `cm_modal_*` or `cm_ts_*` prefixed IDs to avoid conflicts with sidebar elements
