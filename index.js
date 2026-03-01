@@ -4662,12 +4662,10 @@ async function showSetupWizard(startStep = 1) {
     const $wizard = $('.charMemory_wizard').last();
 
     // --- Step navigation helpers ---
-    let wizCurrentStep = startStep;
     let wizConnectionOk = false;
     let wizHealthResult = null;
 
     function showStep(step) {
-        wizCurrentStep = step;
         $wizard.find('.charMemory_wizardStep').removeClass('active');
         $wizard.find(`.charMemory_wizardStep[data-step="${step}"]`).addClass('active');
 
@@ -4894,7 +4892,13 @@ async function showSetupWizard(startStep = 1) {
         const $container = $wizard.find('#cm_wiz_healthChecks');
         $container.html('<div class="charMemory_diagEmpty">Checking Vector Storage configuration...</div>');
 
-        wizHealthResult = await computeHealthScore();
+        try {
+            wizHealthResult = await computeHealthScore();
+        } catch (err) {
+            console.warn(LOG_PREFIX, 'Wizard health check failed:', err);
+            $container.html('<div class="charMemory_diagEmpty">Could not check Vector Storage. You can skip this step.</div>');
+            return;
+        }
         const healthResult = wizHealthResult;
         const colors = { green: '#4a4', yellow: '#e8a33d', red: '#c44', unknown: 'var(--SmartThemeBorderColor, #555)' };
         const icons = { green: 'fa-circle-check', yellow: 'fa-triangle-exclamation', red: 'fa-circle-xmark', unknown: 'fa-circle-question' };
@@ -4922,7 +4926,7 @@ async function showSetupWizard(startStep = 1) {
                     ? `<div class="charMemory_wizardCheckFix"><i class="fa-solid fa-lightbulb fa-xs"></i> ${escapeHtml(fixHints[check.id])}</div>`
                     : '';
                 checksHtml += `<div class="charMemory_wizardCheck">
-                    <i class="fa-solid ${icons[check.level]} fa-sm" style="color:${colors[check.level]};"></i>
+                    <i class="fa-solid ${icons[check.level] || icons.unknown} fa-sm" style="color:${colors[check.level] || colors.unknown};"></i>
                     <div class="charMemory_wizardCheckDetail">
                         <div class="charMemory_wizardCheckLabel">${escapeHtml(check.label)}</div>
                         <div class="charMemory_wizardCheckText">${escapeHtml(check.detail)}</div>
