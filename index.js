@@ -5278,7 +5278,7 @@ async function showTroubleshooter(initialSection = 'health') {
                 const isMemFile = att.name === memoryFileName;
                 const badge = isMemFile ? '<span class="charMemory_tsBadge">CharMemory</span>' : '';
                 const sizeText = att.size ? `<span class="charMemory_tsFileSize">${(att.size / 1024).toFixed(1)} KB</span>` : '';
-                dataBankHtml += `<div class="charMemory_tsFileRow" data-url="${escapeAttr(att.url)}" data-name="${escapeAttr(att.name || '')}">
+                dataBankHtml += `<div class="charMemory_tsFileRow" data-url="${escapeAttr(att.url)}" data-name="${escapeAttr(att.name || '')}" data-avatar="${escapeAttr(avatar)}">
                     <div class="charMemory_tsFileName">
                         <i class="fa-solid fa-file-lines fa-sm"></i>
                         <span>${escapeHtml(att.name || att.url)}</span>
@@ -5389,24 +5389,110 @@ async function showTroubleshooter(initialSection = 'health') {
         }
     });
 
-    // Data Bank: View file
+    // Data Bank: View / Edit file (editor-based)
     $modal.on('click', '.charMemory_tsViewBtn', async function () {
         const $row = $(this).closest('.charMemory_tsFileRow');
         const url = $row.data('url');
-        const name = $row.data('name');
+        const name = $row.data('name') || '';
+        const avatar = $row.data('avatar') || '';
         try {
             const content = await getFileAttachment(url);
             if (!content) {
                 toastr.warning('File is empty or could not be read.', 'CharMemory');
                 return;
             }
-            const displayContent = content.length > 10000
-                ? content.substring(0, 10000) + '\n\n... (truncated, ' + content.length + ' chars total)'
-                : content;
-            const viewHtml = `<div style="max-height:60vh;overflow:auto;">
-                <pre style="white-space:pre-wrap;word-break:break-word;font-size:0.85em;">${escapeHtml(displayContent)}</pre>
+
+            const blocks = parseMemories(content);
+
+            if (blocks.length === 0) {
+                // Non-memory file or empty — show as plain text (read-only)
+                const displayContent = content.length > 10000
+                    ? content.substring(0, 10000) + '\n\n... (truncated, ' + content.length + ' chars total)'
+                    : content;
+                const viewHtml = `<div style="max-height:60vh;overflow:auto;">
+                    <pre style="white-space:pre-wrap;word-break:break-word;font-size:0.85em;">${escapeHtml(displayContent)}</pre>
+                </div>`;
+                callGenericPopup(viewHtml, POPUP_TYPE.TEXT, escapeHtml(name || 'File contents'), { wide: true, allowVerticalScrolling: true });
+                return;
+            }
+
+            // Memory file — open in editor
+            const tsEditor = createMemoryEditor({ blocks });
+            const emptyEditingSet = tsEditor.getEditingSet();
+
+            const refreshTsEditor = () => {
+                const currentBlocks = tsEditor.getBlocks();
+                const editing = tsEditor.getEditingSet();
+                $('#cm_ts_fileEditorPane').html(renderConsolidatedCards(currentBlocks, editing));
+                $('#cm_ts_fileEditorCount').text(`${countMemories(currentBlocks)} memories in ${currentBlocks.length} blocks`);
+                $('#cm_ts_fileEditorAddBlock').toggleClass('charMemory_editorAddBlock--hidden', editing.size === 0);
+            };
+
+            const editorHtml = `<div class="charMemory_tsFileEditor">
+                <div class="charMemory_tsFileEditorHeader">
+                    <span class="charMemory_dimText">${escapeHtml(name)}</span>
+                    <span id="cm_ts_fileEditorCount" class="charMemory_dimText">${countMemories(blocks)} memories in ${blocks.length} blocks</span>
+                </div>
+                <div class="charMemory_consolidationContent" id="cm_ts_fileEditorPane">${renderConsolidatedCards(blocks, emptyEditingSet)}</div>
+                <button class="charMemory_editorAddBlock menu_button charMemory_editorAddBlock--hidden" id="cm_ts_fileEditorAddBlock"><i class="fa-solid fa-plus fa-xs"></i> Add Block</button>
             </div>`;
-            callGenericPopup(viewHtml, POPUP_TYPE.TEXT, escapeHtml(name || 'File contents'), { wide: true, allowVerticalScrolling: true });
+
+            const savePopup = callGenericPopup(editorHtml, POPUP_TYPE.CONFIRM, escapeHtml(name || 'Edit file'), { wide: true, allowVerticalScrolling: true });
+
+            // Editor event delegation (ts-namespaced to avoid conflicts)
+            $(document).off('click.charMemoryTsEditorToggle').on('click.charMemoryTsEditorToggle', '#cm_ts_fileEditorPane .charMemory_editorToggleEdit', function () {
+                tsEditor.toggleEdit(Number($(this).data('block')));
+                refreshTsEditor();
+            });
+
+            $(document).off('input.charMemoryTsEditorBullet').on('input.charMemoryTsEditorBullet', '#cm_ts_fileEditorPane .charMemory_editorBulletInput', function () {
+                tsEditor.updateBullet(Number($(this).data('block')), Number($(this).data('bullet')), $(this).val());
+            });
+
+            $(document).off('input.charMemoryTsEditorTheme').on('input.charMemoryTsEditorTheme', '#cm_ts_fileEditorPane .charMemory_editorThemeInput', function () {
+                tsEditor.updateTheme(Number($(this).data('block')), $(this).val());
+            });
+
+            $(document).off('click.charMemoryTsEditorDelBullet').on('click.charMemoryTsEditorDelBullet', '#cm_ts_fileEditorPane .charMemory_editorDeleteBullet', function () {
+                tsEditor.deleteBullet(Number($(this).data('block')), Number($(this).data('bullet')));
+                refreshTsEditor();
+            });
+
+            $(document).off('click.charMemoryTsEditorDelBlock').on('click.charMemoryTsEditorDelBlock', '#cm_ts_fileEditorPane .charMemory_editorDeleteBlock', function () {
+                tsEditor.deleteBlock(Number($(this).data('block')));
+                refreshTsEditor();
+            });
+
+            $(document).off('click.charMemoryTsEditorAddBullet').on('click.charMemoryTsEditorAddBullet', '#cm_ts_fileEditorPane .charMemory_editorAddBullet', function () {
+                const bi = Number($(this).data('block'));
+                tsEditor.addBullet(bi);
+                refreshTsEditor();
+                $(`#cm_ts_fileEditorPane .charMemory_editorCard[data-block="${bi}"] .charMemory_editorBulletInput:last`).focus();
+            });
+
+            $(document).off('click.charMemoryTsEditorAddBlock').on('click.charMemoryTsEditorAddBlock', '#cm_ts_fileEditorAddBlock', function () {
+                tsEditor.addBlock();
+                refreshTsEditor();
+                $('#cm_ts_fileEditorPane .charMemory_editorCard:last .charMemory_editorBulletInput:last').focus();
+            });
+
+            // On confirm (OK), save changes back to file
+            savePopup.then(async (confirmed) => {
+                $(document).off('click.charMemoryTsEditorToggle click.charMemoryTsEditorDelBullet click.charMemoryTsEditorDelBlock click.charMemoryTsEditorAddBullet click.charMemoryTsEditorAddBlock');
+                $(document).off('input.charMemoryTsEditorBullet input.charMemoryTsEditorTheme');
+
+                if (!confirmed || !avatar) return;
+                try {
+                    const updatedBlocks = tsEditor.getBlocks();
+                    const updatedContent = serializeMemories(updatedBlocks);
+                    await writeMemoriesForCharacter(updatedContent, avatar, name);
+                    toastr.success(`Saved ${countMemories(updatedBlocks)} memories to ${name}.`, 'CharMemory');
+                    updateStatusDisplay();
+                } catch (err) {
+                    console.error(LOG_PREFIX, 'Failed to save edited file:', err);
+                    toastr.error('Could not save changes.', 'CharMemory');
+                }
+            });
         } catch (err) {
             console.error(LOG_PREFIX, 'Failed to read file:', err);
             toastr.error('Could not read file.', 'CharMemory');

@@ -1328,6 +1328,22 @@
     flex-shrink: 0;
 }
 
+/* File editor in Data Bank browser */
+.charMemory_tsFileEditor {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.charMemory_tsFileEditorHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.85em;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--SmartThemeBorderColor, rgba(128, 128, 128, 0.2));
+}
+
 .charMemory_tsFileActions .menu_button {
     padding: 3px 7px;
     font-size: 0.85em;
