@@ -4664,6 +4664,7 @@ async function showSetupWizard(startStep = 1) {
     // --- Step navigation helpers ---
     let wizCurrentStep = startStep;
     let wizConnectionOk = false;
+    let wizHealthResult = null;
 
     function showStep(step) {
         wizCurrentStep = step;
@@ -4893,7 +4894,8 @@ async function showSetupWizard(startStep = 1) {
         const $container = $wizard.find('#cm_wiz_healthChecks');
         $container.html('<div class="charMemory_diagEmpty">Checking Vector Storage configuration...</div>');
 
-        const healthResult = await computeHealthScore();
+        wizHealthResult = await computeHealthScore();
+        const healthResult = wizHealthResult;
         const colors = { green: '#4a4', yellow: '#e8a33d', red: '#c44', unknown: 'var(--SmartThemeBorderColor, #555)' };
         const icons = { green: 'fa-circle-check', yellow: 'fa-triangle-exclamation', red: 'fa-circle-xmark', unknown: 'fa-circle-question' };
 
@@ -4954,6 +4956,10 @@ async function showSetupWizard(startStep = 1) {
                 <span class="label">Connection</span>
                 <span class="charMemory_wizardHighlight">${wizConnectionOk ? '\u2714 Connected' : '\u26A0 Not tested'}</span>
             </div>
+            <div class="charMemory_wizardSummaryRow">
+                <span class="label">Vector Storage</span>
+                <span class="charMemory_wizardHighlight">${wizHealthResult ? (wizHealthResult.level === 'green' ? '\u2714 All checks passing' : `\u26A0 ${wizHealthResult.checks.filter(c => c.level !== 'green').length} issue(s)`) : '\u2014 Not checked'}</span>
+            </div>
         `);
     }
 
@@ -4990,9 +4996,6 @@ async function showSetupWizard(startStep = 1) {
  * Explains how to check that retrieval is working correctly.
  */
 function showVerificationStep() {
-    extension_settings[MODULE_NAME].verificationSeen = true;
-    saveSettingsDebounced();
-
     const html = `<div class="charMemory_verification">
         <h4>Memories Extracted Successfully!</h4>
         <p>Your first batch of memories has been saved. Here's how to verify everything is working:</p>
@@ -5006,6 +5009,8 @@ function showVerificationStep() {
     </div>`;
 
     callGenericPopup(html, POPUP_TYPE.TEXT, '', { wide: false, allowVerticalScrolling: true });
+    extension_settings[MODULE_NAME].verificationSeen = true;
+    saveSettingsDebounced();
 }
 
 /**
