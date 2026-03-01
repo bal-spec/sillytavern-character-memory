@@ -48,6 +48,7 @@ import {
 import { createMemoryEditor } from './editor.js';
 
 const MODULE_NAME = 'charMemory';
+const MODULE_VERSION = '2.0.0';
 const DEFAULT_FILE_NAME = 'char-memories.md';
 const LOG_PREFIX = '[CharMemory]';
 
@@ -5400,7 +5401,7 @@ async function buildDiagnosticReport() {
 
     const report = `=== CharMemory Diagnostic Report ===
 Generated: ${new Date().toISOString()}
-Version: 1.8.0
+Version: ${MODULE_VERSION}
 
 --- Character ---
 Name: ${charName}
