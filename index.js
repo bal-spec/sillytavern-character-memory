@@ -4460,8 +4460,9 @@ function updateModalProviderUI() {
 /**
  * Build and display the Troubleshooter modal.
  * Sections: Health Checks, Data Bank Browser, Diagnostic Report, Reset/Clear.
+ * @param {string} [initialSection='health'] Section to show first: 'health', 'databank', 'report', or 'reset'
  */
-async function showTroubleshooter() {
+async function showTroubleshooter(initialSection = 'health') {
     const charName = getCharacterName();
     const targets = getMemoryTargets();
     const target = targets[0];
@@ -4542,27 +4543,28 @@ async function showTroubleshooter() {
     }
 
     // Build full modal
+    const navActive = (s) => s === initialSection ? ' active' : '';
     const html = `<div class="charMemory_modal charMemory_troubleshooter">
         <div class="charMemory_modalNav">
-            <button class="charMemory_modalNavItem active" data-section="health">Health Checks</button>
-            <button class="charMemory_modalNavItem" data-section="databank">Data Bank</button>
-            <button class="charMemory_modalNavItem" data-section="report">Diagnostic Report</button>
-            <button class="charMemory_modalNavItem" data-section="reset">Reset / Clear</button>
+            <button class="charMemory_modalNavItem${navActive('health')}" data-section="health">Health Checks</button>
+            <button class="charMemory_modalNavItem${navActive('databank')}" data-section="databank">Data Bank</button>
+            <button class="charMemory_modalNavItem${navActive('report')}" data-section="report">Diagnostic Report</button>
+            <button class="charMemory_modalNavItem${navActive('reset')}" data-section="reset">Reset / Clear</button>
         </div>
         <div class="charMemory_modalContent">
-            <div class="charMemory_modalSection active" data-section="health">
+            <div class="charMemory_modalSection${navActive('health')}" data-section="health">
                 <h4 class="charMemory_modalSectionTitle">Health Checks</h4>
                 <div id="cm_ts_healthChecks">${healthHtml}</div>
                 <div style="margin-top:10px;">
                     <button class="menu_button" id="cm_ts_rerunHealth"><i class="fa-solid fa-arrows-rotate fa-sm"></i> Re-run checks</button>
                 </div>
             </div>
-            <div class="charMemory_modalSection" data-section="databank">
+            <div class="charMemory_modalSection${navActive('databank')}" data-section="databank">
                 <h4 class="charMemory_modalSectionTitle">Data Bank Browser</h4>
                 <small class="charMemory_helperText">${charName ? escapeHtml(charName) + '\'s Data Bank files' : 'No character selected'}</small>
                 <div id="cm_ts_dataBankList">${dataBankHtml}</div>
             </div>
-            <div class="charMemory_modalSection" data-section="report">
+            <div class="charMemory_modalSection${navActive('report')}" data-section="report">
                 <h4 class="charMemory_modalSectionTitle">Diagnostic Report</h4>
                 <small class="charMemory_helperText">Copy a full diagnostic report to your clipboard for sharing with support or debugging.</small>
                 <div style="margin-top:10px;">
@@ -4570,7 +4572,7 @@ async function showTroubleshooter() {
                     <small id="cm_ts_reportStatus" class="charMemory_helperText" style="display:none;"></small>
                 </div>
             </div>
-            <div class="charMemory_modalSection" data-section="reset">
+            <div class="charMemory_modalSection${navActive('reset')}" data-section="reset">
                 <h4 class="charMemory_modalSectionTitle">Reset / Clear</h4>
                 <div class="charMemory_tsResetSection">
                     <button class="menu_button" id="cm_ts_resetTracking">Reset Extraction State</button>
@@ -4606,12 +4608,16 @@ async function showTroubleshooter() {
                 ${titles[result.level]}
             </div>`;
             for (const check of result.checks) {
+                const fixHint = (check.level !== 'green' && fixHints[check.id])
+                    ? `<div class="charMemory_tsCheckFix"><i class="fa-solid fa-lightbulb fa-xs"></i> ${escapeHtml(fixHints[check.id])}</div>`
+                    : '';
                 newHtml += `<div class="charMemory_tsCheck">
                     <div class="charMemory_tsCheckHeader">
                         <i class="fa-solid ${icons[check.level]} fa-xs" style="color:${colors[check.level]};"></i>
                         <span>${escapeHtml(check.label)}</span>
                     </div>
                     <div class="charMemory_tsCheckDetail">${escapeHtml(check.detail)}</div>
+                    ${fixHint}
                 </div>`;
             }
             $('#cm_ts_healthChecks').html(newHtml);
@@ -4735,8 +4741,29 @@ async function showTroubleshooter() {
             });
             saveSettingsDebounced();
             toastr.success(`Imported: ${file.name}`, 'CharMemory');
-            // Refresh the Data Bank browser section by re-opening
-            // (simpler than rebuilding the list in-place)
+            // Append new file row to the Data Bank list
+            const sizeText = `<span class="charMemory_tsFileSize">${(text.length / 1024).toFixed(1)} KB</span>`;
+            const newRow = `<div class="charMemory_tsFileRow" data-url="${escapeAttr(fileUrl)}" data-name="${escapeAttr(file.name)}">
+                <div class="charMemory_tsFileName">
+                    <i class="fa-solid fa-file-lines fa-sm"></i>
+                    <span>${escapeHtml(file.name)}</span>
+                    ${sizeText}
+                </div>
+                <div class="charMemory_tsFileActions">
+                    <button class="menu_button charMemory_tsViewBtn" title="View file contents"><i class="fa-solid fa-eye fa-sm"></i></button>
+                    <button class="menu_button charMemory_tsExportBtn" title="Download file"><i class="fa-solid fa-download fa-sm"></i></button>
+                    <button class="menu_button charMemory_tsDeleteBtn" title="Delete file"><i class="fa-solid fa-trash fa-sm"></i></button>
+                    <button class="menu_button charMemory_tsConvertBtn" title="Convert file format"><i class="fa-solid fa-arrows-rotate fa-sm"></i></button>
+                </div>
+            </div>`;
+            let $list = $('#cm_ts_dataBankList .charMemory_tsFileList');
+            if (!$list.length) {
+                // First file — replace empty-state and create the list
+                $('#cm_ts_dataBankList .charMemory_diagEmpty').remove();
+                $('#cm_ts_dataBankList').prepend('<div class="charMemory_tsFileList"></div>');
+                $list = $('#cm_ts_dataBankList .charMemory_tsFileList');
+            }
+            $list.append(newRow);
         } catch (err) {
             console.error(LOG_PREFIX, 'Failed to import file:', err);
             toastr.error('Could not import file.', 'CharMemory');
