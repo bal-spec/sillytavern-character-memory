@@ -1278,6 +1278,20 @@
     padding-left: 20px;
 }
 
+.charMemory_tsCheckFix {
+    font-size: 0.82em;
+    opacity: 0.7;
+    padding-left: 20px;
+    margin-top: 2px;
+    color: var(--SmartThemeQuoteColor);
+}
+
+.charMemory_tsFileSize {
+    font-size: 0.8em;
+    opacity: 0.5;
+    margin-left: 4px;
+}
+
 .charMemory_tsFileList {
     margin: 8px 0;
 }

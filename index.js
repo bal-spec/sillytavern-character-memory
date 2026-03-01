@@ -4479,13 +4479,24 @@ async function showTroubleshooter() {
         ${titles[healthResult.level]}
     </div>`;
 
+    // Fix hints for checks that have actionable solutions
+    const fixHints = {
+        vec_files_enabled: 'Enable "Files" in the Vector Storage extension settings.',
+        chunk_overlap: 'Set overlap to 10-25% in Vector Storage settings.',
+        chunk_size: 'Set chunk size to 800-1000 chars in Vector Storage settings.',
+    };
+
     for (const check of healthResult.checks) {
+        const fixHint = (check.level !== 'green' && fixHints[check.id])
+            ? `<div class="charMemory_tsCheckFix"><i class="fa-solid fa-lightbulb fa-xs"></i> ${escapeHtml(fixHints[check.id])}</div>`
+            : '';
         healthHtml += `<div class="charMemory_tsCheck">
             <div class="charMemory_tsCheckHeader">
                 <i class="fa-solid ${icons[check.level]} fa-xs" style="color:${colors[check.level]};"></i>
                 <span>${escapeHtml(check.label)}</span>
             </div>
             <div class="charMemory_tsCheckDetail">${escapeHtml(check.detail)}</div>
+            ${fixHint}
         </div>`;
     }
 
@@ -4506,10 +4517,12 @@ async function showTroubleshooter() {
             for (const att of attachments) {
                 const isMemFile = att.name === memoryFileName;
                 const badge = isMemFile ? '<span class="charMemory_tsBadge">CharMemory</span>' : '';
+                const sizeText = att.size ? `<span class="charMemory_tsFileSize">${(att.size / 1024).toFixed(1)} KB</span>` : '';
                 dataBankHtml += `<div class="charMemory_tsFileRow" data-url="${escapeAttr(att.url)}" data-name="${escapeAttr(att.name || '')}">
                     <div class="charMemory_tsFileName">
                         <i class="fa-solid fa-file-lines fa-sm"></i>
                         <span>${escapeHtml(att.name || att.url)}</span>
+                        ${sizeText}
                         ${badge}
                     </div>
                     <div class="charMemory_tsFileActions">
@@ -4709,12 +4722,16 @@ async function showTroubleshooter() {
         try {
             const text = await file.text();
             const base64 = convertTextToBase64(text);
-            const uniqueName = file.name;
-            await uploadFileAttachmentToServer(base64, uniqueName);
+            const slug = getStringHash(file.name);
+            const uniqueName = `${Date.now()}_${slug}.txt`;
+            const fileUrl = await uploadFileAttachment(uniqueName, base64);
+            if (!fileUrl) throw new Error('Upload returned no URL');
             ensureCharacterAttachments(avatar);
             extension_settings.character_attachments[avatar].push({
-                url: `/api/files/get?name=${encodeURIComponent(uniqueName)}`,
-                name: uniqueName,
+                url: fileUrl,
+                size: text.length,
+                name: file.name,
+                created: Date.now(),
             });
             saveSettingsDebounced();
             toastr.success(`Imported: ${file.name}`, 'CharMemory');
@@ -4742,13 +4759,21 @@ async function showTroubleshooter() {
         }
     });
 
-    // Reset / Clear actions
-    $('#cm_ts_resetTracking').off('click').on('click', function () {
-        // Delegate to existing sidebar handler
+    // Reset / Clear actions (with confirmation dialogs)
+    $('#cm_ts_resetTracking').off('click').on('click', async function () {
+        const confirmed = await callGenericPopup(
+            'Reset extraction tracking for the current character? Next extraction will re-read all messages.',
+            POPUP_TYPE.CONFIRM, 'Reset Extraction State',
+        );
+        if (!confirmed) return;
         $('#charMemory_resetTracking').click();
     });
-    $('#cm_ts_clearMemories').off('click').on('click', function () {
-        // Delegate to existing sidebar handler
+    $('#cm_ts_clearMemories').off('click').on('click', async function () {
+        const confirmed = await callGenericPopup(
+            'Delete ALL memories for this character and reset extraction tracking? This cannot be undone.',
+            POPUP_TYPE.CONFIRM, 'Clear All Memories',
+        );
+        if (!confirmed) return;
         $('#charMemory_resetExtraction').click();
     });
 
