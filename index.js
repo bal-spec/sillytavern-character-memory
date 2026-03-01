@@ -4571,41 +4571,13 @@ function registerSlashCommands() {
 
 // ============ UI Setup ============
 
-function setupListeners() {
-    $('#charMemory_enabled').off('change').on('change', function () {
-        extension_settings[MODULE_NAME].enabled = !!$(this).prop('checked');
-        saveSettingsDebounced();
-    });
-
-    $('#charMemory_interval').off('input').on('input', function () {
-        const val = Number($(this).val());
-        extension_settings[MODULE_NAME].interval = val;
-        $('#charMemory_intervalCounter').val(val);
-        saveSettingsDebounced();
-        updateStatusDisplay();
-    });
-
-    $('#charMemory_maxMessages').off('input').on('input', function () {
-        const val = Number($(this).val());
-        extension_settings[MODULE_NAME].maxMessagesPerExtraction = val;
-        $('#charMemory_maxMessagesCounter').val(val);
-        saveSettingsDebounced();
-    });
-
-    $('#charMemory_minCooldown').off('input').on('input', function () {
-        const val = Number($(this).val());
-        extension_settings[MODULE_NAME].minCooldownMinutes = val;
-        $('#charMemory_minCooldownCounter').val(val);
-        saveSettingsDebounced();
-    });
-
-    $('#charMemory_responseLength').off('input').on('input', function () {
-        const val = Number($(this).val());
-        extension_settings[MODULE_NAME].responseLength = val;
-        $('#charMemory_responseLengthCounter').val(val);
-        saveSettingsDebounced();
-    });
-
+/**
+ * Wire event handlers for provider selection and configuration controls.
+ * Covers: LLM source dropdown, provider picker, API key, connect/test,
+ * model search/picker with keyboard navigation, provider settings fields,
+ * and NanoGPT filter checkboxes.
+ */
+function setupConnectionControls() {
     $('#charMemory_source').off('change').on('change', function () {
         const val = String($(this).val());
         extension_settings[MODULE_NAME].source = val;
@@ -4813,9 +4785,46 @@ function setupListeners() {
         saveSettingsDebounced();
         populateProviderModels('nanogpt', true);
     });
+}
 
-    $('#charMemory_verboseLog').off('change').on('change', function () {
-        extension_settings[MODULE_NAME].verboseLogging = !!$(this).prop('checked');
+/**
+ * Wire event handlers for extraction settings and prompt controls.
+ * Covers: enabled toggle, interval/maxMessages/cooldown/responseLength sliders,
+ * extraction and group extraction prompts with restore buttons,
+ * group member file overrides, and merge-chunks toggle.
+ */
+function setupExtractionControls() {
+    $('#charMemory_enabled').off('change').on('change', function () {
+        extension_settings[MODULE_NAME].enabled = !!$(this).prop('checked');
+        saveSettingsDebounced();
+    });
+
+    $('#charMemory_interval').off('input').on('input', function () {
+        const val = Number($(this).val());
+        extension_settings[MODULE_NAME].interval = val;
+        $('#charMemory_intervalCounter').val(val);
+        saveSettingsDebounced();
+        updateStatusDisplay();
+    });
+
+    $('#charMemory_maxMessages').off('input').on('input', function () {
+        const val = Number($(this).val());
+        extension_settings[MODULE_NAME].maxMessagesPerExtraction = val;
+        $('#charMemory_maxMessagesCounter').val(val);
+        saveSettingsDebounced();
+    });
+
+    $('#charMemory_minCooldown').off('input').on('input', function () {
+        const val = Number($(this).val());
+        extension_settings[MODULE_NAME].minCooldownMinutes = val;
+        $('#charMemory_minCooldownCounter').val(val);
+        saveSettingsDebounced();
+    });
+
+    $('#charMemory_responseLength').off('input').on('input', function () {
+        const val = Number($(this).val());
+        extension_settings[MODULE_NAME].responseLength = val;
+        $('#charMemory_responseLengthCounter').val(val);
         saveSettingsDebounced();
     });
 
@@ -4858,6 +4867,39 @@ function setupListeners() {
         saveSettingsDebounced();
     });
 
+    $('#charMemory_mergeChunks').off('change').on('change', function () {
+        extension_settings[MODULE_NAME].mergeChunks = !!$(this).prop('checked');
+        saveSettingsDebounced();
+    });
+}
+
+/**
+ * Wire event handlers for consolidation, batch extraction, and convert/format tools.
+ * Covers: tool pill switching, extract now, manage memories, consolidate/undo,
+ * consolidation strategy/prompt, convert preview/undo, format source radio,
+ * convert prompt, and batch extract controls.
+ */
+function setupToolControls() {
+    // Pill switching within Tools tab
+    $('.charMemory_toolPill').off('click').on('click', function () {
+        const tool = $(this).data('tool');
+        $('.charMemory_toolPill').removeClass('active');
+        $(this).addClass('active');
+        $('.charMemory_toolContent').hide();
+        $(`#charMemory_tool${tool.charAt(0).toUpperCase() + tool.slice(1)}`).show();
+        if (tool === 'batch') loadBatchChatList();
+        if (tool === 'convert') populateConvertSourceDropdown();
+    });
+
+    $('#charMemory_extractNow').off('click').on('click', function () {
+        extractMemories({ force: true });
+    });
+
+    $('#charMemory_manageMemories').off('click').on('click', () => showMemoryManager());
+
+    $('#charMemory_consolidate').off('click').on('click', () => consolidateMemories());
+    $('#charMemory_undoConsolidate').off('click').on('click', () => undoConsolidation());
+
     $('#charMemory_consolidationStrategy').off('change').on('change', function () {
         extension_settings[MODULE_NAME].consolidationStrategy = String($(this).val());
         updateConsolidationStrategyUI();
@@ -4885,8 +4927,144 @@ function setupListeners() {
         saveSettingsDebounced();
     });
 
-    $('#charMemory_extractNow').off('click').on('click', function () {
-        extractMemories({ force: true });
+    $('#charMemory_convertPreview').off('click').on('click', () => previewConvert());
+    $('#charMemory_undoReformat').off('click').on('click', () => undoReformat());
+
+    // Format tool source picker toggle
+    $('input[name="charMemory_formatSource"]').off('change').on('change', function () {
+        const isDataBank = $(this).val() === 'databank';
+        $('#charMemory_convertSource').toggle(isDataBank);
+        $('#charMemory_formatLLMRow').toggle(isDataBank);
+        if (isDataBank) populateConvertSourceDropdown();
+    });
+
+    // Format tool prompt controls
+    $('#charMemory_restoreConvertPrompt').off('click').on('click', () => {
+        $('#charMemory_convertPrompt').val(defaultConversionPrompt);
+        extension_settings[MODULE_NAME].conversionPrompt = '';
+        saveSettingsDebounced();
+    });
+    $('#charMemory_convertPrompt').off('input').on('input', function () {
+        extension_settings[MODULE_NAME].conversionPrompt = $(this).val();
+        saveSettingsDebounced();
+    });
+
+    // Batch Extract tab
+    $('#charMemory_batchRefresh').off('click').on('click', loadBatchChatList);
+    $('#charMemory_batchExtract').off('click').on('click', runBatchExtraction);
+    $('#charMemory_batchStop').off('click').on('click', function () {
+        if (batchAbortController) batchAbortController.abort();
+    });
+    $('#charMemory_batchSelectAll').off('change').on('change', function () {
+        const checked = $(this).prop('checked');
+        $('.charMemory_batchChatCheck').prop('checked', checked);
+        updateBatchButtons();
+    });
+    $(document).off('change', '.charMemory_batchChatCheck').on('change', '.charMemory_batchChatCheck', updateBatchButtons);
+}
+
+/**
+ * Wire event handlers for file name, per-chat, and chunk format settings.
+ * Covers: memory file name input, per-chat toggle, chunk boundary dropdown,
+ * custom separator input, and chunk metadata checkbox.
+ */
+function setupStorageControls() {
+    $('#charMemory_fileName').off('input').on('input', function () {
+        const val = String($(this).val()).trim();
+        extension_settings[MODULE_NAME].fileName = val;
+        saveSettingsDebounced();
+    });
+
+    $('#charMemory_perChat').off('change').on('change', function () {
+        extension_settings[MODULE_NAME].perChat = !!$(this).prop('checked');
+        saveSettingsDebounced();
+    });
+
+    // Chunk boundary format controls
+    $('#charMemory_chunkBoundary').off('change').on('change', async function () {
+        const val = $(this).val();
+        extension_settings[MODULE_NAME].chunkBoundary = val;
+        saveSettingsDebounced();
+        toggleChunkBoundaryUI(val);
+        await offerReformat();
+    });
+
+    $('#charMemory_customSeparator').off('input').on('input', function () {
+        extension_settings[MODULE_NAME].customSeparator = $(this).val();
+        saveSettingsDebounced();
+    });
+
+    $('#charMemory_chunkMetadata').off('change').on('change', function () {
+        extension_settings[MODULE_NAME].chunkMetadata = $(this).prop('checked');
+        saveSettingsDebounced();
+    });
+}
+
+/**
+ * Wire event handlers for logging, diagnostics, tab navigation, and reset controls.
+ * Covers: top-level tab switching, verbose log toggle, clear/save log,
+ * refresh diagnostics, health stat click, recommendation accordion headers,
+ * reset tracking, and reset extraction (clear all).
+ */
+function setupLogControls() {
+    // Tab switching for top-level panel tabs
+    $('.charMemory_tab').off('click').on('click', function () {
+        const tab = $(this).data('tab');
+        $('.charMemory_tab').removeClass('active');
+        $(this).addClass('active');
+        $('.charMemory_tabContent').hide();
+        const capName = tab.charAt(0).toUpperCase() + tab.slice(1);
+        $(`#charMemory_tab${capName}`).show();
+        // Hide mini-log when viewing Log tab (redundant), show otherwise
+        $('#charMemory_miniLog').toggle(tab !== 'log');
+        // Auto-load batch list when switching to Tools tab with Batch pill active
+        if (tab === 'tools' && $('.charMemory_toolPill.active').data('tool') === 'batch') {
+            loadBatchChatList();
+        }
+    });
+
+    $('#charMemory_verboseLog').off('change').on('change', function () {
+        extension_settings[MODULE_NAME].verboseLogging = !!$(this).prop('checked');
+        saveSettingsDebounced();
+    });
+
+    $('#charMemory_clearLog').off('click').on('click', function () {
+        activityLog = [];
+        updateActivityLogDisplay();
+    });
+
+    $('#charMemory_saveLog').off('click').on('click', function () {
+        if (activityLog.length === 0) {
+            toastr.info('Activity log is empty.', 'CharMemory');
+            return;
+        }
+        const lines = activityLog.map(e => `[${e.timestamp}] [${e.type}] ${e.message}`).join('\n');
+        const blob = new Blob([lines], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `charMemory-log-${new Date().toISOString().slice(0, 19).replace(/:/g, '')}.txt`;
+        a.click();
+        URL.revokeObjectURL(url);
+    });
+
+    $('#charMemory_refreshDiag').off('click').on('click', function () {
+        captureDiagnostics();
+        toastr.info('Diagnostics refreshed.', 'CharMemory');
+    });
+
+    // Health indicator click — scroll to diagnostics
+    $('#charMemory_statHealth').off('click').on('click', function () {
+        const $diag = $('.charMemory_bottomDiagnostics');
+        if ($diag.length) {
+            $diag[0].scrollIntoView({ behavior: 'smooth', block: 'start' });
+            $diag.css('outline', '2px solid var(--SmartThemeQuoteColor, #e8a33d)');
+            setTimeout(() => $diag.css('outline', ''), 1500);
+        }
+    });
+
+    $('.charMemory_recommendationHeader').off('click').on('click', function () {
+        $(this).next('.charMemory_recommendationBody').slideToggle(200);
     });
 
     $('#charMemory_resetTracking').off('click').on('click', function () {
@@ -4948,148 +5126,14 @@ function setupListeners() {
         updateStatusDisplay();
         toastr.success('Memories cleared and extraction state reset for all chats. Next extraction will start from the beginning.', 'CharMemory');
     });
+}
 
-    $('#charMemory_fileName').off('input').on('input', function () {
-        const val = String($(this).val()).trim();
-        extension_settings[MODULE_NAME].fileName = val;
-        saveSettingsDebounced();
-    });
-
-    $('#charMemory_mergeChunks').off('change').on('change', function () {
-        extension_settings[MODULE_NAME].mergeChunks = !!$(this).prop('checked');
-        saveSettingsDebounced();
-    });
-
-    $('#charMemory_perChat').off('change').on('change', function () {
-        extension_settings[MODULE_NAME].perChat = !!$(this).prop('checked');
-        saveSettingsDebounced();
-    });
-
-    $('#charMemory_manageMemories').off('click').on('click', () => showMemoryManager());
-
-    $('#charMemory_consolidate').off('click').on('click', () => consolidateMemories());
-    $('#charMemory_undoConsolidate').off('click').on('click', () => undoConsolidation());
-
-    $('#charMemory_convertPreview').off('click').on('click', () => previewConvert());
-    $('#charMemory_undoReformat').off('click').on('click', () => undoReformat());
-
-    // Format tool source picker toggle
-    $('input[name="charMemory_formatSource"]').off('change').on('change', function () {
-        const isDataBank = $(this).val() === 'databank';
-        $('#charMemory_convertSource').toggle(isDataBank);
-        $('#charMemory_formatLLMRow').toggle(isDataBank);
-        if (isDataBank) populateConvertSourceDropdown();
-    });
-
-    // Tab switching for top-level panel tabs
-    $('.charMemory_tab').off('click').on('click', function () {
-        const tab = $(this).data('tab');
-        $('.charMemory_tab').removeClass('active');
-        $(this).addClass('active');
-        $('.charMemory_tabContent').hide();
-        const capName = tab.charAt(0).toUpperCase() + tab.slice(1);
-        $(`#charMemory_tab${capName}`).show();
-        // Hide mini-log when viewing Log tab (redundant), show otherwise
-        $('#charMemory_miniLog').toggle(tab !== 'log');
-        // Auto-load batch list when switching to Tools tab with Batch pill active
-        if (tab === 'tools' && $('.charMemory_toolPill.active').data('tool') === 'batch') {
-            loadBatchChatList();
-        }
-    });
-
-    // Pill switching within Tools tab
-    $('.charMemory_toolPill').off('click').on('click', function () {
-        const tool = $(this).data('tool');
-        $('.charMemory_toolPill').removeClass('active');
-        $(this).addClass('active');
-        $('.charMemory_toolContent').hide();
-        $(`#charMemory_tool${tool.charAt(0).toUpperCase() + tool.slice(1)}`).show();
-        if (tool === 'batch') loadBatchChatList();
-        if (tool === 'convert') populateConvertSourceDropdown();
-    });
-
-    // Chunk boundary format controls
-    $('#charMemory_chunkBoundary').off('change').on('change', async function () {
-        const val = $(this).val();
-        extension_settings[MODULE_NAME].chunkBoundary = val;
-        saveSettingsDebounced();
-        toggleChunkBoundaryUI(val);
-        await offerReformat();
-    });
-
-    $('#charMemory_customSeparator').off('input').on('input', function () {
-        extension_settings[MODULE_NAME].customSeparator = $(this).val();
-        saveSettingsDebounced();
-    });
-
-    $('#charMemory_chunkMetadata').off('change').on('change', function () {
-        extension_settings[MODULE_NAME].chunkMetadata = $(this).prop('checked');
-        saveSettingsDebounced();
-    });
-
-    // Format tool prompt controls
-    $('#charMemory_restoreConvertPrompt').off('click').on('click', () => {
-        $('#charMemory_convertPrompt').val(defaultConversionPrompt);
-        extension_settings[MODULE_NAME].conversionPrompt = '';
-        saveSettingsDebounced();
-    });
-    $('#charMemory_convertPrompt').off('input').on('input', function () {
-        extension_settings[MODULE_NAME].conversionPrompt = $(this).val();
-        saveSettingsDebounced();
-    });
-    $('#charMemory_refreshDiag').off('click').on('click', function () {
-        captureDiagnostics();
-        toastr.info('Diagnostics refreshed.', 'CharMemory');
-    });
-
-    // Health indicator click — scroll to diagnostics
-    $('#charMemory_statHealth').off('click').on('click', function () {
-        const $diag = $('.charMemory_bottomDiagnostics');
-        if ($diag.length) {
-            $diag[0].scrollIntoView({ behavior: 'smooth', block: 'start' });
-            $diag.css('outline', '2px solid var(--SmartThemeQuoteColor, #e8a33d)');
-            setTimeout(() => $diag.css('outline', ''), 1500);
-        }
-    });
-
-    $('#charMemory_clearLog').off('click').on('click', function () {
-        activityLog = [];
-        updateActivityLogDisplay();
-    });
-
-    $('#charMemory_saveLog').off('click').on('click', function () {
-        if (activityLog.length === 0) {
-            toastr.info('Activity log is empty.', 'CharMemory');
-            return;
-        }
-        const lines = activityLog.map(e => `[${e.timestamp}] [${e.type}] ${e.message}`).join('\n');
-        const blob = new Blob([lines], { type: 'text/plain' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `charMemory-log-${new Date().toISOString().slice(0, 19).replace(/:/g, '')}.txt`;
-        a.click();
-        URL.revokeObjectURL(url);
-    });
-
-
-
-    // Batch Extract tab
-    $('#charMemory_batchRefresh').off('click').on('click', loadBatchChatList);
-    $('#charMemory_batchExtract').off('click').on('click', runBatchExtraction);
-    $('#charMemory_batchStop').off('click').on('click', function () {
-        if (batchAbortController) batchAbortController.abort();
-    });
-    $('#charMemory_batchSelectAll').off('change').on('change', function () {
-        const checked = $(this).prop('checked');
-        $('.charMemory_batchChatCheck').prop('checked', checked);
-        updateBatchButtons();
-    });
-    $(document).off('change', '.charMemory_batchChatCheck').on('change', '.charMemory_batchChatCheck', updateBatchButtons);
-
-    $('.charMemory_recommendationHeader').off('click').on('click', function () {
-        $(this).next('.charMemory_recommendationBody').slideToggle(200);
-    });
+function setupListeners() {
+    setupConnectionControls();
+    setupExtractionControls();
+    setupToolControls();
+    setupStorageControls();
+    setupLogControls();
 }
 
 // ============ Per-Message Buttons & Indicators ============
