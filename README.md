@@ -237,36 +237,40 @@ Without Vector Storage enabled for Data Bank files, memories are stored but neve
 
 ![Vector Storage settings — Transformers source, Enable for files checked, Data Bank settings configured](images/07-vector-storage.png)
 
-#### Recommended Vector Storage Settings
+#### Recommended Starting Settings
 
 The Vector Storage panel has two rows of file settings: **Message attachments** (top) and **Data Bank files** (bottom). CharMemory uses the Data Bank, so focus on the bottom row:
 
-| Setting | Recommended | Why |
-|---------|-------------|-----|
-| **Size threshold** | 1 KB | Controls when chunking kicks in. Below this size, the whole file gets one embedding. At 1 KB (~5-10 memory bullets), individual chunks start getting their own vectors so Vector Storage can retrieve *specific* relevant memories instead of the whole file as a blob. |
-| **Chunk size** | 3000 chars | A `<memory>` block with 8 bullets is roughly 500-1500 chars. 3000 keeps 1-2 full blocks per chunk without splitting them mid-sentence. Too small and blocks get cut in half. Too large and you lose retrieval granularity. |
-| **Chunk overlap** | 15% | ~450 chars of overlap at 3000 chunk size. Catches memory blocks that straddle a chunk boundary. Without overlap, a block landing exactly on the split gets half in one chunk and half in another, making neither retrievable cleanly. |
-| **Retrieve chunks** | 5 | How many memory chunks are retrieved per generation. At ~2 blocks per chunk, that's roughly 10 memory blocks — enough context without flooding the prompt. Going too high (20+) effectively dumps the whole file, defeating the purpose of semantic search. |
+| Setting | Starting value | What it does |
+|---------|---------------|--------------|
+| **Size threshold** | 1 KB | Files smaller than this get one embedding. At 1 KB, Vector Storage starts chunking so it can retrieve *specific* memories instead of the whole file. |
+| **Chunk size** | 1000 chars | Each chunk gets its own embedding. With topic-tagged blocks (~200-400 chars each), 1000 fits 2-3 blocks per chunk — enough for clean retrieval without splitting blocks mid-sentence. |
+| **Chunk overlap** | 0% | Overlap copies the end of each chunk into the start of the next. With small topic-tagged blocks, 0% works well. If you see blocks getting split (check [Injection Viewer](#injection-viewer)), try 10-15%. |
+| **Retrieve chunks** | 2 | How many chunks are injected per generation. At 2-3 blocks per chunk, this gives ~4-6 memory blocks per message — enough context without flooding the prompt. |
+| **Score threshold** | 0.3 | Filters out low-relevance chunks. Without this, Vector Storage injects whatever it has, even irrelevant memories. Start at 0.3 and lower if too few memories are injected — see [Tuning Vector Storage](#tuning-vector-storage). |
+| **Query messages** | 1 | How many recent chat messages are used as the search query. 1 means only the latest message drives retrieval — keeps results focused on the current topic. Higher values blend recent context together, which can dilute the search. |
 
-Not sure if your settings are right? The [Injection Health Score](#injection-health-score) checks your chunk size, overlap, and other Vector Storage settings automatically — look for the colored dot in the stats bar.
+These are starting points, not universal answers. The right values depend on your embedding model, memory file size, and how your character's memories are structured. See [Tuning Vector Storage](#tuning-vector-storage) for how to test and adjust.
 
-#### Local vs API-Based Vectorization
+#### Choosing an Embedding Source
 
-**Local (Transformers)** runs the embedding model in your browser. It's the simplest option — no API key, no cost, no privacy concerns (memories never leave your machine). For retrieval quality, local is perfectly adequate: embedding is a much simpler task than generation, and for a typical CharMemory use case (dozens to low hundreds of memory bullets), the semantic gaps between relevant and irrelevant memories are wide enough that any reasonable model catches them.
+The embedding model determines how well Vector Storage can distinguish relevant memories from irrelevant ones. This matters more than you might expect — the wrong model can mean your character recalls vaguely related memories instead of the specific ones that matter.
 
-**When to use an API source instead:**
+| Source | Quality | Speed | Cost | Best for |
+|--------|---------|-------|------|----------|
+| **Local (Transformers)** | Adequate | Slow | Free | Getting started, privacy, small memory files |
+| **OpenAI** | Excellent | Fast | ~$0.01/1M tokens | Best retrieval quality, large memory files |
+| **NanoGPT** | Excellent | Fast | Pay-as-you-go | Same API key for extraction and embedding |
+| **Ollama** | Good–Excellent | Fast | Free (local GPU) | Good quality without API costs |
+| **Cohere / Jina / Voyage** | Good–Excellent | Fast | Free tier / cheap | Alternatives if you already use one |
 
-- **Low-powered devices** — Local Transformers loads a ~100 MB model into your browser and runs inference on your CPU/GPU. On a phone, tablet, Chromebook, or older laptop this can be noticeably slow and eat battery. An API source offloads that work to a remote server.
-- **Faster vectorization** — API sources return embeddings in milliseconds per call vs. the local model's per-chunk processing time. This matters most during bulk operations like batch extraction or revectorization of large memory files.
-- **Large memory files** — If a character has hundreds of memory bullets, the local model has to churn through many chunks. An API source handles this faster.
+**Model recommendations:**
 
-**When local is the better choice:**
+- **Local Transformers**: The default model (`all-MiniLM-L6-v2`, 384 dimensions) works for getting started but has lower discrimination than larger models. If you stay on local, check if your SillyTavern version offers `nomic-embed-text` or `bge-base-en-v1.5` (768 dimensions) as alternatives.
+- **OpenAI / NanoGPT**: `text-embedding-3-small` is the best balance of quality, speed, and cost. Memory files are tiny — even hundreds of blocks cost fractions of a cent to embed. If you already use **NanoGPT** for extraction, you can use the same API key for embedding — select it as your vectorization source in Vector Storage and it provides `text-embedding-3-small` among its available models.
+- **Ollama**: `nomic-embed-text` is a good local option with better quality than the default browser model.
 
-- You don't want another API key or dependency
-- Privacy matters — your memories stay on your machine
-- Your device handles it fine (most desktop/laptop setups do)
-
-The retrieval quality difference between local and hosted embeddings is negligible for CharMemory. The bottleneck is almost always memory *content* quality, not the embedding model.
+For most users, **`text-embedding-3-small`** (via OpenAI or NanoGPT) or **`nomic-embed-text`** (via Ollama) will give noticeably better retrieval than the default local model — especially as your memory file grows past 50+ blocks.
 
 #### Verify It's Working
 
@@ -410,30 +414,31 @@ Consolidation automatically uses 2x your configured "Max response length" as its
 
 Results vary depending on the model used and the size of the memory file. Review the preview carefully before applying.
 
-### Convert / Import
+### Convert
 
-If you have existing Data Bank files with character notes, memory lists, or other text, the **Convert** tool can restructure them into CharMemory's `<memory>` tag format.
+The **Convert** tool handles two tasks from a single interface:
 
-Open **Tools** tab → **Convert** pill:
+- **Reformat current memories** — restructure existing memories to the v1.7.0 topic-tagged format for better vector retrieval
+- **Import a Data Bank file** — convert notes, lists, or other text files into CharMemory's `<memory>` tag format
 
-![Convert tool panel](images/18-convert-tool.png)
+Open **Tools** tab → **Convert** pill → choose a **source**:
 
-1. Select a **source file** from the dropdown (shows all Data Bank files except the active CharMemory file)
-2. Optionally check **Use LLM to restructure** — recommended for freeform text with no clear structure. Uses your configured extraction provider
-3. Click **Preview Conversion** — a popup dialog opens with two panes:
+| Source | What it does |
+|--------|-------------|
+| **Current memories** | Sends your existing memory file through the LLM to add topic tags, trim blocks, and use specific names. Overwrites the memory file (with one-click Undo). |
+| **Data Bank file** | Select any file from the character's Data Bank. Detects the format automatically. Appends converted memories to your CharMemory file — the original is never modified. |
 
-| Left pane | Right pane |
-|-----------|------------|
-| Original file content (read-only) | Converted memories as editable cards |
+**Using the Convert tool:**
 
-4. **Edit the result** before saving — click the pencil icon on any block to enter edit mode. You can edit bullets, delete bullets or blocks, add new ones, and rename theme headers
-5. Not happy? Click **Re-run** to re-parse (toggle the LLM checkbox to switch methods). Each re-run saves the previous version — click **Undo** to step back
-6. Choose an **output destination** at the bottom — the auto-generated CharMemory file, or a custom filename
+1. Select a source (current memories or Data Bank file)
+2. For Data Bank files, optionally check **Use LLM to restructure** — recommended for freeform text
+3. Edit the **prompt** if needed (always visible — no need to expand a disclosure)
+4. Click **Preview** — a popup dialog opens with original content on the left and converted memories as editable cards on the right
+5. Edit, delete, or add blocks and bullets before saving
+6. Click **Re-run** to try again (with Undo to step back through versions)
 7. Click **OK** to save, or **Cancel** to discard
 
-![Convert preview dialog](images/19-convert-preview.png)
-
-The Convert tool detects 6 input formats automatically:
+The Convert tool detects 6 input formats automatically for Data Bank files:
 
 | Format | Example |
 |--------|---------|
@@ -444,9 +449,7 @@ The Convert tool detects 6 input formats automatically:
 | Markdown with headings | Headings become block themes |
 | Freeform text | Split on sentences (use LLM for better results) |
 
-**Non-destructive**: the original file is never modified or deleted. After converting, hide or remove the original from the Data Bank to avoid duplicate memories being injected.
-
-The LLM conversion prompt is configurable — expand **Show prompt** below the LLM checkbox to view and edit it. Click **Restore Default** to revert.
+**For Data Bank imports**: the original file is never modified or deleted. After converting, hide or remove the original from the Data Bank to avoid duplicate memories being injected.
 
 ### Per-Chat Memories
 
@@ -736,24 +739,28 @@ CharMemory stores memories as plain markdown files in the character's Data Bank.
 
 ### Structure
 
-Each extraction produces a `<memory>` block with chat attribution and timestamped bullet points:
+Each extraction produces one or more `<memory>` blocks. Each block has a **topic tag** (first bullet) that anchors the block to a specific event or theme, followed by **content bullets** with the actual memories:
 
 ```
 <memory chat="2026-02-15@10h00m00s" date="2026-02-15 14:30">
-- Alex mentioned they work from home as a freelance designer.
-- Flux knocked a coffee mug off the desk and showed no remorse.
+- [Alex, Flux — home office chaos]
+- Alex works from home as a freelance designer.
+- Flux knocked a coffee mug off Alex's desk without remorse.
 - Alex adopted Flux from a rescue shelter two years ago.
 </memory>
 
 <memory chat="2026-02-15@10h00m00s" date="2026-02-15 15:45">
-- Alex discovered Flux has been hiding treats behind the couch cushions.
+- [Flux — apartment exploration]
+- Flux has been hiding treats behind the couch cushions.
 - Flux rode the Roomba around the apartment for the first time.
 </memory>
 ```
 
 **Key details:**
 - Each block is wrapped in `<memory>` tags with `chat` (the chat filename) and `date` (extraction timestamp) attributes
-- Bullets start with `- ` (dash space) — this is the only recognized format
+- The **first bullet** is a topic tag in `[Names — description]` format — this improves vector search by giving each block a clear semantic anchor
+- Content bullets start with `- ` (dash space) — this is the only recognized format
+- Blocks are limited to ~5 content bullets (not counting the topic tag) to keep them focused
 - Multiple blocks from the same chat can optionally be merged (see "Merge extraction chunks" in Settings). This is off by default to keep blocks smaller for consolidation
 - The file is append-only during normal operation — new extractions add blocks at the end
 - Old files using the `## Memory N` heading format are auto-migrated on first read
@@ -796,6 +803,154 @@ To convert manually, wrap your text like this:
 Any text outside `<memory>` blocks is ignored by the Memory Manager and won't appear in diagnostics. It won't cause errors, but it also won't be managed by CharMemory.
 
 After converting existing files or making manual edits, **purge vectors and revectorize** the file in Vector Storage so the index reflects the updated content. Vector Storage doesn't incrementally update — it re-chunks and re-embeds the entire file from scratch when you revectorize.
+
+---
+
+## Tuning Vector Storage
+
+Vector Storage settings interact with your memory file format, embedding model, and character's memory content. There is no single "correct" configuration — you need to test and adjust for your setup. This section explains what each setting does, how to test whether it's working, and how to iterate.
+
+### How Vectorization Works with CharMemory
+
+The pipeline:
+
+1. CharMemory extracts memories and writes them to a Data Bank file as `<memory>` blocks
+2. Vector Storage reads the file and splits it into **chunks** based on `\n\n` (double newline) boundaries
+3. Each chunk is sent to the **embedding model**, which converts it into a numerical vector
+4. When the character generates a response, Vector Storage compares the current conversation against all stored vectors
+5. The top-scoring chunks (above the **score threshold**) are injected into the LLM's context
+
+The key insight: **each chunk gets one embedding**. If a chunk contains a single focused topic, the embedding accurately represents that topic and Vector Storage can retrieve it precisely. If a chunk mixes unrelated topics, the embedding becomes a blurry average and retrieval suffers.
+
+This is why the v1.7.0 topic-tagged format matters — each block starts with a `[Names — topic description]` tag that anchors the embedding to a specific event or theme.
+
+### Why Topic Tags Matter for Retrieval
+
+Without topic tags, a character whose memories are all thematically similar (e.g., all encounters with different people, all combat missions, all cooking sessions) creates a hard problem for vector search. The embedding model produces similar vectors for all of these blocks because they share vocabulary and themes — so when you mention one specific event, Vector Storage can't tell it apart from the others and returns a grab bag.
+
+Topic tags solve this by front-loading each block with unique identifiers: **who was involved** and **what specifically happened**. When the user says "remember the vet?", the embedding for that message matches strongly against `[Flux, Alex — first vet visit and vaccinations]` and weakly against `[Flux, Alex — adoption day at the apartment]`, even though both blocks contain similar content about Flux and Alex. The tag gives the embedding model a discriminating handle.
+
+This was discovered through testing: without topic tags, retrieval at score threshold 0.3 either returned everything (all blocks scored similarly) or nothing (threshold too high). After adding topic tags, the same settings produced targeted, relevant retrieval.
+
+### Understanding Each Setting
+
+**Chunk size** controls how much text goes into each embedding. With topic-tagged blocks (~200-400 chars each), a chunk size of 1000 fits 2-3 blocks. Smaller values give more precise retrieval but create more chunks. Larger values pack more blocks together, reducing precision.
+
+- Too small (< 400): Blocks get split mid-sentence. The topic tag ends up in one chunk and the content bullets in another.
+- Too large (> 3000): Multiple unrelated blocks share one embedding. The embedding becomes a vague average and retrieval can't distinguish between topics.
+- Sweet spot: Large enough that a single block never gets split, small enough that unrelated blocks don't share chunks. **Start at 1000 and adjust.**
+
+**Chunk overlap** copies the tail end of each chunk into the beginning of the next. This catches blocks that straddle a chunk boundary. With v1.7.0's smaller blocks and a 1000-char chunk size, blocks rarely straddle boundaries, so **0% is a fine starting point**. If you see split blocks in the Injection Viewer (half a block injected without its topic tag), increase to 10-15%.
+
+**Retrieve chunks** controls how many chunks are injected per generation. Each chunk is ~1000 chars (2-3 blocks), so:
+
+- **2-3 chunks**: ~5-8 memory blocks injected. Good for most characters. Keeps injected content focused and relevant.
+- **5+**: Injects more context but increases the chance of irrelevant memories diluting the signal. Only useful for characters with very large, diverse memory files where important context is spread across many topics.
+
+**Score threshold** filters out chunks below a similarity score. This is the most important setting for retrieval quality:
+
+- **No threshold (0)**: Vector Storage injects its top N chunks regardless of relevance. If a character has 10 chunks and you retrieve 3, 30% of all memories are injected every time — most will be irrelevant.
+- **Too high (> 0.5)**: Only near-exact matches pass. Memories phrased differently from the current conversation get filtered out even when they're topically relevant.
+- **Start at 0.3**: This filters out clearly irrelevant chunks while keeping topically related ones. Lower to 0.2 if too few memories are injected, raise to 0.4 if irrelevant ones still slip through. Adjust based on what you see in the Injection Viewer.
+
+**Score threshold varies by embedding model.** A score of 0.3 on `text-embedding-3-small` means something different than 0.3 on `all-MiniLM-L6-v2`. If you change your embedding model, you'll likely need to re-tune your score threshold.
+
+**Query messages** controls how many recent chat messages are used as the vector search query. If set to 1, only the latest message drives retrieval. If set to 3, the last 3 messages are combined.
+
+- **1**: Keeps retrieval tightly focused on what's happening right now. Good default — the most recent message usually captures the current topic.
+- **3+**: Blends recent context together, which can dilute the semantic signal. A mix of "let's go to dinner" and "sure, sounds good" produces a vague query that matches everything weakly.
+- **Start at 1** and increase only if you find retrieval isn't catching relevant context.
+
+**Size threshold** controls when chunking kicks in. At the default 1 KB, small memory files get a single embedding (the whole file). Once the file grows past 1 KB, Vector Storage starts chunking and semantic search becomes possible. **1 KB is fine for most setups.**
+
+### How to Test and Iterate
+
+The goal is: when your character discusses a topic, the *right* memories are injected — not random ones, not nothing, and not everything.
+
+**Step 1: Generate a message and check what was injected.**
+
+Use the [Injection Viewer](#injection-viewer) (syringe icon on any character message) to see exactly which memory chunks were retrieved. Ask yourself:
+
+- Were relevant memories injected? (If talking about a past event, did memories of that event appear?)
+- Were irrelevant memories injected? (Memories about completely different topics?)
+- Were *no* memories injected? (Score threshold might be too high, or vectorization isn't working)
+
+**Step 2: Adjust one setting at a time.**
+
+| Symptom | Likely cause | Fix |
+|---------|-------------|-----|
+| No memories injected | Score threshold too high, file not vectorized, or "Enable for files" unchecked | Lower score threshold to 0.2 and test. Check the [Health Score](#injection-health-score). |
+| Irrelevant memories injected | Score threshold too low or no threshold set | Increase score threshold (try 0.3, then 0.4). |
+| Half-blocks injected (bullets without topic tag) | Chunk size too small or block straddling boundary | Increase chunk size or add 10-15% overlap. |
+| Too many memories (prompt flooding) | Retrieve chunks too high | Reduce to 2-3. |
+| Same memory injected multiple times | Chunk overlap too high or duplicate blocks in file | Reduce overlap. Check for duplicates with [Diagnostics](#using-diagnostics). |
+
+**Step 3: Purge and revectorize after changing settings.**
+
+When you change chunk size, overlap, or the embedding model, the existing vector index is stale — it reflects the old settings. You need to rebuild it:
+
+1. Open **Extensions** → **Vector Storage**
+2. Click **Purge Vectors** for the Data Bank file (this deletes the stored embeddings, not your memory file)
+3. Generate a message — Vector Storage automatically re-chunks and re-embeds the file on the next generation
+
+If you don't purge, the old chunks persist and your new settings won't take effect.
+
+**Step 4: Repeat.**
+
+Change one setting, purge, generate a message, check Injection Viewer. Repeat until the right memories show up for the right topics.
+
+### Using an LLM to Evaluate Retrieval
+
+The Injection Viewer tells you *what* was injected, but judging whether the right memories were retrieved — especially across dozens of blocks — is tedious to do by eye. You can use an LLM to help.
+
+**What to provide:**
+
+1. **The injected content** — copy from the Injection Viewer (the CharMemory section shows exactly what was sent to the AI)
+2. **Your full memory file** — the Data Bank file for the character (so the LLM can see what *wasn't* injected)
+3. **The recent chat context** — the last few messages that drove the retrieval query
+4. **Your Vector Storage settings** — chunk size, score threshold, retrieve chunks, embedding model
+
+**What to ask:**
+
+- "Given this conversation, which memories *should* have been retrieved? Were any important ones missed?"
+- "Are any of the injected memories irrelevant to what's being discussed?"
+- "Are the memory blocks distinct enough for vector search to tell apart, or do several look too similar?"
+
+**Why this works:** You're using the LLM as a second pair of eyes to check semantic relevance — something it's good at. It can spot patterns you'd miss: blocks that are thematically too similar, important context that was filtered out by a high score threshold, or memories that are relevant but worded too differently from the chat to match.
+
+This is how the v1.7.0 topic tag format was developed — iterating between adjusting settings, checking the Injection Viewer, and using an LLM to evaluate whether the retrieved memories actually matched the conversation context.
+
+### Embedding Model Impact on Retrieval
+
+The embedding model affects retrieval quality more than most users expect. A weak model produces embeddings where "dinner at the restaurant" and "lunch at the cafe" look nearly identical — so Vector Storage can't tell them apart. A stronger model captures the semantic difference.
+
+**Signs your embedding model isn't discriminating well:**
+
+- Memories about vaguely similar topics always get injected together (all meals, all locations, all emotional moments)
+- Score threshold needs to be very high (> 0.4) to filter out noise — meaning even "somewhat related" memories score high
+- The same memories get injected regardless of what the character is discussing
+
+If you see these patterns, try a higher-quality embedding model before adjusting other settings. See [Choosing an Embedding Source](#choosing-an-embedding-source) for recommendations.
+
+### Why Data Bank and Not Lorebooks?
+
+SillyTavern has two retrieval systems: **Data Bank** (vector-based) and **Lorebooks/World Info** (keyword-based). CharMemory uses Data Bank. Here's why:
+
+| | Data Bank + Vector Storage | Lorebooks / World Info |
+|---|---|---|
+| **How it retrieves** | Semantic similarity (embeddings) | Keyword matching (exact or regex) |
+| **"Remember the vet?"** | Matches memories about vet visits, vaccinations, or related context | Only fires if "vet" is an exact keyword |
+| **Maintenance** | Zero — just extract and forget | High — every entry needs trigger keywords |
+| **Scaling** | Works fine at 100+ memory blocks | Managing 100+ lorebook entries is painful |
+| **Best for** | Episodic memories that accumulate over time | Stable world-building facts with clear trigger words |
+
+**Lorebooks would be worse for memories because:**
+
+- **Who picks the keywords?** The extraction LLM would need to generate trigger keywords for each memory, or you'd do it manually. Both are error-prone.
+- **Keyword brittleness** — if a memory about the vet visit is keyed on "vet" but the chat says "that time he got his shots", it won't trigger. Vector search catches that semantic connection.
+- **Lorebooks are designed for stable facts** (locations, characters, lore) that rarely change and have obvious trigger words. Memories are episodic, numerous, and don't have natural keywords.
+
+CharMemory and lorebooks can coexist — they use different storage and retrieval systems. Use lorebooks for world-building, CharMemory for what happens during chat.
 
 ---
 

@@ -111,35 +111,48 @@
                     </div>
                 </div>
 
-                <!-- Convert tool -->
+                <!-- Convert tool (unified Convert + Reformat) -->
                 <div class="charMemory_toolContent" id="charMemory_toolConvert" style="display:none;">
+                    <!-- Source picker -->
                     <div class="charMemory_statusRow">
-                        <label for="charMemory_convertSource">
-                            <small>Source file</small>
-                        </label>
-                        <select id="charMemory_convertSource" class="text_pole">
+                        <label><small>Source</small></label>
+                        <div class="charMemory_formatSourceRow">
+                            <label class="radio_label">
+                                <input type="radio" name="charMemory_formatSource" value="memories" checked />
+                                <span>Current memories</span>
+                            </label>
+                            <label class="radio_label">
+                                <input type="radio" name="charMemory_formatSource" value="databank" />
+                                <span>Data Bank file</span>
+                            </label>
+                        </div>
+                        <select id="charMemory_convertSource" class="text_pole" style="display:none;">
                             <option value="">— Select a Data Bank file —</option>
                         </select>
-                        <small class="charMemory_helperText">Select any file from this character's Data Bank to convert into CharMemory format.</small>
                     </div>
 
-                    <div class="charMemory_statusRow">
+                    <!-- LLM toggle (only shown for Data Bank source) -->
+                    <div class="charMemory_statusRow" id="charMemory_formatLLMRow" style="display:none;">
                         <label class="checkbox_label" for="charMemory_convertUseLLM">
                             <input type="checkbox" id="charMemory_convertUseLLM" />
                             <span>Use LLM to restructure (for freeform text)</span>
                         </label>
-                        <small class="charMemory_helperText">When the file has no clear structure, send it to the LLM for intelligent restructuring. Uses your configured extraction provider.</small>
-                        <details class="charMemory_promptDisclosure" id="charMemory_convertPromptDisclosure">
-                            <summary><small>Show prompt</small></summary>
-                            <textarea id="charMemory_convertPrompt" class="text_pole textarea_compact" rows="6" placeholder="Conversion prompt..."></textarea>
-                            <div class="charMemory_buttonRow">
-                                <input type="button" id="charMemory_restoreConvertPrompt" class="menu_button" value="Restore Default" title="Reset conversion prompt to built-in default" />
-                            </div>
-                        </details>
+                        <small class="charMemory_helperText">When the file has no clear structure, send it to the LLM for intelligent restructuring.</small>
                     </div>
 
+                    <!-- Prompt (always visible) -->
+                    <div class="charMemory_statusRow">
+                        <label for="charMemory_convertPrompt"><small>Prompt</small></label>
+                        <textarea id="charMemory_convertPrompt" class="text_pole textarea_compact" rows="4" placeholder="Conversion/reformat prompt..."></textarea>
+                        <div class="charMemory_buttonRow">
+                            <input type="button" id="charMemory_restoreConvertPrompt" class="menu_button" value="Restore Default" title="Reset conversion prompt to built-in default" />
+                        </div>
+                    </div>
+
+                    <!-- Action buttons -->
                     <div class="charMemory_buttonRow">
-                        <input type="button" id="charMemory_convertPreview" class="menu_button" value="Preview Conversion" title="Parse the selected file and show an interactive before/after preview" />
+                        <input type="button" id="charMemory_convertPreview" class="menu_button" value="Preview" title="Preview the conversion or reformat result before applying" />
+                        <input type="button" id="charMemory_undoReformat" class="menu_button" value="Undo" title="Restore memories from before the last reformat (session only)" disabled />
                     </div>
                 </div>
             </div>
@@ -320,11 +333,11 @@
                 <hr class="charMemory_separator" />
 
                 <div class="charMemory_statusRow">
-                    <label class="checkbox_label" for="charMemory_perChat" title="When enabled, each chat gets its own memory file. When disabled, all chats for a character share one file. Applies to both 1:1 and group chats.">
+                    <label class="checkbox_label" for="charMemory_perChat" title="Store memories in separate files per chat. This is for organization only — Vector Storage still retrieves from all files, so the character sees all memories regardless.">
                         <input type="checkbox" id="charMemory_perChat" />
-                        <span>Separate memories per chat</span>
+                        <span>Separate memory files per chat</span>
                     </label>
-                    <small class="charMemory_helperText">Each conversation gets its own memory file instead of sharing one per character. Applies to both 1:1 and group chats.</small>
+                    <small class="charMemory_helperText">Each conversation stores memories in its own file. This makes it easier to review or delete a single chat's memories. The character still sees all memories during generation (Vector Storage retrieves across all files).</small>
                 </div>
 
                 <!-- 1:1 Chat section (hidden in group chats) -->
@@ -411,6 +424,22 @@
                 </div>
                 <div id="charMemory_diagnosticsContent" class="charMemory_diagnosticsContent">
                     <div class="charMemory_diagEmpty">Click "Refresh" after a generation to see diagnostics.</div>
+                </div>
+                <div class="charMemory_settingsRecommendation">
+                    <div class="charMemory_recommendationHeader">
+                        <i class="fa-solid fa-circle-info"></i> Recommended Vector Storage Settings
+                    </div>
+                    <div class="charMemory_recommendationBody" style="display:none;">
+                        <table class="charMemory_recommendationTable">
+                            <tr><td>Embedding Model</td><td>text-embedding-3-small (OpenAI) or nomic-embed-text (Ollama)</td></tr>
+                            <tr><td>Chunk Size</td><td>800–1000 characters</td></tr>
+                            <tr><td>Chunk Overlap</td><td>0%</td></tr>
+                            <tr><td>Retrieve Chunks</td><td>2</td></tr>
+                            <tr><td>Score Threshold</td><td>0.3 (adjust per model)</td></tr>
+                            <tr><td>Size Threshold</td><td>1 KB</td></tr>
+                            <tr><td>Query Messages</td><td>1</td></tr>
+                        </table>
+                    </div>
                 </div>
             </div>
 

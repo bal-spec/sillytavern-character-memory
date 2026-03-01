@@ -222,6 +222,13 @@
     border-color: var(--SmartThemeQuoteColor, #888);
 }
 
+/* Format tool source picker */
+.charMemory_formatSourceRow {
+    display: flex;
+    gap: 12px;
+    margin: 4px 0;
+}
+
 /* Helper text */
 .charMemory_helperText {
     display: block;
@@ -1008,6 +1015,53 @@
     word-break: break-word;
     max-height: 120px;
     overflow-y: auto;
+}
+
+/* Recommended Vector Storage Settings card */
+.charMemory_settingsRecommendation {
+    margin-top: 8px;
+    border: 1px solid var(--SmartThemeBorderColor, rgba(128, 128, 128, 0.2));
+    border-radius: 4px;
+}
+
+.charMemory_recommendationHeader {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    cursor: pointer;
+    font-size: 0.85em;
+    opacity: 0.7;
+    user-select: none;
+    background: rgba(128, 128, 128, 0.05);
+}
+
+.charMemory_recommendationHeader:hover {
+    opacity: 1;
+}
+
+.charMemory_recommendationBody {
+    padding: 6px 8px;
+}
+
+.charMemory_recommendationTable {
+    width: 100%;
+    font-size: 0.85em;
+    border-collapse: collapse;
+}
+
+.charMemory_recommendationTable td {
+    padding: 3px 6px;
+    border-bottom: 1px solid var(--SmartThemeBorderColor, rgba(128, 128, 128, 0.1));
+}
+
+.charMemory_recommendationTable tr:last-child td {
+    border-bottom: none;
+}
+
+.charMemory_recommendationTable td:first-child {
+    opacity: 0.7;
+    white-space: nowrap;
 }
 
 /* Message highlight when selected in drawer */

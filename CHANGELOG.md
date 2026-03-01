@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.7.0
+
+### New Features
+
+- **Retrieval-optimized memory format**: Extraction prompts now produce topic-tagged memory blocks with a `[Names — description]` tag as the first bullet. This improves vector search discrimination, allowing Vector Storage to retrieve only the most relevant memories instead of thematically similar ones.
+- **Unified Convert tool**: The Convert and Reformat tools are merged into a single Convert tool with a source picker. Select "Current memories" to reformat existing memories to the new topic-tagged format, or "Data Bank file" to import from any file. The conversion prompt is always visible for easy iteration.
+- **Recommended VS settings**: Diagnostics panel now includes a "Recommended Vector Storage Settings" card with optimal chunk size, retrieve chunks, score threshold, and other settings for CharMemory.
+
+### Improvements
+
+- **Tighter memory blocks**: Default bullet limit reduced from 8 to 5 per block (not counting the topic tag). Forces outcome-focused extraction rather than step-by-step narration.
+- **Better consolidation labels**: Consolidation now uses encounter-specific labels (e.g., "Adoption day at the apartment") instead of broad categories (e.g., "Key Events"). Topic tags are preserved and updated during consolidation.
+- **Improved health checks**: Chunk size recommendations now include specific guidance (800-1000 chars). New checks for retrieve chunks and score threshold.
+- **Named participants**: Extraction and consolidation prompts now require specific names instead of generic labels like "a client" or "someone".
+- **Multi-tag block splitting**: When the LLM produces a memory block with multiple topic tags, it is automatically split into separate blocks — one per topic. This ensures clean 1:1 mapping between topic tags and vector chunks.
+
+### Bug Fixes
+
+- **Fix parsing of attributed memory tags**: The LLM sometimes copies `<memory chat="..." date="...">` attributes from existing memories into its response. The extraction regex now handles both bare and attributed `<memory>` tags instead of silently falling through to a single-entry fallback.
+- **Hide redundant mini-log on Log tab**: The always-visible activity log mini-bar is now hidden when the full Log tab is active, avoiding duplicate display.
+
+### Migration
+
+- Existing memories continue to work without changes. Use the **Convert** tool (source: "Current memories") to add topic tags to existing memory files for improved retrieval.
+- Users with customized extraction prompts are unaffected — only the default prompt is updated. Click "Restore Default" to opt into the new format.
+
 ## 1.6.1
 
 ### New Features

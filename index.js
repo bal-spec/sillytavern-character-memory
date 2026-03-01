@@ -56,6 +56,7 @@ function getMemoryFileName() {
 let inApiCall = false;
 let lastExtractionResult = null;
 let consolidationBackup = null;
+let reformatBackup = null;
 // convertPreviewResult removed — conversion state now lives in the dialog closure
 let lastExtractionTime = 0; // session-only, resets on page load
 
@@ -132,9 +133,10 @@ INSTRUCTIONS:
 3. Do NOT use emojis.
 4. Wrap output in <memory></memory> tags with a markdown bulleted list (lines starting with "- ").
 5. Use ONE <memory> block per encounter or event. Everything in the same scene = one block.
-6. HARD LIMIT: No more than 8 bullet points TOTAL. If you have more, you are being too granular — cut the least significant ones.
-7. If nothing genuinely new or significant, respond with exactly: NO_NEW_MEMORIES
-8. Write about WHAT HAPPENED, not about the conversation itself. Never write "she told him about X" or "she described her X" or "she admitted Y" — instead write the actual fact: "X happened" or "she did Y."
+6. Start each block with a topic tag as the first bullet: "- [Names involved — short description of encounter]" (e.g., "- [Alex, Sarah — first visit to the apartment]"). This aids later retrieval.
+7. HARD LIMIT: No more than 5 bullet points per block (not counting the topic tag). If you have more, you are being too granular — keep only the most significant outcomes.
+8. If nothing genuinely new or significant, respond with exactly: NO_NEW_MEMORIES
+9. Write about WHAT HAPPENED, not about the conversation itself. Never write "she told him about X" or "she described her X" or "she admitted Y" — instead write the actual fact: "X happened" or "she did Y."
 
 WHAT TO EXTRACT — ask for each item: "Would {{char}} bring this up unprompted weeks or months later?"
 - Backstory reveals, personal history, goals, fears (only if NOT already in the character card)
@@ -143,6 +145,7 @@ WHAT TO EXTRACT — ask for each item: "Would {{char}} bring this up unprompted 
 - Skills, possessions, or status changes
 - Emotional turning points
 - Dates and times when mentioned or clearly implied in the conversation
+- Always name specific people involved — use their name, not "a friend" or "someone"
 
 DO NOT EXTRACT:
 - Anything already described in the CHARACTER CARD above — traits, profession, appearance, personality, habits, preferences, or abilities that are baseline knowledge. This includes rephrasing card traits as discoveries (e.g. if the card says "exhibitionist", do not write "she admitted that being watched turns her on")
@@ -158,23 +161,25 @@ DO NOT EXTRACT:
 
 NEGATIVE EXAMPLE — do NOT write memories like this:
 <bad_example>
-- She picked the lock on the warehouse side door using a tension wrench.
-- She crept through the dark corridor and disabled the security camera.
-- She found the safe behind a false panel in the office.
-- She cracked the combination and retrieved the sealed envelope inside.
-- She climbed out through a ventilation shaft to avoid the front entrance.
-- She crossed two blocks on foot before reaching her getaway vehicle.
-- She handed the envelope to her contact in the parking garage.
-- Her contact opened it, confirmed the contents, and gave her a nod.
+- Alex set the carrier down on the hardwood floor and opened the metal door.
+- Flux emerged from the carrier and walked toward the Gundam Roomba by the window.
+- Alex poured premium salmon pâté into a ceramic bowl and placed it near the kitchen island.
+- Flux ate the salmon and began purring for the first time.
+- Alex had a video conference with Mr. Henderson about the Q1 marketing budget.
+- Flux rode the Roomba around the apartment, inspecting a floor lamp and a bookshelf.
+- Alex assembled a cat tree in the corner and Flux climbed to the top perch.
+- Alex ordered sushi for lunch and ate it on the balcony.
 </bad_example>
-This is a play-by-play scene summary. It narrates every step of the operation instead of capturing what matters.
+This is a play-by-play scene summary. It narrates every step instead of capturing what matters.
 
 POSITIVE EXAMPLE — the same scene extracted well:
 <good_example>
-- She broke into a warehouse and stole a sealed envelope from a hidden safe.
-- She delivered the envelope to her contact, who confirmed it contained what they needed.
+- [Alex, Flux — adoption day and settling into the apartment]
+- Alex adopted Flux and brought him to his penthouse apartment, where Flux immediately bonded with his custom Gundam-styled Roomba.
+- Flux's first meal of premium salmon pâté triggered his first purr in the new home.
+- Alex assembled a cat tree that Flux claimed as a second perch, alternating between it and the Roomba.
 </good_example>
-Two bullets capture the full encounter: what she accomplished and the outcome. No step-by-step process, no scene-setting.
+A topic tag plus three bullets capture the full encounter: who was involved, what happened, and the key bonding moments. No step-by-step process, no scene-setting.
 
 NOTE: When content is explicit or violent, name the specific outcome — do not sanitize it into vague language. "She killed him with two shots to the chest" is a memory. "Violence occurred" is not. But this does NOT mean narrate each step leading up to it — summarize the outcome, not the process.
 
@@ -210,11 +215,12 @@ INSTRUCTIONS:
 3. Do NOT use emojis.
 4. Wrap output in <memory></memory> tags with a markdown bulleted list (lines starting with "- ").
 5. Use ONE <memory> block per encounter or event. Everything in the same scene = one block.
-6. HARD LIMIT: No more than 8 bullet points TOTAL. If you have more, you are being too granular — cut the least significant ones.
-7. If nothing genuinely new or significant about {{charName}}, respond with exactly: NO_NEW_MEMORIES
-8. Write about WHAT HAPPENED, not about the conversation itself. Never write "she told him about X" — instead write the actual fact: "X happened" or "she did Y."
-9. IMPORTANT: Reference other participants by name. Include who was involved in events, who said what to whom, who was present. Names matter for group memory.
-10. When possible, note approximate timeframes or sequencing of events mentioned in conversation.
+6. Start each block with a topic tag as the first bullet: "- [Names involved — short description of encounter]" (e.g., "- [Flux, Sarah — first meeting at Alex's apartment]"). This aids later retrieval.
+7. HARD LIMIT: No more than 5 bullet points per block (not counting the topic tag). If you have more, you are being too granular — keep only the most significant outcomes.
+8. If nothing genuinely new or significant about {{charName}}, respond with exactly: NO_NEW_MEMORIES
+9. Write about WHAT HAPPENED, not about the conversation itself. Never write "she told him about X" — instead write the actual fact: "X happened" or "she did Y."
+10. IMPORTANT: Reference other participants by name. Include who was involved in events, who said what to whom, who was present. Names matter for group memory.
+11. When possible, note approximate timeframes or sequencing of events mentioned in conversation.
 
 WHAT TO EXTRACT — ask for each item: "Would {{charName}} remember this weeks or months later?"
 - Backstory reveals, personal history, goals, fears (only if NOT already in the character card)
@@ -223,6 +229,7 @@ WHAT TO EXTRACT — ask for each item: "Would {{charName}} remember this weeks o
 - Skills, possessions, or status changes
 - Emotional turning points
 - Group dynamics: who allied with whom, who disagreed, power shifts
+- Always name specific people involved — use their name, not "a participant" or "someone"
 
 DO NOT EXTRACT:
 - Anything already described in the CHARACTER CARD above
@@ -237,20 +244,27 @@ Each memory block should answer: "What from this encounter would {{charName}} re
 
 Output ONLY <memory> blocks (or NO_NEW_MEMORIES). No headers, no commentary, no extra text.`;
 
-const defaultConversionPrompt = `You are converting a text file into a structured memory format for {{charName}}.
+const defaultConversionPrompt = `You are reformatting character memories into a standardized format for {{charName}}. The input may be unstructured text, partially formatted memory blocks, or already-formatted blocks that need updating.
 
-The input contains facts, memories, or notes in an unstructured format. Your task is to restructure this into clean, organized memory blocks.
+Character name: {{charName}}
 
-Rules:
-1. Extract every distinct fact or piece of information as a bullet point starting with "- ".
-2. Group related facts into <memory chat="[Topic Name]" date="[today]"> blocks where Topic Name is a short descriptive label (e.g. "Appearance", "Relationships", "Key Events").
-3. Preserve ALL information — do not summarize, combine, or omit anything from the source.
-4. Do not add facts, inferences, or details not explicitly stated in the source.
-5. Clean up grammar and formatting, but do not change the meaning.
-6. Skip formatting artifacts, HTML tags, and metadata that aren't actual memories.
+RULES:
+1. Every memory block must be wrapped in <memory chat="Topic Name" date="YYYY-MM-DD HH:MM"></memory> tags.
+2. The chat attribute should be a short, specific encounter label (e.g., "First day at the apartment", "Club night with Sam"). Use existing chat attributes if they already contain a descriptive name.
+3. The first bullet in each block must be a topic tag: "- [Names involved — short description]" (e.g., "- [Alex, Sarah — first apartment visit]"). Include all people involved.
+4. No more than 5 bullets per block (not counting the topic tag). Combine related facts into single bullets rather than deleting information.
+5. Always use specific names — never "a friend", "a client", "someone", or "a stranger".
+6. Write in past tense, third person.
+7. Do NOT add, infer, or invent any facts not present in the original.
+8. Do NOT merge events from different times or encounters into one block — keep them separate.
+9. If the input is unstructured text, group related facts by encounter or topic into separate blocks.
+10. If the input already has well-formatted blocks with topic tags and 5 or fewer bullets, output them unchanged.
+11. Preserve dates from existing blocks. For unstructured text without dates, use "{{today}}" as the date.
 
-Source text to restructure:
-{{sourceText}}`;
+INPUT:
+{{sourceText}}
+
+Output ONLY <memory> blocks. No headers, no commentary, no extra text.`;
 
 const EXTRACTION_SOURCE = {
     MAIN_LLM: 'main_llm',
@@ -481,6 +495,34 @@ function parseMemories(content) {
     }
 
     return blocks;
+}
+
+/**
+ * Split a bullet array containing multiple topic tags into separate arrays.
+ * Topic tags match the "[Names — description]" pattern (em dash, en dash, or hyphen
+ * surrounded by spaces). If 0 or 1 topic tags, returns the original array unchanged.
+ * @param {string[]} bullets Array of bullet strings (without "- " prefix)
+ * @returns {string[][]} Array of bullet arrays, one per topic-tagged section
+ */
+function splitMultiTagBullets(bullets) {
+    if (bullets.length === 0) return [bullets];
+
+    const isTopicTag = b => /^\[.+ [—–\-] .+\]$/.test(b);
+    const tagIndices = [];
+    for (let i = 0; i < bullets.length; i++) {
+        if (isTopicTag(bullets[i])) tagIndices.push(i);
+    }
+
+    if (tagIndices.length <= 1) return [bullets];
+
+    const groups = [];
+    for (let i = 0; i < tagIndices.length; i++) {
+        const start = i === 0 ? 0 : tagIndices[i];
+        const end = i + 1 < tagIndices.length ? tagIndices[i + 1] : bullets.length;
+        groups.push(bullets.slice(start, end));
+    }
+
+    return groups;
 }
 
 /**
@@ -803,7 +845,8 @@ async function convertWithLLM(content, charName) {
     const warnings = [];
     const prompt = (extension_settings[MODULE_NAME].conversionPrompt || defaultConversionPrompt)
         .replace(/\{\{charName\}\}/g, charName)
-        .replace(/\{\{sourceText\}\}/g, content);
+        .replace(/\{\{sourceText\}\}/g, content)
+        .replace(/\{\{today\}\}/g, new Date().toISOString().slice(0, 10));
 
     let response;
     try {
@@ -887,6 +930,18 @@ function buildConversionDialog(sourceContent, formatLabel, method, convertedBloc
             </div>
         </div>
     </div>`;
+}
+
+/**
+ * Unified Convert tool dispatcher — routes to file conversion or memory reformat based on source picker.
+ */
+async function previewConvert() {
+    const source = $('input[name="charMemory_formatSource"]:checked').val();
+    if (source === 'databank') {
+        await previewConversion();
+    } else {
+        await reformatMemories();
+    }
 }
 
 /**
@@ -2950,7 +3005,7 @@ async function extractMemories({
                 const now = new Date();
                 const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
-                const memoryRegex = /<memory>([\s\S]*?)<\/memory>/gi;
+                const memoryRegex = /<memory[^>]*>([\s\S]*?)<\/memory>/gi;
                 const matches = [...cleanResult.matchAll(memoryRegex)];
                 const rawEntries = matches.length > 0
                     ? matches.map(m => m[1].trim()).filter(Boolean)
@@ -2963,9 +3018,17 @@ async function extractMemories({
                         .filter(l => l.startsWith('- '))
                         .map(l => l.slice(2).trim())
                         .filter(Boolean);
-                    const finalBullets = bullets.length > 0 ? bullets : [entry];
-                    existing.push({ chat: effectiveChatId, date: timestamp, bullets: finalBullets });
-                    newBulletCount += finalBullets.length;
+
+                    // Split blocks with multiple topic tags into separate blocks
+                    const bulletGroups = splitMultiTagBullets(bullets);
+                    if (bulletGroups.length > 1) {
+                        console.log(LOG_PREFIX, `Split multi-tag block into ${bulletGroups.length} separate blocks`);
+                    }
+                    for (const group of bulletGroups) {
+                        const finalBullets = group.length > 0 ? group : [entry];
+                        existing.push({ chat: effectiveChatId, date: timestamp, bullets: finalBullets });
+                        newBulletCount += finalBullets.length;
+                    }
                 }
 
                 await writeMemoriesForCharacter(serializeMemories(existing), target.avatar, target.fileName);
@@ -3343,10 +3406,10 @@ async function computeHealthScore() {
 
             if (chunkSizeDb > 0 && chunkSizeDb < avgBlockSize) {
                 checks.push({ id: 'chunk_size', level: 'yellow', label: 'Chunk size',
-                    detail: `Chunk size (${chunkSizeDb}) is smaller than average memory block (${avgBlockSize} chars). Blocks will be split across chunks. Consider increasing chunk size.` });
+                    detail: `Chunk size (${chunkSizeDb} chars) is smaller than the average memory block (${avgBlockSize} chars). This may split blocks mid-content. Recommended: 800-1000 chars for CharMemory.` });
             } else if (chunkSizeDb > 0 && chunkSizeDb > avgBlockSize * 4) {
                 checks.push({ id: 'chunk_size', level: 'yellow', label: 'Chunk size',
-                    detail: `Chunk size (${chunkSizeDb}) is much larger than average memory block (${avgBlockSize} chars). Retrieval may be less selective as chunks grow.` });
+                    detail: `Chunk size (${chunkSizeDb} chars) is much larger than the average memory block (${avgBlockSize} chars). Multiple blocks may be packed into single chunks, reducing retrieval precision. Recommended: 800-1000 chars for CharMemory.` });
             } else {
                 checks.push({ id: 'chunk_size', level: 'green', label: 'Chunk size',
                     detail: `Chunk size (${chunkSizeDb}) is appropriate for average memory block size (${avgBlockSize} chars).` });
@@ -3354,7 +3417,45 @@ async function computeHealthScore() {
         }
     } catch { /* file read failed, skip */ }
 
-    // Checks 6-7: Only run after a generation has been captured
+    // Check 6: Retrieve chunks — warn if too high for CharMemory
+    const retrieveChunks = vecSettings?.chunk_count_db;
+    if (retrieveChunks !== undefined) {
+        if (retrieveChunks > 5) {
+            checks.push({
+                id: 'retrieve_chunks',
+                level: 'yellow',
+                label: 'Retrieve chunks is high',
+                detail: `Retrieve chunks is set to ${retrieveChunks}. For CharMemory, 2-3 is recommended. Higher values inject more memories per message, which can flood the prompt with irrelevant content.`,
+            });
+        } else {
+            checks.push({
+                id: 'retrieve_chunks',
+                level: 'green',
+                label: `Retrieve chunks: ${retrieveChunks}`,
+                detail: 'Retrieve chunks is in the recommended range for CharMemory.',
+            });
+        }
+    }
+
+    // Check 7: Score threshold — warn if not set or too low
+    const scoreThreshold = vecSettings?.score_threshold;
+    if (scoreThreshold !== undefined && scoreThreshold < 0.1) {
+        checks.push({
+            id: 'score_threshold',
+            level: 'yellow',
+            label: 'No score threshold set',
+            detail: 'Without a score threshold, low-relevance memories may be injected. Recommended: 0.2-0.3 for most embedding models.',
+        });
+    } else if (scoreThreshold !== undefined) {
+        checks.push({
+            id: 'score_threshold',
+            level: 'green',
+            label: `Score threshold: ${scoreThreshold}`,
+            detail: 'Score threshold is set — low-relevance results will be filtered out.',
+        });
+    }
+
+    // Checks 8-9: Only run after a generation has been captured
     const dbPrompt = lastDiagnostics.extensionPrompts?.['4_vectors_data_bank'];
     if (dbPrompt && dbPrompt.content) {
         const injectedBullets = dbPrompt.content.split('\n')
@@ -3363,7 +3464,7 @@ async function computeHealthScore() {
             .map(line => line.slice(2).trim())
             .filter(Boolean);
 
-        // Check 6: Memories actually injected
+        // Check 8: Memories actually injected
         if (injectedBullets.length === 0) {
             checks.push({ id: 'memories_injected', level: 'yellow', label: 'Memories in injection',
                 detail: 'Vector data was injected but no memory bullets found. The content may be from other Data Bank files.' });
@@ -3371,7 +3472,7 @@ async function computeHealthScore() {
             checks.push({ id: 'memories_injected', level: 'green', label: 'Memories in injection',
                 detail: `${injectedBullets.length} memor${injectedBullets.length === 1 ? 'y' : 'ies'} found in last injection.` });
 
-            // Check 7: Duplicate detection
+            // Check 9: Duplicate detection
             const uniqueBullets = new Set(injectedBullets);
             const dupeCount = injectedBullets.length - uniqueBullets.size;
             if (dupeCount > 0) {
@@ -4067,17 +4168,20 @@ const CONSOLIDATION_PRESETS = {
     conservative: {
         name: 'Conservative',
         description: 'Only merge near-exact duplicates. Preserves everything else.',
-        prompt: `Merge ONLY near-exact duplicate memories. If two bullets say essentially the same thing, keep the more detailed version. Do NOT combine loosely related facts. Do NOT summarize. Preserve every distinct piece of information.`,
+        prompt: `Merge ONLY near-exact duplicate memories. If two bullets say essentially the same thing, keep the more detailed version. Do NOT combine loosely related facts. Do NOT summarize. Preserve every distinct piece of information.
+Each block must start with a topic tag as the first bullet: "- [Names involved — short description]" (e.g., "- [Alex, Flux — adoption day at the apartment]"). Preserve existing topic tags.`,
     },
     balanced: {
         name: 'Balanced',
         description: 'Merge duplicates and combine related facts.',
-        prompt: `Merge duplicate or near-duplicate memories into one. Combine closely related facts about the same event or topic. Preserve all unique information — do NOT discard distinct memories. Summarize in third person.`,
+        prompt: `Merge duplicate or near-duplicate memories into one. Combine closely related facts about the same event or topic. Preserve all unique information — do NOT discard distinct memories. Summarize in third person.
+Each block must start with a topic tag as the first bullet: "- [Names involved — short description]" (e.g., "- [Alex, Flux — adoption day at the apartment]"). When merging blocks, update the topic tag to reflect the combined content. No more than 5 bullets per block (not counting the topic tag).`,
     },
     aggressive: {
         name: 'Aggressive',
         description: 'Compress heavily. Summarize themes. Minimize bullet count.',
-        prompt: `Aggressively consolidate these memories into the fewest possible entries. Group by theme or topic. Summarize rather than listing individual events. It's OK to lose minor details if the key facts are preserved. Aim for a compact overview.`,
+        prompt: `Aggressively consolidate these memories into the fewest possible entries. Group by theme or topic. Summarize rather than listing individual events. It's OK to lose minor details if the key facts are preserved. Aim for a compact overview.
+Each block must start with a topic tag as the first bullet: "- [Names/themes — short description]" (e.g., "- [Alex, Sarah — first visit to the apartment]"). No more than 5 bullets per block (not counting the topic tag). Always name specific people — never use "a client" or "someone."`,
     },
 };
 
@@ -4095,8 +4199,10 @@ ${userPrompt}
 ADDITIONAL FORMAT RULES:
 1. Do NOT use emojis anywhere in the output.
 2. Do NOT copy text verbatim from the input — rephrase in third person.
-3. Group memories by theme. Each group is wrapped in <memory chat="Theme Name"></memory> tags where "Theme Name" is a short descriptive label (e.g. "Relationship History", "Character Background", "Key Events").
+3. Group memories by theme or encounter. Each group is wrapped in <memory chat="Theme Name"></memory> tags where "Theme Name" is a short, specific label. Prefer encounter-specific labels (e.g., "Adoption day at the apartment", "First vet visit") over broad categories (e.g., "Key Events", "Relationships"). Specific labels improve later retrieval.
 4. Inside each <memory> block, use a markdown bulleted list (lines starting with "- ").
+5. The first bullet in each block must be a topic tag: "- [Names — short description]". This is mandatory.
+6. Always use specific names for people involved, never generic labels like "a client" or "someone."
 
 MEMORIES TO CONSOLIDATE:
 ${memoriesText}
@@ -4446,6 +4552,345 @@ async function consolidateMemories() {
     toastr.success(`Consolidated ${beforeCount} → ${afterCount} memories.`, 'CharMemory');
     updateStatusDisplay();
     updateConsolidationStrategyUI();
+}
+
+// ============ Reformat Tool ============
+
+/**
+ * Build the HTML for the reformat preview dialog.
+ * Left pane: read-only original blocks. Right pane: editable reformatted blocks.
+ * Reuses the same CSS classes as the consolidation/conversion editor.
+ */
+function buildReformatDialog(originalBlocks, originalCount, reformattedBlocks, editingSet) {
+    const renderReadOnlyCards = (blocks) => {
+        return blocks.map(b => {
+            const bullets = b.bullets.map(bullet => `<li>${escapeHtml(bullet)}</li>`).join('');
+            return `<div class="charMemory_card">
+                <div class="charMemory_cardHeader"><strong>${escapeHtml(b.chat)}</strong> <span class="charMemory_cardDate">${escapeHtml(b.date)}</span></div>
+                <ul>${bullets}</ul>
+            </div>`;
+        }).join('');
+    };
+
+    const afterCount = countMemories(reformattedBlocks);
+    const hasEditing = editingSet.size > 0;
+
+    return `<div class="charMemory_consolidationDialog">
+        <div class="charMemory_consolidationStats" id="charMemory_reformatStats">
+            Original: ${originalCount} memories in ${originalBlocks.length} blocks &rarr; Reformatted: <span id="charMemory_reformatAfterCount">${afterCount}</span> memories in <span id="charMemory_reformatBlockCount">${reformattedBlocks.length}</span> blocks
+        </div>
+        <div class="charMemory_consolidationToolbar">
+            <input type="button" id="charMemory_rerunReformat" class="menu_button" value="Re-run" title="Send original memories to the LLM again" />
+            <input type="button" id="charMemory_undoReformatRerun" class="menu_button" value="Undo" title="Revert to previous reformatted version" disabled />
+            <span id="charMemory_reformatRerunSpinner" style="display:none;">Working...</span>
+        </div>
+        <div class="charMemory_consolidationPanes">
+            <div class="charMemory_consolidationPane">
+                <h4>Original Memories</h4>
+                <div class="charMemory_consolidationContent">${renderReadOnlyCards(originalBlocks)}</div>
+            </div>
+            <div class="charMemory_consolidationPane">
+                <h4>Reformatted Memories</h4>
+                <div class="charMemory_consolidationContent" id="charMemory_reformatEditorPane">${renderConsolidatedCards(reformattedBlocks, editingSet)}</div>
+                <button class="charMemory_editorAddBlock menu_button ${hasEditing ? '' : 'charMemory_editorAddBlock--hidden'}" id="charMemory_reformatAddBlock"><i class="fa-solid fa-plus fa-xs"></i> Add Block</button>
+            </div>
+        </div>
+    </div>`;
+}
+
+/**
+ * Show the reformat preview dialog with side-by-side comparison and editing.
+ * Returns the edited blocks on confirm, or null on cancel.
+ */
+async function showReformatPreview(originalBlocks, reformattedBlocks, charName, target) {
+    const originalCount = countMemories(originalBlocks);
+
+    // Editor state lives in closure
+    let editorBlocks = reformattedBlocks.map(b => ({ ...b, bullets: [...b.bullets] }));
+    const versionStack = [];
+    const editingSet = new Set();
+    let dialogClosed = false;
+    const cloneBlocks = (blocks) => blocks.map(b => ({ ...b, bullets: [...b.bullets] }));
+
+    const refreshEditor = () => {
+        $('#charMemory_reformatEditorPane').html(renderConsolidatedCards(editorBlocks, editingSet));
+        $('#charMemory_reformatAfterCount').text(countMemories(editorBlocks));
+        $('#charMemory_reformatBlockCount').text(editorBlocks.length);
+        $('#charMemory_reformatAddBlock').toggleClass('charMemory_editorAddBlock--hidden', editingSet.size === 0);
+    };
+
+    // Build and show dialog
+    const dialogHtml = buildReformatDialog(originalBlocks, originalCount, editorBlocks, editingSet);
+    const popup = callGenericPopup(dialogHtml, POPUP_TYPE.CONFIRM, '', { wide: true, allowVerticalScrolling: true });
+
+    // === Editor event delegation (unique namespace to avoid conflicts) ===
+
+    $(document).off('click.charMemoryRefToggle').on('click.charMemoryRefToggle', '.charMemory_editorToggleEdit', function () {
+        const bi = Number($(this).data('block'));
+        if (editingSet.has(bi)) editingSet.delete(bi);
+        else editingSet.add(bi);
+        refreshEditor();
+    });
+
+    $(document).off('input.charMemoryRefBullet').on('input.charMemoryRefBullet', '.charMemory_editorBulletInput', function () {
+        const bi = Number($(this).data('block'));
+        const bui = Number($(this).data('bullet'));
+        if (editorBlocks[bi]) editorBlocks[bi].bullets[bui] = $(this).val();
+    });
+
+    $(document).off('input.charMemoryRefTheme').on('input.charMemoryRefTheme', '.charMemory_editorThemeInput', function () {
+        const bi = Number($(this).data('block'));
+        if (editorBlocks[bi]) editorBlocks[bi].chat = $(this).val();
+    });
+
+    $(document).off('click.charMemoryRefDelBullet').on('click.charMemoryRefDelBullet', '.charMemory_editorDeleteBullet', function () {
+        const bi = Number($(this).data('block'));
+        const bui = Number($(this).data('bullet'));
+        if (editorBlocks[bi]) {
+            editorBlocks[bi].bullets.splice(bui, 1);
+            if (editorBlocks[bi].bullets.length === 0) {
+                editorBlocks.splice(bi, 1);
+                reindexEditingSet(editingSet, bi);
+            }
+            refreshEditor();
+        }
+    });
+
+    $(document).off('click.charMemoryRefDelBlock').on('click.charMemoryRefDelBlock', '.charMemory_editorDeleteBlock', function () {
+        const bi = Number($(this).data('block'));
+        editorBlocks.splice(bi, 1);
+        reindexEditingSet(editingSet, bi);
+        refreshEditor();
+    });
+
+    $(document).off('click.charMemoryRefAddBullet').on('click.charMemoryRefAddBullet', '.charMemory_editorAddBullet', function () {
+        const bi = Number($(this).data('block'));
+        if (editorBlocks[bi]) {
+            editorBlocks[bi].bullets.push('');
+            refreshEditor();
+            $(`#charMemory_reformatEditorPane .charMemory_editorCard[data-block="${bi}"] .charMemory_editorBulletInput:last`).focus();
+        }
+    });
+
+    $(document).off('click.charMemoryRefAddBlock').on('click.charMemoryRefAddBlock', '#charMemory_reformatAddBlock', function () {
+        const now = new Date();
+        const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+        const newIdx = editorBlocks.length;
+        editorBlocks.push({ chat: 'New Group', date: timestamp, bullets: [''] });
+        editingSet.add(newIdx);
+        refreshEditor();
+        $('#charMemory_reformatEditorPane .charMemory_editorCard:last .charMemory_editorBulletInput:last').focus();
+    });
+
+    // === Re-run button ===
+    $('#charMemory_rerunReformat').off('click').on('click', async () => {
+        if (inApiCall) return;
+        const currentBlocks = cloneBlocks(editorBlocks);
+
+        $('#charMemory_reformatRerunSpinner').show();
+        $('#charMemory_rerunReformat').prop('disabled', true);
+        $('#charMemory_reformatEditorPane').addClass('charMemory_editorDisabled');
+
+        let newResult;
+        try {
+            inApiCall = true;
+            const content = serializeMemories(originalBlocks);
+            newResult = await convertWithLLM(content, charName);
+        } catch (err) {
+            console.error(LOG_PREFIX, 'Re-run reformat failed:', err);
+            toastr.error(`Re-run failed: ${err.message || 'Unknown error'}`, 'CharMemory');
+            newResult = null;
+        } finally {
+            inApiCall = false;
+        }
+
+        if (dialogClosed) return;
+
+        $('#charMemory_reformatRerunSpinner').hide();
+        $('#charMemory_rerunReformat').prop('disabled', false);
+        $('#charMemory_reformatEditorPane').removeClass('charMemory_editorDisabled');
+
+        if (newResult && newResult.blocks.length > 0) {
+            versionStack.push(currentBlocks);
+            $('#charMemory_undoReformatRerun').prop('disabled', false);
+            editorBlocks = newResult.blocks.map(b => ({ ...b, bullets: [...b.bullets] }));
+            editingSet.clear();
+            refreshEditor();
+            for (const w of newResult.warnings) {
+                toastr.warning(w, 'CharMemory');
+            }
+        }
+    });
+
+    // === Undo button ===
+    $('#charMemory_undoReformatRerun').off('click').on('click', () => {
+        if (versionStack.length === 0) return;
+        editorBlocks = versionStack.pop();
+        editingSet.clear();
+        refreshEditor();
+        if (versionStack.length === 0) $('#charMemory_undoReformatRerun').prop('disabled', true);
+    });
+
+    // === Wait for Accept/Cancel ===
+    const confirmed = await popup;
+    dialogClosed = true;
+
+    // Clean up event delegation
+    $(document).off('click.charMemoryRefToggle');
+    $(document).off('input.charMemoryRefBullet');
+    $(document).off('input.charMemoryRefTheme');
+    $(document).off('click.charMemoryRefDelBullet');
+    $(document).off('click.charMemoryRefDelBlock');
+    $(document).off('click.charMemoryRefAddBullet');
+    $(document).off('click.charMemoryRefAddBlock');
+
+    if (!confirmed) return null;
+
+    // Guard: if a re-run is still in flight, don't save stale state
+    if (inApiCall) {
+        toastr.warning('Cannot save while a re-run is in progress.', 'CharMemory');
+        return null;
+    }
+
+    // Filter out empty bullets and empty blocks before returning
+    const cleanBlocks = editorBlocks
+        .map(b => ({ ...b, bullets: b.bullets.filter(bullet => bullet.trim() !== '') }))
+        .filter(b => b.bullets.length > 0);
+
+    return cleanBlocks.length > 0 ? cleanBlocks : null;
+}
+
+/**
+ * Main reformat flow: read memories, send through LLM conversion prompt,
+ * show interactive preview, save on confirmation with backup for undo.
+ */
+async function reformatMemories() {
+    if (inApiCall) {
+        toastr.warning('An API call is already in progress.', 'CharMemory');
+        return;
+    }
+
+    const targets = getMemoryTargets();
+    if (targets.length === 0) {
+        toastr.warning('No character selected.', 'CharMemory');
+        return;
+    }
+
+    // For multiple targets (group), show a character picker
+    let target;
+    if (targets.length === 1) {
+        target = targets[0];
+    } else {
+        const pickerHtml = targets.map((t, i) =>
+            `<label class="checkbox_label"><input type="radio" name="charMemory_reformatTarget" value="${i}" ${i === 0 ? 'checked' : ''} /> ${escapeHtml(t.name)}</label>`,
+        ).join('<br>');
+        const picked = await callGenericPopup(`Select a character to reformat memories for:<br><br>${pickerHtml}`, POPUP_TYPE.CONFIRM);
+        if (!picked) return;
+        const selectedIdx = Number($('input[name="charMemory_reformatTarget"]:checked').val()) || 0;
+        target = targets[selectedIdx];
+    }
+
+    const content = await readMemoriesForCharacter(target.avatar, target.fileName);
+    const originalBlocks = parseMemories(content);
+
+    if (originalBlocks.length === 0) {
+        toastr.info('No memories found to reformat.', 'CharMemory');
+        return;
+    }
+
+    // Check if all blocks already have topic tags (first bullet matches [Topic])
+    const allHaveTopicTags = originalBlocks.every(b =>
+        b.bullets.length > 0 && /^\[.+\]$/.test(b.bullets[0]),
+    );
+    if (allHaveTopicTags) {
+        const proceed = await callGenericPopup(
+            'All memory blocks already have topic tags. Reformatting may still improve structure, but the memories may already be well-formatted.<br><br>Continue anyway?',
+            POPUP_TYPE.CONFIRM,
+        );
+        if (!proceed) return;
+    }
+
+    const beforeCount = countMemories(originalBlocks);
+    logActivity(`Reformat started for ${target.name}: ${beforeCount} memories in ${originalBlocks.length} blocks`);
+
+    // Show busy state
+    const $btn = $('#charMemory_convertPreview');
+    $btn.val('Reformatting\u2026').prop('disabled', true);
+
+    let result;
+    try {
+        inApiCall = true;
+        const charName = target.name || 'Character';
+        const sourceLabel = getSourceLabel();
+        toastr.info(`Sending to ${sourceLabel} for reformatting...`, 'CharMemory', { timeOut: 3000 });
+        result = await convertWithLLM(content, charName);
+    } catch (err) {
+        console.error(LOG_PREFIX, 'Reformat failed:', err);
+        toastr.error(`Reformat failed: ${err.message || 'Unknown error'}`, 'CharMemory');
+        return;
+    } finally {
+        inApiCall = false;
+        $btn.val('Preview').prop('disabled', false);
+    }
+
+    for (const w of result.warnings) {
+        toastr.warning(w, 'CharMemory');
+    }
+
+    if (result.blocks.length === 0) {
+        toastr.warning('LLM returned no usable memories. Reformat aborted.', 'CharMemory');
+        return;
+    }
+
+    // Show interactive preview dialog
+    const editedBlocks = await showReformatPreview(originalBlocks, result.blocks, target.name, target);
+
+    if (!editedBlocks) {
+        logActivity('Reformat cancelled by user');
+        toastr.info('Reformat cancelled.', 'CharMemory');
+        return;
+    }
+
+    // Back up original content for undo
+    reformatBackup = { content, avatar: target.avatar, fileName: target.fileName };
+
+    // Save reformatted memories
+    try {
+        await writeMemoriesForCharacter(serializeMemories(editedBlocks), target.avatar, target.fileName);
+        $('#charMemory_undoReformat').prop('disabled', false);
+    } catch (err) {
+        console.error(LOG_PREFIX, 'Reformat save failed:', err);
+        toastr.error('Failed to save reformatted memories.', 'CharMemory');
+        reformatBackup = null;
+        return;
+    }
+
+    const afterCount = countMemories(editedBlocks);
+    logActivity(`Reformat complete: ${beforeCount} → ${afterCount} memories in ${editedBlocks.length} blocks`, 'success');
+    toastr.success(`Reformatted ${beforeCount} → ${afterCount} memories.`, 'CharMemory');
+    updateStatusDisplay();
+}
+
+/**
+ * Undo the last reformat and restore original memories.
+ */
+async function undoReformat() {
+    if (!reformatBackup) {
+        toastr.warning('No reformat to undo.', 'CharMemory');
+        return;
+    }
+    const confirm = await callGenericPopup(
+        'Undo the last reformat and restore original memories?',
+        POPUP_TYPE.CONFIRM,
+    );
+    if (!confirm) return;
+
+    await writeMemoriesForCharacter(reformatBackup.content, reformatBackup.avatar, reformatBackup.fileName);
+    reformatBackup = null;
+    $('#charMemory_undoReformat').prop('disabled', true);
+    toastr.info('Reformat undone — original memories restored.', 'CharMemory');
+    logActivity('Reformat undone');
+    updateStatusDisplay();
 }
 
 // ============ Slash Commands ============
@@ -4883,6 +5328,17 @@ function setupListeners() {
     $('#charMemory_consolidate').off('click').on('click', () => consolidateMemories());
     $('#charMemory_undoConsolidate').off('click').on('click', () => undoConsolidation());
 
+    $('#charMemory_convertPreview').off('click').on('click', () => previewConvert());
+    $('#charMemory_undoReformat').off('click').on('click', () => undoReformat());
+
+    // Format tool source picker toggle
+    $('input[name="charMemory_formatSource"]').off('change').on('change', function () {
+        const isDataBank = $(this).val() === 'databank';
+        $('#charMemory_convertSource').toggle(isDataBank);
+        $('#charMemory_formatLLMRow').toggle(isDataBank);
+        if (isDataBank) populateConvertSourceDropdown();
+    });
+
     // Tab switching for top-level panel tabs
     $('.charMemory_tab').off('click').on('click', function () {
         const tab = $(this).data('tab');
@@ -4891,6 +5347,8 @@ function setupListeners() {
         $('.charMemory_tabContent').hide();
         const capName = tab.charAt(0).toUpperCase() + tab.slice(1);
         $(`#charMemory_tab${capName}`).show();
+        // Hide mini-log when viewing Log tab (redundant), show otherwise
+        $('#charMemory_miniLog').toggle(tab !== 'log');
         // Auto-load batch list when switching to Tools tab with Batch pill active
         if (tab === 'tools' && $('.charMemory_toolPill.active').data('tool') === 'batch') {
             loadBatchChatList();
@@ -4927,8 +5385,7 @@ function setupListeners() {
         saveSettingsDebounced();
     });
 
-    // Convert tool
-    $('#charMemory_convertPreview').off('click').on('click', () => previewConversion());
+    // Format tool prompt controls
     $('#charMemory_restoreConvertPrompt').off('click').on('click', () => {
         $('#charMemory_convertPrompt').val(defaultConversionPrompt);
         extension_settings[MODULE_NAME].conversionPrompt = '';
@@ -4987,6 +5444,10 @@ function setupListeners() {
         updateBatchButtons();
     });
     $(document).off('change', '.charMemory_batchChatCheck').on('change', '.charMemory_batchChatCheck', updateBatchButtons);
+
+    $('.charMemory_recommendationHeader').off('click').on('click', function () {
+        $(this).next('.charMemory_recommendationBody').slideToggle(200);
+    });
 }
 
 // ============ Per-Message Buttons & Indicators ============

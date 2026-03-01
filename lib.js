@@ -69,6 +69,34 @@ export function parseMemories(content) {
 }
 
 /**
+ * Split a bullet array containing multiple topic tags into separate arrays.
+ * Topic tags match the "[Names — description]" pattern (em dash, en dash, or hyphen
+ * surrounded by spaces). If 0 or 1 topic tags, returns the original array unchanged.
+ * @param {string[]} bullets Array of bullet strings (without "- " prefix)
+ * @returns {string[][]} Array of bullet arrays, one per topic-tagged section
+ */
+export function splitMultiTagBullets(bullets) {
+    if (bullets.length === 0) return [bullets];
+
+    const isTopicTag = b => /^\[.+ [—–\-] .+\]$/.test(b);
+    const tagIndices = [];
+    for (let i = 0; i < bullets.length; i++) {
+        if (isTopicTag(bullets[i])) tagIndices.push(i);
+    }
+
+    if (tagIndices.length <= 1) return [bullets];
+
+    const groups = [];
+    for (let i = 0; i < tagIndices.length; i++) {
+        const start = i === 0 ? 0 : tagIndices[i];
+        const end = i + 1 < tagIndices.length ? tagIndices[i + 1] : bullets.length;
+        groups.push(bullets.slice(start, end));
+    }
+
+    return groups;
+}
+
+/**
  * Count total individual memories (bullets) across all blocks.
  * @param {{bullets: string[]}[]} blocks Parsed memory blocks.
  * @returns {number}
