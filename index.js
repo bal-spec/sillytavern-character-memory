@@ -43,9 +43,7 @@ import {
     formatChatMessages,
     substitutePromptTemplate,
     truncateText,
-    reindexEditingSet,
     getTimestamp,
-    cloneMemoryBlocks,
 } from './lib.js';
 import { createMemoryEditor } from './editor.js';
 
