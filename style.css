@@ -161,65 +161,71 @@
     font-size: 0.9em;
 }
 
-/* Tabs */
-.charMemory_tabs {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0;
-    margin-bottom: 6px;
-    border-bottom: 1px solid var(--SmartThemeBorderColor, rgba(128, 128, 128, 0.2));
+/* Dashboard sections */
+.charMemory_dashSection {
+    padding: 6px 0;
+    border-bottom: 1px solid var(--SmartThemeBorderColor);
 }
 
-.charMemory_tab {
-    padding: 6px 10px;
+.charMemory_dashSection:last-child {
+    border-bottom: none;
+}
+
+.charMemory_sectionLabel {
+    opacity: 0.6;
     font-size: 0.85em;
-    background: none;
-    border: none;
-    border-bottom: 2px solid transparent;
+    display: block;
+    margin-bottom: 4px;
+}
+
+.charMemory_dashActivity {
+    max-height: 80px;
+    overflow-y: auto;
+    font-size: 0.85em;
+    font-family: monospace;
+    word-break: break-word;
+}
+
+.charMemory_link {
+    font-size: 0.85em;
     cursor: pointer;
-    opacity: 0.6;
-    color: var(--SmartThemeBodyColor, #ccc);
-    transition: opacity 0.15s, border-color 0.15s;
-    white-space: nowrap;
+    color: var(--SmartThemeQuoteColor);
+    display: inline-block;
+    margin-top: 4px;
 }
 
-.charMemory_tab:hover {
-    opacity: 0.85;
+.charMemory_link:hover {
+    opacity: 0.8;
 }
 
-.charMemory_tab.active {
-    opacity: 1;
-    border-bottom-color: var(--SmartThemeQuoteColor, #888);
+.charMemory_fullWidth {
+    width: 100%;
 }
 
-/* Tool pill sub-navigation */
-.charMemory_toolPills {
+.charMemory_dimText {
+    font-size: 0.85em;
+    opacity: 0.5;
+}
+
+.charMemory_fileInfo {
     display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-    margin-bottom: 8px;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
 }
 
-.charMemory_toolPill {
-    padding: 3px 10px;
-    font-size: 0.8em;
-    background: var(--SmartThemeBorderColor, rgba(128, 128, 128, 0.15));
-    border: 1px solid transparent;
-    border-radius: 12px;
-    cursor: pointer;
-    opacity: 0.6;
-    color: var(--SmartThemeBodyColor, #ccc);
-    transition: opacity 0.15s, background 0.15s;
+.charMemory_dashFileNameText {
+    font-size: 0.9em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 60%;
 }
 
-.charMemory_toolPill:hover {
-    opacity: 0.85;
-}
-
-.charMemory_toolPill.active {
-    opacity: 1;
-    background: var(--SmartThemeQuoteColor, rgba(128, 128, 128, 0.3));
-    border-color: var(--SmartThemeQuoteColor, #888);
+.charMemory_dashDiagHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
 }
 
 /* Format tool source picker */

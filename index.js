@@ -100,21 +100,12 @@ function renderLogEntryHtml(entry) {
 }
 
 function updateActivityLogDisplay() {
-    const $container = $('#charMemory_activityLog');
-    if ($container.length) {
-        if (activityLog.length === 0) {
-            $container.html('<div class="charMemory_diagEmpty">No activity yet.</div>');
-        } else {
-            $container.html(activityLog.map(renderLogEntryHtml).join(''));
-        }
-    }
-
-    // Update mini-log (last 3 entries, first line only)
-    const $miniLog = $('#charMemory_miniLogContent');
-    if (!$miniLog.length) return;
+    // Update dashboard activity (last 3 entries, first line only)
+    const $dashActivity = $('#charMemory_dashActivity');
+    if (!$dashActivity.length) return;
 
     if (activityLog.length === 0) {
-        $miniLog.html('<div class="charMemory_diagEmpty charMemory_miniLogEmpty">No activity yet.</div>');
+        $dashActivity.html('<div class="charMemory_diagEmpty charMemory_miniLogEmpty">No activity yet.</div>');
         return;
     }
 
@@ -124,7 +115,7 @@ function updateActivityLogDisplay() {
         const msgText = entry.message.split('\n')[0];
         return `<div class="charMemory_logEntry ${typeClass}"><span class="charMemory_logTime">${entry.timestamp}</span> ${escapeHtml(msgText)}</div>`;
     }).join('');
-    $miniLog.html(miniHtml);
+    $dashActivity.html(miniHtml);
 }
 
 const defaultExtractionPrompt = `You are a memory extraction assistant. Read the recent chat messages and identify the most significant facts, events, and developments worth remembering long-term.
@@ -1437,8 +1428,12 @@ function loadSettings() {
         saveSettingsDebounced();
     }
 
-    // Bind UI elements to settings
+    // Bind dashboard UI elements to settings
     $('#charMemory_enabled').prop('checked', extension_settings[MODULE_NAME].enabled);
+
+    // Legacy sidebar bindings — these elements may not exist in the dashboard
+    // but are populated here in case the Settings Modal reuses them, and jQuery
+    // silently no-ops on missing selectors.
     $('#charMemory_mergeChunks').prop('checked', extension_settings[MODULE_NAME].mergeChunks);
     $('#charMemory_perChat').prop('checked', extension_settings[MODULE_NAME].perChat);
     $('#charMemory_interval').val(extension_settings[MODULE_NAME].interval);
@@ -1450,7 +1445,7 @@ function loadSettings() {
     $('#charMemory_minCooldown').val(extension_settings[MODULE_NAME].minCooldownMinutes);
     $('#charMemory_minCooldownCounter').val(extension_settings[MODULE_NAME].minCooldownMinutes);
     $('#charMemory_extractionPrompt').val(extension_settings[MODULE_NAME].extractionPrompt);
-$('#charMemory_groupExtractionPrompt').val(extension_settings[MODULE_NAME].groupExtractionPrompt);
+    $('#charMemory_groupExtractionPrompt').val(extension_settings[MODULE_NAME].groupExtractionPrompt);
     $('#charMemory_consolidationStrategy').val(extension_settings[MODULE_NAME].consolidationStrategy || 'balanced');
     updateConsolidationStrategyUI();
     $('#charMemory_source').val(extension_settings[MODULE_NAME].source);
@@ -1467,6 +1462,7 @@ $('#charMemory_groupExtractionPrompt').val(extension_settings[MODULE_NAME].group
     toggleProviderSettings(extension_settings[MODULE_NAME].source);
 
     updateStatusDisplay();
+    updateDashboardFileInfo();
     updateHealthIndicator();
 }
 
@@ -1531,12 +1527,86 @@ function updateStatusDisplay() {
     startCooldownTimer();
     updateChatTypeVisibility();
     updateGroupMembersList();
+    updateDashboardFileInfo();
 
     // Show resolved filename for 1:1 chats
     if (!isGroupChat()) {
         const charName = getCharacterName();
         $('#charMemory_resolvedFileName').text(charName ? getMemoryFileName() : '—');
     }
+}
+
+/**
+ * Update the dashboard file info section with current memory file name and size.
+ */
+function updateDashboardFileInfo() {
+    const targets = getMemoryTargets();
+    const $fileName = $('#charMemory_dashFileName');
+    const $fileMeta = $('#charMemory_dashFileMeta');
+
+    if (targets.length === 0) {
+        $fileName.text('No character');
+        $fileMeta.text('');
+        return;
+    }
+
+    const primary = targets[0];
+    $fileName.text(primary.fileName).attr('title', primary.fileName);
+
+    // Async load file size and chunk count
+    $fileMeta.text('loading...');
+    readMemoriesForCharacter(primary.avatar, primary.fileName).then(content => {
+        if (!content) {
+            $fileMeta.text('empty');
+            return;
+        }
+        const sizeKB = (new Blob([content]).size / 1024).toFixed(1);
+        const blocks = parseMemories(content);
+        const bulletCount = countMemories(blocks);
+        $fileMeta.text(`${sizeKB} KB \u00b7 ${blocks.length} chunk${blocks.length !== 1 ? 's' : ''} \u00b7 ${bulletCount} bullet${bulletCount !== 1 ? 's' : ''}`);
+    }).catch(() => {
+        $fileMeta.text('--');
+    });
+}
+
+/**
+ * Update the dashboard diagnostics summary with current health status.
+ */
+function updateDashboardDiagSummary() {
+    const $summary = $('#charMemory_dashDiagSummary');
+    if (!$summary.length) return;
+
+    computeHealthScore().then(result => {
+        if (result.level === 'unknown') {
+            $summary.html('<div class="charMemory_diagEmpty">No character selected.</div>');
+            return;
+        }
+
+        const icons = { green: 'fa-check-circle', yellow: 'fa-exclamation-triangle', red: 'fa-times-circle' };
+        const colors = { green: '#4a4', yellow: '#e8a33d', red: '#c44' };
+        const icon = icons[result.level] || 'fa-question-circle';
+        const color = colors[result.level] || '';
+        const label = result.level === 'green' ? 'Healthy' : result.level === 'yellow' ? 'Warnings' : 'Issues detected';
+
+        let html = `<div style="display:flex;align-items:center;gap:6px;font-size:0.9em;">`;
+        html += `<i class="fa-solid ${icon}" style="color:${color};"></i>`;
+        html += `<span>${label}</span>`;
+        html += `</div>`;
+
+        if (result.checks) {
+            const issues = result.checks.filter(c => c.status !== 'pass');
+            if (issues.length > 0) {
+                html += `<div style="font-size:0.8em;opacity:0.7;margin-top:2px;">`;
+                html += issues.slice(0, 2).map(c => `${c.label}: ${c.detail || c.status}`).join('<br>');
+                if (issues.length > 2) html += `<br>...and ${issues.length - 2} more`;
+                html += `</div>`;
+            }
+        }
+
+        $summary.html(html);
+    }).catch(() => {
+        $summary.html('<div class="charMemory_diagEmpty">Health check failed.</div>');
+    });
 }
 
 /**
@@ -3270,6 +3340,7 @@ async function updateHealthIndicator() {
         const result = await computeHealthScore();
         renderHealthStatusBarItem(result);
         renderHealthDiagnosticsCard(result);
+        updateDashboardDiagSummary();
     } catch (err) {
         console.warn(LOG_PREFIX, 'Health check failed:', err);
     }
@@ -4093,13 +4164,11 @@ async function showSettingsModal() {
 
     // Reset / Clear handlers
     $('#cm_modal_resetTracking').off('click').on('click', function () {
-        // Delegate to the sidebar button handler
-        $('#charMemory_resetTracking').click();
+        resetExtractionTracking();
     });
 
     $('#cm_modal_resetExtraction').off('click').on('click', async function () {
-        // Delegate to the sidebar button handler
-        $('#charMemory_resetExtraction').click();
+        await clearAllMemories();
     });
 
     // Populate group members list if in a group chat
@@ -4793,7 +4862,7 @@ async function showTroubleshooter(initialSection = 'health') {
             POPUP_TYPE.CONFIRM, 'Reset Extraction State',
         );
         if (!confirmed) return;
-        $('#charMemory_resetTracking').click();
+        resetExtractionTracking();
     });
     $('#cm_ts_clearMemories').off('click').on('click', async function () {
         const confirmed = await callGenericPopup(
@@ -4801,7 +4870,7 @@ async function showTroubleshooter(initialSection = 'health') {
             POPUP_TYPE.CONFIRM, 'Clear All Memories',
         );
         if (!confirmed) return;
-        $('#charMemory_resetExtraction').click();
+        await clearAllMemories();
     });
 
     return popup;
@@ -6247,29 +6316,28 @@ function setupExtractionControls() {
 }
 
 /**
- * Wire event handlers for consolidation, batch extraction, and convert/format tools.
- * Covers: tool pill switching, extract now, manage memories, consolidate/undo,
+ * Wire event handlers for extraction, memory manager, and dashboard tool launchers.
+ * Covers: extract now, manage memories, consolidate/batch/format launcher buttons,
  * consolidation strategy/prompt, convert preview/undo, format source radio,
- * convert prompt, and batch extract controls.
+ * convert prompt, batch extract controls, and files popover.
  */
 function setupToolControls() {
-    // Pill switching within Tools tab
-    $('.charMemory_toolPill').off('click').on('click', function () {
-        const tool = $(this).data('tool');
-        $('.charMemory_toolPill').removeClass('active');
-        $(this).addClass('active');
-        $('.charMemory_toolContent').hide();
-        $(`#charMemory_tool${tool.charAt(0).toUpperCase() + tool.slice(1)}`).show();
-        if (tool === 'batch') loadBatchChatList();
-        if (tool === 'convert') populateConvertSourceDropdown();
-    });
-
     $('#charMemory_extractNow').off('click').on('click', function () {
         extractMemories({ force: true });
     });
 
     $('#charMemory_manageMemories').off('click').on('click', () => showMemoryManager());
 
+    // Dashboard tool launcher buttons
+    $('#charMemory_consolidateBtn').off('click').on('click', () => consolidateMemories());
+    $('#charMemory_batchBtn').off('click').on('click', () => showBatchPopup());
+    $('#charMemory_formatBtn').off('click').on('click', () => reformatMemories());
+    $('#charMemory_filesPopover').off('click').on('click', () => showTroubleshooter('databank'));
+
+    // Diagnostics link → open troubleshooter
+    $('#charMemory_viewDiagDetails').off('click').on('click', () => showTroubleshooter('health'));
+
+    // Consolidation controls (used in consolidation dialog, still active)
     $('#charMemory_consolidate').off('click').on('click', () => consolidateMemories());
     $('#charMemory_undoConsolidate').off('click').on('click', () => undoConsolidation());
 
@@ -6322,7 +6390,7 @@ function setupToolControls() {
         saveSettingsDebounced();
     });
 
-    // Batch Extract tab
+    // Batch Extract controls (used in batch dialog/troubleshooter)
     $('#charMemory_batchRefresh').off('click').on('click', loadBatchChatList);
     $('#charMemory_batchExtract').off('click').on('click', runBatchExtraction);
     $('#charMemory_batchStop').off('click').on('click', function () {
@@ -6374,131 +6442,93 @@ function setupStorageControls() {
 }
 
 /**
- * Wire event handlers for logging, diagnostics, tab navigation, and reset controls.
- * Covers: top-level tab switching, verbose log toggle, clear/save log,
- * refresh diagnostics, health stat click, recommendation accordion headers,
+ * Wire event handlers for diagnostics, health indicator, and reset controls.
+ * Covers: verbose log toggle, health stat click, recommendation accordion,
  * reset tracking, and reset extraction (clear all).
  */
 function setupLogControls() {
-    // Tab switching for top-level panel tabs
-    $('.charMemory_tab').off('click').on('click', function () {
-        const tab = $(this).data('tab');
-        $('.charMemory_tab').removeClass('active');
-        $(this).addClass('active');
-        $('.charMemory_tabContent').hide();
-        const capName = tab.charAt(0).toUpperCase() + tab.slice(1);
-        $(`#charMemory_tab${capName}`).show();
-        // Hide mini-log when viewing Log tab (redundant), show otherwise
-        $('#charMemory_miniLog').toggle(tab !== 'log');
-        // Auto-load batch list when switching to Tools tab with Batch pill active
-        if (tab === 'tools' && $('.charMemory_toolPill.active').data('tool') === 'batch') {
-            loadBatchChatList();
-        }
-    });
-
     $('#charMemory_verboseLog').off('change').on('change', function () {
         extension_settings[MODULE_NAME].verboseLogging = !!$(this).prop('checked');
         saveSettingsDebounced();
     });
 
-    $('#charMemory_clearLog').off('click').on('click', function () {
-        activityLog = [];
-        updateActivityLogDisplay();
-    });
-
-    $('#charMemory_saveLog').off('click').on('click', function () {
-        if (activityLog.length === 0) {
-            toastr.info('Activity log is empty.', 'CharMemory');
-            return;
-        }
-        const lines = activityLog.map(e => `[${e.timestamp}] [${e.type}] ${e.message}`).join('\n');
-        const blob = new Blob([lines], { type: 'text/plain' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `charMemory-log-${new Date().toISOString().slice(0, 19).replace(/:/g, '')}.txt`;
-        a.click();
-        URL.revokeObjectURL(url);
-    });
-
-    $('#charMemory_refreshDiag').off('click').on('click', function () {
-        captureDiagnostics();
-        toastr.info('Diagnostics refreshed.', 'CharMemory');
-    });
-
-    // Health indicator click — scroll to diagnostics
+    // Health indicator click — open troubleshooter
     $('#charMemory_statHealth').off('click').on('click', function () {
-        const $diag = $('.charMemory_bottomDiagnostics');
-        if ($diag.length) {
-            $diag[0].scrollIntoView({ behavior: 'smooth', block: 'start' });
-            $diag.css('outline', '2px solid var(--SmartThemeQuoteColor, #e8a33d)');
-            setTimeout(() => $diag.css('outline', ''), 1500);
-        }
+        showTroubleshooter('health');
     });
 
     $('.charMemory_recommendationHeader').off('click').on('click', function () {
         $(this).next('.charMemory_recommendationBody').slideToggle(200);
     });
 
-    $('#charMemory_resetTracking').off('click').on('click', function () {
-        ensureMetadata();
-        chat_metadata[MODULE_NAME].lastExtractedIndex = -1;
-        chat_metadata[MODULE_NAME].messagesSinceExtraction = 0;
-        saveMetadataDebounced();
+}
 
-        // Also clear batch state for all chats of this character
-        const charName = getCharacterName();
-        if (charName && extension_settings[MODULE_NAME].batchState) {
-            const prefix = `${charName}:`;
-            for (const key of Object.keys(extension_settings[MODULE_NAME].batchState)) {
-                if (key.startsWith(prefix)) {
-                    delete extension_settings[MODULE_NAME].batchState[key];
-                }
-            }
-            saveSettingsDebounced();
-        }
+/**
+ * Reset extraction tracking for the current character's chats.
+ * Called from Settings Modal, Troubleshooter, and dashboard.
+ */
+function resetExtractionTracking() {
+    ensureMetadata();
+    chat_metadata[MODULE_NAME].lastExtractedIndex = -1;
+    chat_metadata[MODULE_NAME].messagesSinceExtraction = 0;
+    saveMetadataDebounced();
 
-        updateStatusDisplay();
-        toastr.success('Extraction state reset for all chats. Next extraction will re-read all messages.', 'CharMemory');
-    });
-
-    $('#charMemory_resetExtraction').off('click').on('click', async function () {
-        ensureMetadata();
-        chat_metadata[MODULE_NAME].lastExtractedIndex = -1;
-        chat_metadata[MODULE_NAME].messagesSinceExtraction = 0;
-        saveMetadataDebounced();
-
-        // Also clear batch state for all chats of this character
-        const charName = getCharacterName();
-        if (charName && extension_settings[MODULE_NAME].batchState) {
-            const prefix = `${charName}:`;
-            for (const key of Object.keys(extension_settings[MODULE_NAME].batchState)) {
-                if (key.startsWith(prefix)) {
-                    delete extension_settings[MODULE_NAME].batchState[key];
-                }
-            }
-            saveSettingsDebounced();
-        }
-
-        // Also clear stored memories for ALL targets so re-extraction starts fresh
-        const resetTargets = getMemoryTargets();
-        for (const target of resetTargets) {
-            const existing = findMemoryAttachmentForCharacter(target.avatar, target.fileName);
-            if (existing) {
-                await deleteFileFromServer(existing.url, true);
-                ensureCharacterAttachments(target.avatar);
-                extension_settings.character_attachments[target.avatar] =
-                    extension_settings.character_attachments[target.avatar].filter(a => a.url !== existing.url);
+    // Also clear batch state for all chats of this character
+    const charName = getCharacterName();
+    if (charName && extension_settings[MODULE_NAME].batchState) {
+        const prefix = `${charName}:`;
+        for (const key of Object.keys(extension_settings[MODULE_NAME].batchState)) {
+            if (key.startsWith(prefix)) {
+                delete extension_settings[MODULE_NAME].batchState[key];
             }
         }
         saveSettingsDebounced();
+    }
 
-        // Immediately update stats bar to avoid stale async reads
-        $('#charMemory_statCount').text('0 memories');
-        $('#charMemory_statProgress').text(`0/${extension_settings[MODULE_NAME].interval} msgs`);
-        updateStatusDisplay();
-        toastr.success('Memories cleared and extraction state reset for all chats. Next extraction will start from the beginning.', 'CharMemory');
-    });
+    updateStatusDisplay();
+    toastr.success('Extraction state reset for all chats. Next extraction will re-read all messages.', 'CharMemory');
+}
+
+/**
+ * Clear all memories and reset extraction state for the current character.
+ * Called from Settings Modal, Troubleshooter, and dashboard.
+ */
+async function clearAllMemories() {
+    ensureMetadata();
+    chat_metadata[MODULE_NAME].lastExtractedIndex = -1;
+    chat_metadata[MODULE_NAME].messagesSinceExtraction = 0;
+    saveMetadataDebounced();
+
+    // Also clear batch state for all chats of this character
+    const charName = getCharacterName();
+    if (charName && extension_settings[MODULE_NAME].batchState) {
+        const prefix = `${charName}:`;
+        for (const key of Object.keys(extension_settings[MODULE_NAME].batchState)) {
+            if (key.startsWith(prefix)) {
+                delete extension_settings[MODULE_NAME].batchState[key];
+            }
+        }
+        saveSettingsDebounced();
+    }
+
+    // Also clear stored memories for ALL targets so re-extraction starts fresh
+    const resetTargets = getMemoryTargets();
+    for (const target of resetTargets) {
+        const existing = findMemoryAttachmentForCharacter(target.avatar, target.fileName);
+        if (existing) {
+            await deleteFileFromServer(existing.url, true);
+            ensureCharacterAttachments(target.avatar);
+            extension_settings.character_attachments[target.avatar] =
+                extension_settings.character_attachments[target.avatar].filter(a => a.url !== existing.url);
+        }
+    }
+    saveSettingsDebounced();
+
+    // Immediately update stats bar to avoid stale async reads
+    $('#charMemory_statCount').text('0 memories');
+    $('#charMemory_statProgress').text(`0/${extension_settings[MODULE_NAME].interval} msgs`);
+    updateStatusDisplay();
+    toastr.success('Memories cleared and extraction state reset for all chats. Next extraction will start from the beginning.', 'CharMemory');
 }
 
 function setupListeners() {
@@ -6916,6 +6946,67 @@ function showInjectionDrawer(messageIndex) {
 
 let batchAbortController = null;
 
+/**
+ * Show a standalone batch extraction popup with chat list and controls.
+ * Re-uses the same element IDs as the old sidebar so loadBatchChatList()
+ * and runBatchExtraction() work without modification.
+ */
+async function showBatchPopup() {
+    const charName = getCharacterName();
+    if (!charName) {
+        toastr.warning('No character selected.', 'CharMemory');
+        return;
+    }
+
+    const batchHtml = `
+        <div style="text-align:left;min-width:350px;">
+            <div class="charMemory_buttonRow">
+                <input type="button" id="charMemory_batchRefresh" class="menu_button" value="Refresh" title="Load chat list for this character" />
+                <input type="button" id="charMemory_batchExtract" class="menu_button" value="Extract Selected" title="Run extraction on all selected chats" disabled />
+                <input type="button" id="charMemory_batchStop" class="menu_button" value="Stop" title="Cancel batch extraction" style="display:none;" />
+            </div>
+            <div id="charMemory_batchProgress" class="charMemory_batchProgress" style="display:none;">
+                <div class="charMemory_batchProgressText"></div>
+                <div class="charMemory_batchProgressBar"><div class="charMemory_batchProgressFill"></div></div>
+            </div>
+            <div class="charMemory_sectionHeader">
+                <small><b title="Chat files attached to this character. Select which ones to extract memories from.">Character Chats</b></small>
+                <label class="checkbox_label">
+                    <input type="checkbox" id="charMemory_batchSelectAll" />
+                    <small>Select all</small>
+                </label>
+            </div>
+            <div id="charMemory_batchChatList" class="charMemory_batchChatList" style="max-height:400px;">
+                <div class="charMemory_diagEmpty">Loading...</div>
+            </div>
+        </div>
+    `;
+
+    // Show the popup (non-blocking)
+    const popup = callGenericPopup(batchHtml, POPUP_TYPE.TEXT, 'Batch Extraction', { wide: true, okButton: 'Close' });
+
+    // Wire batch controls after DOM is inserted
+    setTimeout(() => {
+        $('#charMemory_batchRefresh').off('click').on('click', loadBatchChatList);
+        $('#charMemory_batchExtract').off('click').on('click', runBatchExtraction);
+        $('#charMemory_batchStop').off('click').on('click', function () {
+            if (batchAbortController) batchAbortController.abort();
+        });
+        $('#charMemory_batchSelectAll').off('change').on('change', function () {
+            const checked = $(this).prop('checked');
+            $('.charMemory_batchChatCheck').prop('checked', checked);
+            updateBatchButtons();
+        });
+        $(document).off('change.batchPopup', '.charMemory_batchChatCheck')
+            .on('change.batchPopup', '.charMemory_batchChatCheck', updateBatchButtons);
+
+        // Auto-load
+        loadBatchChatList();
+    }, 100);
+
+    await popup;
+}
+
 async function loadBatchChatList() {
     const $list = $('#charMemory_batchChatList');
     $list.html('<div class="charMemory_diagEmpty">Loading...</div>');
@@ -7227,36 +7318,8 @@ jQuery(async function () {
             return;
         }
 
-        // Desktop: scroll to diagnostics if visible, otherwise open the extensions panel
-        const $diag = $('.charMemory_bottomDiagnostics');
-        if ($diag.length && $diag.is(':visible')) {
-            $diag[0].scrollIntoView({ behavior: 'smooth', block: 'start' });
-            $diag.css('outline', '2px solid var(--SmartThemeQuoteColor, #e8a33d)');
-            setTimeout(() => $diag.css('outline', ''), 1500);
-            return;
-        }
-        try {
-            const navButtons = document.querySelectorAll('#top-settings-holder .drawer-icon');
-            const extButton = Array.from(navButtons).find(b => b.title === 'Extensions');
-            if (extButton) extButton.click();
-            setTimeout(() => {
-                const charMemDrawer = document.querySelector('#charMemory_settings .inline-drawer');
-                if (charMemDrawer && !charMemDrawer.classList.contains('open')) {
-                    const toggle = charMemDrawer.querySelector('.inline-drawer-toggle');
-                    if (toggle) toggle.click();
-                }
-                setTimeout(() => {
-                    const $d = $('.charMemory_bottomDiagnostics');
-                    if ($d.length) {
-                        $d[0].scrollIntoView({ behavior: 'smooth', block: 'start' });
-                        $d.css('outline', '2px solid var(--SmartThemeQuoteColor, #e8a33d)');
-                        setTimeout(() => $d.css('outline', ''), 1500);
-                    }
-                }, 300);
-            }, 300);
-        } catch (e) {
-            console.log(LOG_PREFIX, 'Could not open diagnostics panel:', e);
-        }
+        // Desktop: open troubleshooter health checks
+        showTroubleshooter('health');
     });
 
     // Swipe right to close drawer (touch devices)
