@@ -4513,6 +4513,9 @@ async function showPromptsModal(activePrompt = 'extraction') {
         const key = $section.data('prompt');
         acknowledgePromptVersion(key);
         refreshSectionUI($section, key);
+        $section.find('.charMemory_promptCompareWrap').hide();
+        $section.find('.charMemory_promptEditorWrap').show();
+        $section.find('.charMemory_promptDoneCompare').hide();
         toastr.info('Notification dismissed. Your custom prompt is unchanged.');
     });
 
@@ -4527,6 +4530,9 @@ async function showPromptsModal(activePrompt = 'extraction') {
         acknowledgePromptVersion(key);
         syncSidebarPrompt(key);
         refreshSectionUI($section, key);
+        $section.find('.charMemory_promptCompareWrap').hide();
+        $section.find('.charMemory_promptEditorWrap').show();
+        $section.find('.charMemory_promptDoneCompare').hide();
         toastr.success('Prompt updated to new default.');
     });
 
