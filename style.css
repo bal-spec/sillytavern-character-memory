@@ -1248,6 +1248,77 @@
     resize: vertical;
 }
 
+/* ── Prompt Update Banner ── */
+.charMemory_promptUpdateBanner {
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, transparent);
+    border: 1px solid var(--SmartThemeQuoteColor);
+    border-radius: 6px;
+    padding: 10px 14px;
+    margin-bottom: 10px;
+    font-size: 0.88em;
+    line-height: 1.5;
+}
+
+.charMemory_promptUpdateBanner > span {
+    display: block;
+    margin-bottom: 8px;
+}
+
+.charMemory_promptUpdateActions {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.charMemory_promptUpdateActions .menu_button {
+    font-size: 0.85em;
+    padding: 4px 12px;
+}
+
+/* ── Nav Update Dot ── */
+.charMemory_navUpdateDot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--SmartThemeQuoteColor);
+    margin-left: 6px;
+    vertical-align: middle;
+}
+
+/* ── Compare & Edit View ── */
+.charMemory_promptCompareWrap {
+    display: flex;
+    gap: 12px;
+}
+
+.charMemory_comparePane {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.charMemory_comparePane > label {
+    font-size: 0.82em;
+    opacity: 0.7;
+    margin-bottom: 4px;
+}
+
+.charMemory_comparePane textarea {
+    width: 100%;
+    min-height: 300px;
+    font-family: monospace;
+    font-size: 0.82em;
+    resize: vertical;
+    flex: 1;
+}
+
+.charMemory_comparePane textarea[readonly] {
+    opacity: 0.7;
+    cursor: default;
+}
+
 /* ── Troubleshooter Modal ── */
 .charMemory_troubleshooter {
     min-height: 400px;

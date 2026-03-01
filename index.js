@@ -1428,6 +1428,9 @@ function loadSettings() {
         saveSettingsDebounced();
     }
 
+    // Check prompt versions for update notifications
+    checkPromptVersions();
+
     // Bind dashboard UI elements to settings
     $('#charMemory_enabled').prop('checked', extension_settings[MODULE_NAME].enabled);
 
@@ -4286,22 +4289,102 @@ function isPromptCustomized(promptKey) {
 }
 
 /**
+ * Check whether a prompt has an update available.
+ * An update is available when the user has a custom prompt AND the stored
+ * version for that prompt is older than the current PROMPT_CONFIG version.
+ * @param {string} promptKey Key from PROMPT_CONFIG
+ * @returns {boolean}
+ */
+function hasPromptUpdate(promptKey) {
+    const s = extension_settings[MODULE_NAME];
+    const stored = (s.promptVersions || {})[promptKey];
+    const current = PROMPT_CONFIG[promptKey]?.version;
+    if (!stored || !current) return false;
+    return isPromptCustomized(promptKey) && stored !== current;
+}
+
+/**
+ * Check all prompt versions on load. For each prompt:
+ * - If no stored version yet, initialize to current (no notification).
+ * - If the user has the default prompt and a version mismatch, silently update
+ *   the stored version (they already have the latest text).
+ * - If the user has a custom prompt and a version mismatch, leave the mismatch
+ *   in place so hasPromptUpdate() returns true and the banner is shown.
+ */
+function checkPromptVersions() {
+    const s = extension_settings[MODULE_NAME];
+    if (!s.promptVersions) s.promptVersions = {};
+    let changed = false;
+
+    for (const [key, config] of Object.entries(PROMPT_CONFIG)) {
+        const stored = s.promptVersions[key];
+        const current = config.version;
+
+        if (!stored) {
+            // First time — store the current version (no notification)
+            s.promptVersions[key] = current;
+            changed = true;
+        } else if (stored !== current && !isPromptCustomized(key)) {
+            // User has the default prompt text — silently update stored version
+            s.promptVersions[key] = current;
+            changed = true;
+        }
+        // If stored !== current AND prompt is customized → leave mismatch for banner
+    }
+
+    if (changed) saveSettingsDebounced();
+}
+
+/**
+ * Acknowledge a prompt version update — sets the stored version to current.
+ * @param {string} promptKey Key from PROMPT_CONFIG
+ */
+function acknowledgePromptVersion(promptKey) {
+    const s = extension_settings[MODULE_NAME];
+    if (!s.promptVersions) s.promptVersions = {};
+    s.promptVersions[promptKey] = PROMPT_CONFIG[promptKey].version;
+    saveSettingsDebounced();
+}
+
+/**
  * Build and show the Prompts modal with left-nav layout.
  * @param {string} activePrompt Which prompt to show initially: 'extraction', 'groupExtraction', 'consolidation', 'conversion'
  */
 async function showPromptsModal(activePrompt = 'extraction') {
     const s = extension_settings[MODULE_NAME];
 
-    // Build nav items
-    const navItems = Object.entries(PROMPT_CONFIG).map(([key, config]) =>
-        `<button class="charMemory_modalNavItem${key === activePrompt ? ' active' : ''}" data-prompt="${escapeAttr(key)}">${escapeHtml(config.navLabel)}</button>`
-    ).join('');
+    // Helper: build badge text for a prompt
+    function getBadgeText(key) {
+        const config = PROMPT_CONFIG[key];
+        const customized = isPromptCustomized(key);
+        return customized ? `v${config.version} \u2022 Customized` : `v${config.version} \u2022 Default`;
+    }
+
+    // Helper: build update banner HTML (only shown when an update is available)
+    function buildUpdateBanner(key) {
+        if (!hasPromptUpdate(key)) return '';
+        const storedVersion = (s.promptVersions || {})[key] || '?';
+        const currentVersion = PROMPT_CONFIG[key].version;
+        return `<div class="charMemory_promptUpdateBanner" data-prompt="${escapeAttr(key)}">
+            <span>The default prompt was updated (v${escapeHtml(storedVersion)} &rarr; v${escapeHtml(currentVersion)}). Your custom version is unchanged.</span>
+            <div class="charMemory_promptUpdateActions">
+                <input type="button" class="menu_button charMemory_promptKeepMine" value="Keep mine" />
+                <input type="button" class="menu_button charMemory_promptUseNew" value="Use new default" />
+                <input type="button" class="menu_button charMemory_promptCompare" value="Compare &amp; Edit" />
+            </div>
+        </div>`;
+    }
+
+    // Build nav items (with update dot indicator)
+    const navItems = Object.entries(PROMPT_CONFIG).map(([key, config]) => {
+        const updateDot = hasPromptUpdate(key) ? '<span class="charMemory_navUpdateDot"></span>' : '';
+        return `<button class="charMemory_modalNavItem${key === activePrompt ? ' active' : ''}" data-prompt="${escapeAttr(key)}">${escapeHtml(config.navLabel)}${updateDot}</button>`;
+    }).join('');
 
     // Build content sections — one per prompt
     const sections = Object.entries(PROMPT_CONFIG).map(([key, config]) => {
         const current = getPromptText(key);
-        const customized = isPromptCustomized(key);
-        const badgeText = customized ? `v${config.version} • Customized` : `v${config.version} • Default`;
+        const badgeText = getBadgeText(key);
         const strategyNote = key === 'consolidation'
             ? `<small class="charMemory_helperText" style="margin-bottom:8px;display:block;">Strategy: <b>${escapeHtml(CONSOLIDATION_PRESETS[s.consolidationStrategy || 'balanced']?.name || 'balanced')}</b></small>`
             : '';
@@ -4312,10 +4395,24 @@ async function showPromptsModal(activePrompt = 'extraction') {
                 <span class="charMemory_promptBadge">${badgeText}</span>
             </div>
             ${strategyNote}
-            <textarea class="text_pole charMemory_promptEditor" data-prompt="${escapeAttr(key)}">${escapeHtml(current)}</textarea>
+            ${buildUpdateBanner(key)}
+            <div class="charMemory_promptEditorWrap">
+                <textarea class="text_pole charMemory_promptEditor" data-prompt="${escapeAttr(key)}">${escapeHtml(current)}</textarea>
+            </div>
+            <div class="charMemory_promptCompareWrap" style="display:none;">
+                <div class="charMemory_comparePane">
+                    <label>Your prompt (editable)</label>
+                    <textarea class="text_pole charMemory_compareUser" data-prompt="${escapeAttr(key)}">${escapeHtml(current)}</textarea>
+                </div>
+                <div class="charMemory_comparePane">
+                    <label>New default (read-only)</label>
+                    <textarea class="text_pole charMemory_compareDefault" readonly>${escapeHtml(getDefaultPromptText(key))}</textarea>
+                </div>
+            </div>
             <div class="charMemory_buttonRow" style="margin-top:8px;">
                 <input type="button" class="menu_button charMemory_promptRestore" value="Restore Default" />
                 <input type="button" class="menu_button charMemory_promptSave" value="Save" />
+                <input type="button" class="menu_button charMemory_promptDoneCompare" value="Done comparing" style="display:none;" />
             </div>
         </div>`;
     }).join('');
@@ -4330,11 +4427,22 @@ async function showPromptsModal(activePrompt = 'extraction') {
     // Scope all handlers to this modal instance
     const $modal = $('.charMemory_promptsModal').last();
 
+    // Helper: refresh badge and banner for a given section
+    function refreshSectionUI($section, key) {
+        $section.find('.charMemory_promptBadge').text(getBadgeText(key));
+        // Hide/show update banner
+        if (!hasPromptUpdate(key)) {
+            $section.find('.charMemory_promptUpdateBanner').slideUp(200);
+            // Also remove nav dot
+            $modal.find(`.charMemory_modalNavItem[data-prompt="${key}"] .charMemory_navUpdateDot`).remove();
+        }
+    }
+
     // Nav switching — save current textarea before switching
     $modal.on('click', '.charMemory_modalNavItem', function () {
         // Save current section's textarea before switching
         const $currentSection = $modal.find('.charMemory_modalSection.active');
-        const $currentEditor = $currentSection.find('textarea');
+        const $currentEditor = $currentSection.find('.charMemory_promptEditor:visible, .charMemory_compareUser:visible').first();
         if ($currentEditor.length) {
             const currentKey = $currentEditor.data('prompt');
             savePromptText(currentKey, $currentEditor.val());
@@ -4353,35 +4461,34 @@ async function showPromptsModal(activePrompt = 'extraction') {
 
         // Reload the prompt text (in case it was changed externally)
         const freshText = getPromptText(targetKey);
-        $targetSection.find('textarea').val(freshText);
+        $targetSection.find('.charMemory_promptEditor').val(freshText);
+        $targetSection.find('.charMemory_compareUser').val(freshText);
 
         // Update badge
-        const customized = isPromptCustomized(targetKey);
-        const targetConfig = PROMPT_CONFIG[targetKey];
-        $targetSection.find('.charMemory_promptBadge').text(customized ? `v${targetConfig.version} \u2022 Customized` : `v${targetConfig.version} \u2022 Default`);
+        refreshSectionUI($targetSection, targetKey);
     });
 
     // Save button
     $modal.on('click', '.charMemory_promptSave', function () {
         const $section = $(this).closest('.charMemory_modalSection');
-        const $editor = $section.find('textarea');
-        const key = $editor.data('prompt');
-        savePromptText(key, $editor.val());
+        const key = $section.data('prompt');
+        // Save from whichever editor is visible (normal or compare)
+        const $editor = $section.find('.charMemory_promptEditor:visible, .charMemory_compareUser:visible').first();
+        if ($editor.length) {
+            savePromptText(key, $editor.val());
+            // Sync the other editor too
+            $section.find('.charMemory_promptEditor').val($editor.val());
+            $section.find('.charMemory_compareUser').val($editor.val());
+        }
         syncSidebarPrompt(key);
-
-        // Update badge
-        const customized = isPromptCustomized(key);
-        const config = PROMPT_CONFIG[key];
-        $section.find('.charMemory_promptBadge').text(customized ? `v${config.version} \u2022 Customized` : `v${config.version} \u2022 Default`);
-
+        refreshSectionUI($section, key);
         toastr.success('Prompt saved.');
     });
 
     // Restore Default button
     $modal.on('click', '.charMemory_promptRestore', async function () {
         const $section = $(this).closest('.charMemory_modalSection');
-        const $editor = $section.find('textarea');
-        const key = $editor.data('prompt');
+        const key = $section.data('prompt');
 
         const confirmed = await callGenericPopup(
             'Restore this prompt to its default text? Your customizations will be lost.',
@@ -4391,15 +4498,60 @@ async function showPromptsModal(activePrompt = 'extraction') {
         if (!confirmed) return;
 
         const defaultText = getDefaultPromptText(key);
-        $editor.val(defaultText);
+        $section.find('.charMemory_promptEditor').val(defaultText);
+        $section.find('.charMemory_compareUser').val(defaultText);
         savePromptText(key, defaultText);
+        acknowledgePromptVersion(key);
         syncSidebarPrompt(key);
-
-        // Update badge
-        const config = PROMPT_CONFIG[key];
-        $section.find('.charMemory_promptBadge').text(`v${config.version} \u2022 Default`);
-
+        refreshSectionUI($section, key);
         toastr.success('Prompt restored to default.');
+    });
+
+    // "Keep mine" — dismiss notification, acknowledge the new version
+    $modal.on('click', '.charMemory_promptKeepMine', function () {
+        const $section = $(this).closest('.charMemory_modalSection');
+        const key = $section.data('prompt');
+        acknowledgePromptVersion(key);
+        refreshSectionUI($section, key);
+        toastr.info('Notification dismissed. Your custom prompt is unchanged.');
+    });
+
+    // "Use new default" — replace prompt with new default, acknowledge version
+    $modal.on('click', '.charMemory_promptUseNew', function () {
+        const $section = $(this).closest('.charMemory_modalSection');
+        const key = $section.data('prompt');
+        const defaultText = getDefaultPromptText(key);
+        $section.find('.charMemory_promptEditor').val(defaultText);
+        $section.find('.charMemory_compareUser').val(defaultText);
+        savePromptText(key, defaultText);
+        acknowledgePromptVersion(key);
+        syncSidebarPrompt(key);
+        refreshSectionUI($section, key);
+        toastr.success('Prompt updated to new default.');
+    });
+
+    // "Compare & Edit" — show side-by-side panes
+    $modal.on('click', '.charMemory_promptCompare', function () {
+        const $section = $(this).closest('.charMemory_modalSection');
+        const key = $section.data('prompt');
+        // Copy current editor text to compare pane
+        $section.find('.charMemory_compareUser').val($section.find('.charMemory_promptEditor').val());
+        $section.find('.charMemory_compareDefault').val(getDefaultPromptText(key));
+        // Toggle visibility
+        $section.find('.charMemory_promptEditorWrap').hide();
+        $section.find('.charMemory_promptCompareWrap').show();
+        $section.find('.charMemory_promptDoneCompare').show();
+    });
+
+    // "Done comparing" — return to single editor
+    $modal.on('click', '.charMemory_promptDoneCompare', function () {
+        const $section = $(this).closest('.charMemory_modalSection');
+        // Copy the user pane text back to the main editor
+        $section.find('.charMemory_promptEditor').val($section.find('.charMemory_compareUser').val());
+        // Toggle visibility
+        $section.find('.charMemory_promptCompareWrap').hide();
+        $section.find('.charMemory_promptEditorWrap').show();
+        $(this).hide();
     });
 
     await popup;
