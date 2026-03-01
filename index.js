@@ -3968,19 +3968,19 @@ async function consolidateMemories() {
     }
     if (!initialResult) return;
 
-    let editorBlocks = parseMemories(initialResult);
-    const versionStack = [];
-    const editingSet = new Set();
+    const editor = createMemoryEditor({ blocks: parseMemories(initialResult) });
+    const rerunBackups = []; // separate stack for re-run undo
 
-    // Re-render the editor pane from editorBlocks
+    // Re-render the editor pane from editor state
     const refreshEditor = () => {
-        $('#charMemory_editorPane').html(renderConsolidatedCards(editorBlocks, editingSet));
-        $('#charMemory_afterCount').text(countMemories(editorBlocks));
-        $('#charMemory_editorAddBlock').toggleClass('charMemory_editorAddBlock--hidden', editingSet.size === 0);
+        const blocks = editor.getBlocks();
+        $('#charMemory_editorPane').html(renderConsolidatedCards(blocks, editor.getEditingSet()));
+        $('#charMemory_afterCount').text(countMemories(blocks));
+        $('#charMemory_editorAddBlock').toggleClass('charMemory_editorAddBlock--hidden', editor.getEditingSet().size === 0);
     };
 
     // Build and show the interactive dialog
-    const dialogHtml = buildConsolidationDialog(memories, beforeCount, editorBlocks, editingSet);
+    const dialogHtml = buildConsolidationDialog(memories, beforeCount, editor.getBlocks(), editor.getEditingSet());
     const popup = callGenericPopup(dialogHtml, POPUP_TYPE.CONFIRM, '', { wide: true, allowVerticalScrolling: true });
 
     // Set up the strategy dropdown and prompt viewer to match current setting
@@ -3995,69 +3995,43 @@ async function consolidateMemories() {
 
     // Toggle edit mode per block
     $(document).off('click.charMemoryEditorToggle').on('click.charMemoryEditorToggle', '.charMemory_editorToggleEdit', function () {
-        const bi = Number($(this).data('block'));
-        if (editingSet.has(bi)) {
-            editingSet.delete(bi);
-        } else {
-            editingSet.add(bi);
-        }
+        editor.toggleEdit(Number($(this).data('block')));
         refreshEditor();
     });
 
-    // Sync bullet input changes back to editorBlocks
+    // Sync bullet input changes back to editor state
     $(document).off('input.charMemoryEditor').on('input.charMemoryEditor', '.charMemory_editorBulletInput', function () {
-        const bi = Number($(this).data('block'));
-        const bui = Number($(this).data('bullet'));
-        if (editorBlocks[bi]) {
-            editorBlocks[bi].bullets[bui] = $(this).val();
-        }
+        editor.updateBullet(Number($(this).data('block')), Number($(this).data('bullet')), $(this).val());
     });
 
-    // Sync theme input changes back to editorBlocks
+    // Sync theme input changes back to editor state
     $(document).off('input.charMemoryEditorTheme').on('input.charMemoryEditorTheme', '.charMemory_editorThemeInput', function () {
-        const bi = Number($(this).data('block'));
-        if (editorBlocks[bi]) {
-            editorBlocks[bi].chat = $(this).val();
-        }
+        editor.updateTheme(Number($(this).data('block')), $(this).val());
     });
 
     // Delete bullet
     $(document).off('click.charMemoryEditorDelBullet').on('click.charMemoryEditorDelBullet', '.charMemory_editorDeleteBullet', function () {
-        const bi = Number($(this).data('block'));
-        const bui = Number($(this).data('bullet'));
-        if (editorBlocks[bi]) {
-            editorBlocks[bi].bullets.splice(bui, 1);
-            if (editorBlocks[bi].bullets.length === 0) {
-                editorBlocks.splice(bi, 1);
-                reindexEditingSet(editingSet, bi);
-            }
-            refreshEditor();
-        }
+        editor.deleteBullet(Number($(this).data('block')), Number($(this).data('bullet')));
+        refreshEditor();
     });
 
     // Delete block
     $(document).off('click.charMemoryEditorDelBlock').on('click.charMemoryEditorDelBlock', '.charMemory_editorDeleteBlock', function () {
-        const bi = Number($(this).data('block'));
-        editorBlocks.splice(bi, 1);
-        reindexEditingSet(editingSet, bi);
+        editor.deleteBlock(Number($(this).data('block')));
         refreshEditor();
     });
 
     // Add bullet to block
     $(document).off('click.charMemoryEditorAddBullet').on('click.charMemoryEditorAddBullet', '.charMemory_editorAddBullet', function () {
         const bi = Number($(this).data('block'));
-        if (editorBlocks[bi]) {
-            editorBlocks[bi].bullets.push('');
-            refreshEditor();
-            $(`#charMemory_editorPane .charMemory_editorCard[data-block="${bi}"] .charMemory_editorBulletInput:last`).focus();
-        }
+        editor.addBullet(bi);
+        refreshEditor();
+        $(`#charMemory_editorPane .charMemory_editorCard[data-block="${bi}"] .charMemory_editorBulletInput:last`).focus();
     });
 
     // Add new block
     $(document).off('click.charMemoryEditorAddBlock').on('click.charMemoryEditorAddBlock', '#charMemory_editorAddBlock', function () {
-        const newIdx = editorBlocks.length;
-        editorBlocks.push({ chat: 'New Group', date: getTimestamp(), bullets: [''] });
-        editingSet.add(newIdx);
+        editor.addBlock();
         refreshEditor();
         $('#charMemory_editorPane .charMemory_editorCard:last .charMemory_editorBulletInput:last').focus();
     });
@@ -4097,7 +4071,7 @@ async function consolidateMemories() {
     $('#charMemory_rerunConsolidation').off('click').on('click', async () => {
         if (inApiCall) return;
 
-        const currentBlocks = cloneMemoryBlocks(editorBlocks);
+        const backupBlocks = editor.getBlocks();
 
         const dialogStrategy = $('#charMemory_consolidationDialogStrategy').val();
         extension_settings[MODULE_NAME].consolidationStrategy = dialogStrategy;
@@ -4115,21 +4089,19 @@ async function consolidateMemories() {
         $('#charMemory_editorPane').removeClass('charMemory_editorDisabled');
 
         if (newResult) {
-            versionStack.push(currentBlocks);
+            rerunBackups.push(backupBlocks);
             $('#charMemory_undoRerun').prop('disabled', false);
-            editorBlocks = parseMemories(newResult);
-            editingSet.clear();
+            editor.replaceAll(parseMemories(newResult));
             refreshEditor();
         }
     });
 
     // === Undo button ===
     $('#charMemory_undoRerun').off('click').on('click', () => {
-        if (versionStack.length === 0) return;
-        editorBlocks = versionStack.pop();
-        editingSet.clear();
+        if (rerunBackups.length === 0) return;
+        editor.replaceAll(rerunBackups.pop());
         refreshEditor();
-        if (versionStack.length === 0) {
+        if (rerunBackups.length === 0) {
             $('#charMemory_undoRerun').prop('disabled', true);
         }
     });
@@ -4159,7 +4131,7 @@ async function consolidateMemories() {
     }
 
     // Filter out empty bullets and empty blocks before saving
-    const cleanBlocks = editorBlocks
+    const cleanBlocks = editor.getBlocks()
         .map(b => ({ ...b, bullets: b.bullets.filter(bullet => bullet.trim() !== '') }))
         .filter(b => b.bullets.length > 0);
 
