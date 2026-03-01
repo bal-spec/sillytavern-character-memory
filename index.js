@@ -4643,7 +4643,7 @@ async function showSetupWizard(startStep = 1) {
         ${step3Html}
     </div>`;
 
-    const popup = callGenericPopup(html, POPUP_TYPE.TEXT, '', { wide: true, allowVerticalScrolling: true });
+    const popup = callGenericPopup(html, POPUP_TYPE.DISPLAY, '', { wide: true, allowVerticalScrolling: true });
     const $wizard = $('.charMemory_wizard').last();
 
     // --- Step navigation helpers ---
@@ -7650,8 +7650,8 @@ jQuery(async function () {
     setupListeners();
     registerSlashCommands();
 
-    // Setup Wizard: auto-trigger on first launch if no provider configured
-    if (!extension_settings[MODULE_NAME].selectedProvider && !extension_settings[MODULE_NAME].wizardCompleted) {
+    // Setup Wizard: auto-trigger on first launch
+    if (!extension_settings[MODULE_NAME].wizardCompleted) {
         showSetupWizard(1);
     }
 
