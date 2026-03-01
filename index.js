@@ -3462,6 +3462,847 @@ function updateDiagnosticsDisplay() {
     container.html(html);
 }
 
+// ============ Settings Modal ============
+
+/**
+ * Build and show the Settings modal with left-nav layout.
+ * All form controls are built dynamically to avoid ID conflicts with the sidebar.
+ * Uses callGenericPopup for center-screen display.
+ */
+async function showSettingsModal() {
+    const s = extension_settings[MODULE_NAME];
+    const providerKey = s.selectedProvider || 'openrouter';
+    const providerSettings = getProviderSettings(providerKey);
+    const preset = PROVIDER_PRESETS[providerKey] || {};
+
+    // Build provider options
+    const providerOptions = Object.entries(PROVIDER_PRESETS).map(([key, p]) =>
+        `<option value="${escapeHtml(key)}" ${key === providerKey ? 'selected' : ''}>${escapeHtml(p.name)}</option>`
+    ).join('');
+
+    // Build source options
+    const sourceOptions = [
+        { value: 'provider', label: 'Dedicated API (recommended)' },
+        { value: 'webllm', label: 'WebLLM (browser-local)' },
+        { value: 'main_llm', label: 'Main LLM' },
+    ].map(o => `<option value="${o.value}" ${o.value === s.source ? 'selected' : ''}>${o.label}</option>`).join('');
+
+    // Build chunk boundary options
+    const chunkOptions = [
+        { value: 'block', label: 'Block-level (default)' },
+        { value: 'bullet', label: 'Bullet-level' },
+        { value: 'custom', label: 'Custom' },
+    ].map(o => `<option value="${o.value}" ${o.value === (s.chunkBoundary || 'block') ? 'selected' : ''}>${o.label}</option>`).join('');
+
+    // Connection section HTML
+    const connectionHtml = `
+        <h4 class="charMemory_modalSectionTitle">LLM Connection</h4>
+        <div class="charMemory_modalFieldGroup">
+            <label for="cm_modal_source"><small>LLM Used for Extraction</small></label>
+            <select id="cm_modal_source" class="text_pole">${sourceOptions}</select>
+            <small class="charMemory_helperText"><b>Dedicated API is recommended.</b> Main LLM pollutes the extraction prompt with chat context.</small>
+        </div>
+        <div id="cm_modal_providerSettings" style="${s.source === 'provider' ? '' : 'display:none;'}">
+            <div class="charMemory_modalFieldGroup">
+                <label><small>Provider</small></label>
+                <select id="cm_modal_providerSelect" class="text_pole">${providerOptions}</select>
+            </div>
+            <div class="charMemory_modalFieldGroup" id="cm_modal_apiKeyRow" style="${preset.requiresApiKey ? '' : 'display:none;'}">
+                <label><small>API Key <a id="cm_modal_helpLink" href="${escapeAttr(preset.helpUrl || '#')}" target="_blank" style="font-size:0.85em;${preset.helpUrl ? '' : 'display:none;'}">(get key)</a></small></label>
+                <div style="display:flex;gap:5px;align-items:center;">
+                    <input type="password" id="cm_modal_apiKey" class="text_pole" placeholder="Enter API key" style="flex:1;" value="${escapeAttr(providerSettings.apiKey || '')}" />
+                    <button type="button" id="cm_modal_apiKeyReveal" class="menu_button" title="Show/hide API key" style="padding:3px 8px;">
+                        <i class="fa-solid fa-eye fa-sm"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="charMemory_modalFieldGroup" id="cm_modal_baseUrlRow" style="${preset.allowCustomUrl ? '' : 'display:none;'}">
+                <label><small>Base URL</small></label>
+                <input type="text" id="cm_modal_baseUrl" class="text_pole" placeholder="${preset.authStyle === 'none' ? 'http://127.0.0.1:1234/v1' : 'https://your-server.com/v1'}" value="${escapeAttr(providerSettings.customBaseUrl || preset.baseUrl || '')}" />
+                <small id="cm_modal_baseUrlHint" class="charMemory_helperText">${preset.allowCustomUrl ? (preset.authStyle === 'none' ? 'http://IP:port/v1 — the /v1 suffix is required' : 'OpenAI-compatible base URL ending in /v1') : ''}</small>
+            </div>
+            <div class="charMemory_modalFieldGroup" id="cm_modal_connectRow" style="${preset.modelsEndpoint === 'standard' || preset.modelsEndpoint === 'custom' ? '' : 'display:none;'}">
+                <input type="button" id="cm_modal_connect" class="menu_button" value="Connect" title="Fetch available models from the server" />
+            </div>
+            <small id="cm_modal_connectStatus" class="charMemory_helperText" style="display:none;"></small>
+            <div class="charMemory_modalFieldGroup" id="cm_modal_modelDropdownRow" style="${preset.modelsEndpoint === 'standard' || preset.modelsEndpoint === 'custom' ? '' : 'display:none;'}">
+                <label><small>Model</small></label>
+                <div id="cm_modal_nanogptFilters" style="${providerKey === 'nanogpt' ? '' : 'display:none;'}">
+                    <div class="charMemory_filterRow" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:4px;">
+                        <label class="checkbox_label"><input type="checkbox" id="cm_modal_nanogptFilterSub" ${providerSettings.nanogptFilterSubscription ? 'checked' : ''} /> <small>Subscription</small></label>
+                        <label class="checkbox_label"><input type="checkbox" id="cm_modal_nanogptFilterOS" ${providerSettings.nanogptFilterOpenSource ? 'checked' : ''} /> <small>Open Source</small></label>
+                        <label class="checkbox_label"><input type="checkbox" id="cm_modal_nanogptFilterRP" ${providerSettings.nanogptFilterRoleplay ? 'checked' : ''} /> <small>Roleplay</small></label>
+                        <label class="checkbox_label"><input type="checkbox" id="cm_modal_nanogptFilterReasoning" ${providerSettings.nanogptFilterReasoning ? 'checked' : ''} /> <small>Reasoning</small></label>
+                    </div>
+                </div>
+                <div style="display:flex;gap:5px;align-items:center;">
+                    <div class="charMemory_modelPicker" style="flex:1;position:relative;">
+                        <input type="text" id="cm_modal_modelSearch" class="text_pole" placeholder="${providerSettings.model ? 'Search models...' : 'Click Connect to fetch models'}" autocomplete="off" value="${escapeAttr(providerSettings.model || '')}" />
+                        <input type="hidden" id="cm_modal_providerModel" value="${escapeAttr(providerSettings.model || '')}" />
+                        <div id="cm_modal_modelDropdown" class="charMemory_modelDropdown"></div>
+                    </div>
+                    <input type="button" id="cm_modal_refreshModels" class="menu_button" value="&#x21bb;" title="Refresh model list" />
+                </div>
+                <small id="cm_modal_modelInfo" class="charMemory_helperText"></small>
+            </div>
+            <div class="charMemory_modalFieldGroup" id="cm_modal_testRow">
+                <div style="display:flex;gap:5px;align-items:center;">
+                    <input type="button" id="cm_modal_testModel" class="menu_button" value="Test Model" title="Send a test prompt and verify it responds correctly" />
+                </div>
+                <small id="cm_modal_testStatus" class="charMemory_helperText" style="display:none;"></small>
+            </div>
+            <div class="charMemory_modalFieldGroup" id="cm_modal_modelInputRow" style="${preset.modelsEndpoint === 'standard' || preset.modelsEndpoint === 'custom' ? 'display:none;' : ''}">
+                <label><small>Model ID</small></label>
+                <input type="text" id="cm_modal_modelInput" class="text_pole" placeholder="Enter model identifier" value="${escapeAttr(providerSettings.model || '')}" />
+                <small class="charMemory_helperText">Enter the model ID manually (e.g. claude-sonnet-4-5-20250929).</small>
+            </div>
+            <div class="charMemory_modalFieldGroup">
+                <label><small>System prompt (optional)</small></label>
+                <textarea id="cm_modal_systemPrompt" class="text_pole" rows="3" placeholder="Override the default system prompt. Leave blank for default.">${escapeHtml(providerSettings.systemPrompt || '')}</textarea>
+                <small class="charMemory_helperText">Prepended to extraction/consolidation calls. Use for jailbreaks or custom instructions.</small>
+            </div>
+        </div>
+    `;
+
+    // Extraction section HTML
+    const extractionHtml = `
+        <h4 class="charMemory_modalSectionTitle">Auto-Extraction</h4>
+        <div class="charMemory_sliderRow">
+            <label title="How many new messages trigger an automatic extraction.">
+                <small>Extract after every N messages</small>
+            </label>
+            <input class="neo-range-slider" type="range" id="cm_modal_interval" min="3" max="100" step="1" value="${s.interval}" />
+            <div class="wide100p">
+                <input class="neo-range-input" type="number" min="3" max="100" step="1"
+                       data-for="cm_modal_interval" id="cm_modal_intervalCounter" value="${s.interval}" />
+            </div>
+        </div>
+        <div class="charMemory_sliderRow">
+            <label title="Minimum time between auto-extractions.">
+                <small>Minimum wait between extractions (min)</small>
+            </label>
+            <input class="neo-range-slider" type="range" id="cm_modal_minCooldown" min="0" max="30" step="1" value="${s.minCooldownMinutes}" />
+            <div class="wide100p">
+                <input class="neo-range-input" type="number" min="0" max="30" step="1"
+                       data-for="cm_modal_minCooldown" id="cm_modal_minCooldownCounter" value="${s.minCooldownMinutes}" />
+            </div>
+        </div>
+        <small class="charMemory_helperText">These settings only affect automatic extraction. Manual and batch extraction ignore them.</small>
+
+        <hr class="charMemory_separator" />
+        <h4 class="charMemory_modalSectionTitle">Extraction Settings</h4>
+        <div class="charMemory_sliderRow">
+            <label title="How many messages to include in each LLM call.">
+                <small>Messages per LLM call</small>
+            </label>
+            <input class="neo-range-slider" type="range" id="cm_modal_maxMessages" min="10" max="200" step="1" value="${s.maxMessagesPerExtraction}" />
+            <div class="wide100p">
+                <input class="neo-range-input" type="number" min="10" max="200" step="1"
+                       data-for="cm_modal_maxMessages" id="cm_modal_maxMessagesCounter" value="${s.maxMessagesPerExtraction}" />
+            </div>
+        </div>
+        <div class="charMemory_sliderRow">
+            <label title="Maximum tokens the LLM can use for its response.">
+                <small>Max response length</small>
+            </label>
+            <input class="neo-range-slider" type="range" id="cm_modal_responseLength" min="100" max="4000" step="50" value="${s.responseLength}" />
+            <div class="wide100p">
+                <input class="neo-range-input" type="number" min="100" max="4000" step="50"
+                       data-for="cm_modal_responseLength" id="cm_modal_responseLengthCounter" value="${s.responseLength}" />
+            </div>
+        </div>
+        <div class="charMemory_statusRow">
+            <label class="checkbox_label" for="cm_modal_mergeChunks" title="When enabled, extraction results from the same chat are merged into a single block.">
+                <input type="checkbox" id="cm_modal_mergeChunks" ${s.mergeChunks ? 'checked' : ''} />
+                <span>Merge extraction chunks</span>
+            </label>
+            <small class="charMemory_helperText">Multi-chunk extractions merged into one block. Disable for long chats.</small>
+        </div>
+
+        <hr class="charMemory_separator" />
+        <h4 class="charMemory_modalSectionTitle">Prompts</h4>
+        <div class="charMemory_modalPromptRow">
+            <span class="charMemory_modalPromptLabel">Extraction prompt (1:1 chats)</span>
+            <input type="button" class="menu_button charMemory_modalPromptBtn" id="cm_modal_viewExtractionPrompt" value="View / Edit" />
+        </div>
+        <div class="charMemory_modalPromptRow">
+            <span class="charMemory_modalPromptLabel">Extraction prompt (group chats)</span>
+            <input type="button" class="menu_button charMemory_modalPromptBtn" id="cm_modal_viewGroupPrompt" value="View / Edit" />
+        </div>
+    `;
+
+    // Storage section HTML
+    const storageHtml = `
+        <h4 class="charMemory_modalSectionTitle">Storage</h4>
+        <div class="charMemory_statusRow">
+            <label class="checkbox_label" for="cm_modal_perChat" title="Store memories in separate files per chat.">
+                <input type="checkbox" id="cm_modal_perChat" ${s.perChat ? 'checked' : ''} />
+                <span>Separate memory files per chat</span>
+            </label>
+            <small class="charMemory_helperText">Each conversation stores memories in its own file. The character still sees all memories during generation.</small>
+        </div>
+        <div id="cm_modal_section1v1" style="${isGroupChat() ? 'display:none;' : ''}">
+            <div class="charMemory_statusRow">
+                <label for="cm_modal_fileName">
+                    <small>File name override</small>
+                </label>
+                <input type="text" id="cm_modal_fileName" class="text_pole" placeholder="(auto-generated from character name)" value="${escapeAttr(s.fileName || '')}" />
+                <small class="charMemory_helperText">Current file: <span id="cm_modal_resolvedFileName">${escapeHtml(getCharacterName() ? getMemoryFileName() : '—')}</span></small>
+            </div>
+        </div>
+        <div id="cm_modal_sectionGroup" style="${isGroupChat() ? '' : 'display:none;'}">
+            <div id="cm_modal_groupMembersSection">
+                <label><small>Member memory files</small></label>
+                <div id="cm_modal_groupMembersList" class="charMemory_groupMembersList">
+                    <small class="charMemory_helperText">Open a group chat to see members.</small>
+                </div>
+                <small class="charMemory_helperText">Each character's memories are stored in their own Data Bank. Leave blank for auto-naming.</small>
+            </div>
+        </div>
+    `;
+
+    // Prompts overview section HTML
+    const promptsHtml = `
+        <h4 class="charMemory_modalSectionTitle">Prompt Overview</h4>
+        <small class="charMemory_helperText" style="margin-bottom:10px;display:block;">All prompts used by CharMemory. Click View / Edit to customize.</small>
+        <div class="charMemory_modalPromptRow">
+            <span class="charMemory_modalPromptLabel">Extraction prompt (1:1)</span>
+            <input type="button" class="menu_button charMemory_modalPromptBtn" id="cm_modal_promptsViewExtraction" value="View / Edit" />
+        </div>
+        <div class="charMemory_modalPromptRow">
+            <span class="charMemory_modalPromptLabel">Extraction prompt (group)</span>
+            <input type="button" class="menu_button charMemory_modalPromptBtn" id="cm_modal_promptsViewGroup" value="View / Edit" />
+        </div>
+        <div class="charMemory_modalPromptRow">
+            <span class="charMemory_modalPromptLabel">Consolidation prompt</span>
+            <input type="button" class="menu_button charMemory_modalPromptBtn" id="cm_modal_promptsViewConsolidation" value="View / Edit" />
+        </div>
+        <div class="charMemory_modalPromptRow">
+            <span class="charMemory_modalPromptLabel">Conversion prompt</span>
+            <input type="button" class="menu_button charMemory_modalPromptBtn" id="cm_modal_promptsViewConversion" value="View / Edit" />
+        </div>
+    `;
+
+    // Advanced section HTML
+    const advancedHtml = `
+        <h4 class="charMemory_modalSectionTitle">Memory File Format</h4>
+        <div class="charMemory_statusRow">
+            <label for="cm_modal_chunkBoundary">
+                <small>Chunk boundary</small>
+            </label>
+            <select id="cm_modal_chunkBoundary" class="text_pole">${chunkOptions}</select>
+            <small class="charMemory_helperText">Controls how memories are separated in the file. Vector Storage splits on the separator to create retrievable chunks.</small>
+        </div>
+        <div class="charMemory_statusRow" id="cm_modal_customSeparatorRow" style="${(s.chunkBoundary || 'block') === 'custom' ? '' : 'display:none;'}">
+            <label for="cm_modal_customSeparator">
+                <small>Custom separator</small>
+            </label>
+            <input type="text" id="cm_modal_customSeparator" class="text_pole" placeholder="\\n\\n" value="${escapeAttr(s.customSeparator || '\\n\\n')}" />
+            <small class="charMemory_helperText">Characters inserted between chunks. Use \\n for newlines.</small>
+        </div>
+        <div id="cm_modal_chunkMetadataRow" style="${(s.chunkBoundary || 'block') === 'bullet' || (s.chunkBoundary || 'block') === 'custom' ? '' : 'display:none;'}">
+            <label class="checkbox_label" for="cm_modal_chunkMetadata">
+                <input type="checkbox" id="cm_modal_chunkMetadata" ${s.chunkMetadata ? 'checked' : ''} />
+                <span>Include metadata in chunks</span>
+            </label>
+            <small class="charMemory_helperText">Prefix each bullet with [date | chat_id] so standalone chunks retain their provenance.</small>
+        </div>
+
+        <hr class="charMemory_separator" />
+        <h4 class="charMemory_modalSectionTitle">Reset</h4>
+        <div class="charMemory_statusRow">
+            <input type="button" id="cm_modal_resetTracking" class="menu_button" value="Reset Extraction State" title="Reset extraction tracking for the current character's chats" />
+            <small class="charMemory_helperText">Resets extraction tracking. Use before 'Extract Now' or 'Batch Extract' to re-process from the beginning.</small>
+            <input type="button" id="cm_modal_resetExtraction" class="menu_button charMemory_dangerBtn" value="Clear All Memories" title="Delete the memory file and reset extraction state." />
+            <small class="charMemory_helperText">Deletes the memory file and resets extraction tracking. This cannot be undone.</small>
+        </div>
+    `;
+
+    // Assemble modal HTML
+    const html = `<div class="charMemory_modal">
+        <div class="charMemory_modalNav">
+            <button class="charMemory_modalNavItem active" data-section="connection">Connection</button>
+            <button class="charMemory_modalNavItem" data-section="extraction">Extraction</button>
+            <button class="charMemory_modalNavItem" data-section="storage">Storage</button>
+            <button class="charMemory_modalNavItem" data-section="prompts">Prompts</button>
+            <button class="charMemory_modalNavItem" data-section="advanced">Advanced</button>
+        </div>
+        <div class="charMemory_modalContent">
+            <div class="charMemory_modalSection active" data-section="connection">${connectionHtml}</div>
+            <div class="charMemory_modalSection" data-section="extraction">${extractionHtml}</div>
+            <div class="charMemory_modalSection" data-section="storage">${storageHtml}</div>
+            <div class="charMemory_modalSection" data-section="prompts">${promptsHtml}</div>
+            <div class="charMemory_modalSection" data-section="advanced">${advancedHtml}</div>
+        </div>
+    </div>`;
+
+    // Open popup
+    const popup = callGenericPopup(html, POPUP_TYPE.TEXT, '', { wide: true, allowVerticalScrolling: true });
+
+    // Wire nav switching
+    $(document).off('click.cmModalNav').on('click.cmModalNav', '.charMemory_modalNavItem', function () {
+        const section = $(this).data('section');
+        $('.charMemory_modalNavItem').removeClass('active');
+        $(this).addClass('active');
+        $('.charMemory_modalSection').removeClass('active');
+        $(`.charMemory_modalSection[data-section="${section}"]`).addClass('active');
+    });
+
+    // === Connection handlers ===
+    $('#cm_modal_source').off('change').on('change', function () {
+        const val = String($(this).val());
+        extension_settings[MODULE_NAME].source = val;
+        saveSettingsDebounced();
+        $('#cm_modal_providerSettings').toggle(val === 'provider');
+        // Sync sidebar
+        $('#charMemory_source').val(val);
+        toggleProviderSettings(val);
+    });
+
+    $('#cm_modal_providerSelect').off('change').on('change', function () {
+        const key = String($(this).val());
+        extension_settings[MODULE_NAME].selectedProvider = key;
+        saveSettingsDebounced();
+        // Sync sidebar
+        $('#charMemory_providerSelect').val(key);
+        // Update modal provider UI
+        updateModalProviderUI();
+    });
+
+    $('#cm_modal_apiKey').off('input').on('input', function () {
+        const pk = extension_settings[MODULE_NAME].selectedProvider;
+        const ps = getProviderSettings(pk);
+        ps.apiKey = String($(this).val());
+        saveSettingsDebounced();
+        // Sync sidebar
+        $('#charMemory_providerApiKey').val(ps.apiKey);
+    });
+
+    $('#cm_modal_apiKeyReveal').off('click').on('click', function () {
+        const $input = $('#cm_modal_apiKey');
+        const $icon = $(this).find('i');
+        const $btn = $(this);
+        clearTimeout($btn.data('revealTimer'));
+        if ($input.attr('type') === 'password') {
+            $input.attr('type', 'text');
+            $icon.removeClass('fa-eye').addClass('fa-eye-slash');
+            $btn.data('revealTimer', setTimeout(() => {
+                $input.attr('type', 'password');
+                $icon.removeClass('fa-eye-slash').addClass('fa-eye');
+            }, 10000));
+        } else {
+            $input.attr('type', 'password');
+            $icon.removeClass('fa-eye-slash').addClass('fa-eye');
+        }
+    });
+
+    $('#cm_modal_baseUrl').off('input').on('input', function () {
+        const ps = getProviderSettings(extension_settings[MODULE_NAME].selectedProvider);
+        ps.customBaseUrl = String($(this).val());
+        saveSettingsDebounced();
+        // Sync sidebar
+        $('#charMemory_providerBaseUrl').val(ps.customBaseUrl);
+    });
+
+    $('#cm_modal_connect').off('click').on('click', async function () {
+        const pk = extension_settings[MODULE_NAME].selectedProvider;
+        const p = PROVIDER_PRESETS[pk];
+        const ps = getProviderSettings(pk);
+        const $btn = $(this);
+        const $status = $('#cm_modal_connectStatus');
+
+        if (p?.requiresApiKey && !ps.apiKey) {
+            $status.text('Enter an API key first.').css('color', '#e74c3c').show();
+            return;
+        }
+
+        $btn.prop('disabled', true).val('Connecting...');
+        $status.text('Fetching models...').css('color', '').show();
+
+        try {
+            await populateProviderModels(pk, true);
+            const modelCount = currentModelList.length;
+            if (modelCount > 0) {
+                $status.text(`Connected — ${modelCount} model${modelCount !== 1 ? 's' : ''} available.`).css('color', '#27ae60').show();
+            } else {
+                $status.text('Connected, but no models returned.').css('color', '#e67e22').show();
+            }
+            // Update modal model search
+            const savedModel = ps.model || '';
+            const match = currentModelList.find(m => m.id === savedModel);
+            $('#cm_modal_providerModel').val(savedModel);
+            $('#cm_modal_modelSearch').val(match ? match.name : savedModel).attr('placeholder', 'Search models...');
+        } catch (err) {
+            $status.text(`Connection failed: ${err.message}`).css('color', '#e74c3c').show();
+        } finally {
+            $btn.prop('disabled', false).val('Connect');
+        }
+    });
+
+    // Model search and dropdown (reuse currentModelList from the sidebar's shared state)
+    $('#cm_modal_modelSearch').off('input').on('input', function () {
+        renderModalModelDropdown($(this).val());
+        $('#cm_modal_modelDropdown').addClass('open');
+    });
+
+    $('#cm_modal_modelSearch').off('focus').on('focus', function () {
+        renderModalModelDropdown($(this).val());
+        $('#cm_modal_modelDropdown').addClass('open');
+    });
+
+    $('#cm_modal_modelDropdown').off('click').on('click', '.charMemory_modelOption', function () {
+        const modelId = $(this).data('model-id');
+        const model = currentModelList.find(m => m.id === modelId);
+        if (!model) return;
+
+        $('#cm_modal_providerModel').val(modelId);
+        $('#cm_modal_modelSearch').val(model.name);
+        $('#cm_modal_modelDropdown').removeClass('open');
+
+        const pk = extension_settings[MODULE_NAME].selectedProvider;
+        const ps = getProviderSettings(pk);
+        ps.model = modelId;
+        saveSettingsDebounced();
+
+        // Sync sidebar
+        $('#charMemory_providerModel').val(modelId);
+        $('#charMemory_modelSearch').val(model.name);
+
+        if (pk === 'nanogpt' && cachedNanoGptModels) {
+            updateProviderModelInfo(cachedNanoGptModels, modelId);
+        }
+    });
+
+    // Close modal model dropdown on outside click
+    $(document).off('click.cmModalModelPicker').on('click.cmModalModelPicker', function (e) {
+        if (!$(e.target).closest('#cm_modal_modelDropdownRow .charMemory_modelPicker').length) {
+            $('#cm_modal_modelDropdown').removeClass('open');
+            const selectedId = $('#cm_modal_providerModel').val();
+            if (selectedId) {
+                const model = currentModelList.find(m => m.id === selectedId);
+                if (model) $('#cm_modal_modelSearch').val(model.name);
+            } else {
+                $('#cm_modal_modelSearch').val('');
+            }
+        }
+    });
+
+    // Keyboard navigation for modal model search
+    $('#cm_modal_modelSearch').off('keydown').on('keydown', function (e) {
+        const $dropdown = $('#cm_modal_modelDropdown');
+        if (!$dropdown.hasClass('open')) {
+            if (e.key === 'ArrowDown' || e.key === 'Enter') {
+                renderModalModelDropdown($(this).val());
+                $dropdown.addClass('open');
+                e.preventDefault();
+            }
+            return;
+        }
+        const $options = $dropdown.find('.charMemory_modelOption');
+        const $active = $dropdown.find('.charMemory_modelOption.active');
+        let idx = $options.index($active);
+
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            idx = Math.min(idx + 1, $options.length - 1);
+            $options.removeClass('active');
+            $options.eq(idx).addClass('active');
+            $options.eq(idx)[0]?.scrollIntoView({ block: 'nearest' });
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            idx = Math.max(idx - 1, 0);
+            $options.removeClass('active');
+            $options.eq(idx).addClass('active');
+            $options.eq(idx)[0]?.scrollIntoView({ block: 'nearest' });
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            if ($active.length) $active.click();
+        } else if (e.key === 'Escape') {
+            $dropdown.removeClass('open');
+        }
+    });
+
+    $('#cm_modal_refreshModels').off('click').on('click', function () {
+        populateProviderModels(extension_settings[MODULE_NAME].selectedProvider, true).then(() => {
+            const ps = getProviderSettings(extension_settings[MODULE_NAME].selectedProvider);
+            const match = currentModelList.find(m => m.id === ps.model);
+            $('#cm_modal_providerModel').val(ps.model || '');
+            $('#cm_modal_modelSearch').val(match ? match.name : ps.model || '').attr('placeholder', 'Search models...');
+        });
+    });
+
+    $('#cm_modal_modelInput').off('input').on('input', function () {
+        const ps = getProviderSettings(extension_settings[MODULE_NAME].selectedProvider);
+        ps.model = String($(this).val());
+        saveSettingsDebounced();
+        // Sync sidebar
+        $('#charMemory_providerModelInput').val(ps.model);
+    });
+
+    $('#cm_modal_systemPrompt').off('input').on('input', function () {
+        const ps = getProviderSettings(extension_settings[MODULE_NAME].selectedProvider);
+        ps.systemPrompt = String($(this).val());
+        saveSettingsDebounced();
+        // Sync sidebar
+        $('#charMemory_providerSystemPrompt').val(ps.systemPrompt);
+    });
+
+    $('#cm_modal_testModel').off('click').on('click', async function () {
+        await testProviderConnection();
+        // Also show status in modal
+        const sidebarStatus = $('#charMemory_providerTestStatus').text();
+        const sidebarColor = $('#charMemory_providerTestStatus').css('color');
+        $('#cm_modal_testStatus').text(sidebarStatus).css('color', sidebarColor).show();
+    });
+
+    // NanoGPT filters
+    const nanoFilterHandler = function (filterKey) {
+        return function () {
+            const ps = getProviderSettings('nanogpt');
+            ps[filterKey] = !!$(this).prop('checked');
+            saveSettingsDebounced();
+            populateProviderModels('nanogpt', true).then(() => {
+                const match = currentModelList.find(m => m.id === ps.model);
+                $('#cm_modal_providerModel').val(ps.model || '');
+                $('#cm_modal_modelSearch').val(match ? match.name : ps.model || '');
+            });
+        };
+    };
+    $('#cm_modal_nanogptFilterSub').off('change').on('change', nanoFilterHandler('nanogptFilterSubscription'));
+    $('#cm_modal_nanogptFilterOS').off('change').on('change', nanoFilterHandler('nanogptFilterOpenSource'));
+    $('#cm_modal_nanogptFilterRP').off('change').on('change', nanoFilterHandler('nanogptFilterRoleplay'));
+    $('#cm_modal_nanogptFilterReasoning').off('change').on('change', nanoFilterHandler('nanogptFilterReasoning'));
+
+    // === Extraction handlers ===
+    const sliderHandler = (sliderId, counterId, settingKey, syncSliderId, syncCounterId) => {
+        $(`#${sliderId}`).off('input').on('input', function () {
+            const val = Number($(this).val());
+            extension_settings[MODULE_NAME][settingKey] = val;
+            $(`#${counterId}`).val(val);
+            saveSettingsDebounced();
+            if (syncSliderId) $(`#${syncSliderId}`).val(val);
+            if (syncCounterId) $(`#${syncCounterId}`).val(val);
+            if (settingKey === 'interval') updateStatusDisplay();
+        });
+        $(`#${counterId}`).off('input').on('input', function () {
+            const val = Number($(this).val());
+            extension_settings[MODULE_NAME][settingKey] = val;
+            $(`#${sliderId}`).val(val);
+            saveSettingsDebounced();
+            if (syncSliderId) $(`#${syncSliderId}`).val(val);
+            if (syncCounterId) $(`#${syncCounterId}`).val(val);
+            if (settingKey === 'interval') updateStatusDisplay();
+        });
+    };
+
+    sliderHandler('cm_modal_interval', 'cm_modal_intervalCounter', 'interval', 'charMemory_interval', 'charMemory_intervalCounter');
+    sliderHandler('cm_modal_minCooldown', 'cm_modal_minCooldownCounter', 'minCooldownMinutes', 'charMemory_minCooldown', 'charMemory_minCooldownCounter');
+    sliderHandler('cm_modal_maxMessages', 'cm_modal_maxMessagesCounter', 'maxMessagesPerExtraction', 'charMemory_maxMessages', 'charMemory_maxMessagesCounter');
+    sliderHandler('cm_modal_responseLength', 'cm_modal_responseLengthCounter', 'responseLength', 'charMemory_responseLength', 'charMemory_responseLengthCounter');
+
+    $('#cm_modal_mergeChunks').off('change').on('change', function () {
+        extension_settings[MODULE_NAME].mergeChunks = !!$(this).prop('checked');
+        saveSettingsDebounced();
+        // Sync sidebar
+        $('#charMemory_mergeChunks').prop('checked', extension_settings[MODULE_NAME].mergeChunks);
+    });
+
+    // Prompt view/edit buttons — each opens a textarea popup with its own restore handler
+    $('#cm_modal_viewExtractionPrompt, #cm_modal_promptsViewExtraction').off('click').on('click', async function () {
+        const current = extension_settings[MODULE_NAME].extractionPrompt || defaultExtractionPrompt;
+        const editorHtml = `<div style="text-align:left;">
+            <textarea id="cm_modal_promptEditor" class="text_pole" rows="14" style="width:100%;resize:vertical;min-height:200px;" data-default-prompt="extraction">${escapeHtml(current)}</textarea>
+            <div class="charMemory_buttonRow" style="margin-top:8px;">
+                <input type="button" id="cm_modal_promptRestoreExtraction" class="menu_button" value="Restore Default" />
+            </div>
+        </div>`;
+        // Wire restore before opening popup via delegation
+        $(document).off('click.cmRestoreExtraction').on('click.cmRestoreExtraction', '#cm_modal_promptRestoreExtraction', function () {
+            $('#cm_modal_promptEditor').val(defaultExtractionPrompt);
+        });
+        const result = await callGenericPopup(editorHtml, POPUP_TYPE.CONFIRM, 'Extraction Prompt (1:1 Chats)', { wide: true, allowVerticalScrolling: true });
+        if (result) {
+            extension_settings[MODULE_NAME].extractionPrompt = $('#cm_modal_promptEditor').val();
+            saveSettingsDebounced();
+            $('#charMemory_extractionPrompt').val(extension_settings[MODULE_NAME].extractionPrompt);
+        }
+        $(document).off('click.cmRestoreExtraction');
+    });
+
+    $('#cm_modal_viewGroupPrompt, #cm_modal_promptsViewGroup').off('click').on('click', async function () {
+        const current = extension_settings[MODULE_NAME].groupExtractionPrompt || defaultGroupExtractionPrompt;
+        const editorHtml = `<div style="text-align:left;">
+            <textarea id="cm_modal_promptEditor" class="text_pole" rows="14" style="width:100%;resize:vertical;min-height:200px;">${escapeHtml(current)}</textarea>
+            <div class="charMemory_buttonRow" style="margin-top:8px;">
+                <input type="button" id="cm_modal_promptRestoreGroup" class="menu_button" value="Restore Default" />
+            </div>
+        </div>`;
+        $(document).off('click.cmRestoreGroup').on('click.cmRestoreGroup', '#cm_modal_promptRestoreGroup', function () {
+            $('#cm_modal_promptEditor').val(defaultGroupExtractionPrompt);
+        });
+        const result = await callGenericPopup(editorHtml, POPUP_TYPE.CONFIRM, 'Extraction Prompt (Group Chats)', { wide: true, allowVerticalScrolling: true });
+        if (result) {
+            extension_settings[MODULE_NAME].groupExtractionPrompt = $('#cm_modal_promptEditor').val();
+            saveSettingsDebounced();
+            $('#charMemory_groupExtractionPrompt').val(extension_settings[MODULE_NAME].groupExtractionPrompt);
+        }
+        $(document).off('click.cmRestoreGroup');
+    });
+
+    $('#cm_modal_promptsViewConsolidation').off('click').on('click', async function () {
+        const strategy = extension_settings[MODULE_NAME].consolidationStrategy || 'balanced';
+        const overrides = extension_settings[MODULE_NAME].consolidationPrompts || {};
+        const current = overrides[strategy] || CONSOLIDATION_PRESETS[strategy]?.prompt || '';
+        const editorHtml = `<div style="text-align:left;">
+            <small>Strategy: <b>${escapeHtml(CONSOLIDATION_PRESETS[strategy]?.name || strategy)}</b></small>
+            <textarea id="cm_modal_promptEditor" class="text_pole" rows="14" style="width:100%;resize:vertical;min-height:200px;margin-top:8px;">${escapeHtml(current)}</textarea>
+            <div class="charMemory_buttonRow" style="margin-top:8px;">
+                <input type="button" id="cm_modal_promptRestoreConsolidation" class="menu_button" value="Restore Default" />
+            </div>
+        </div>`;
+        $(document).off('click.cmRestoreConsolidation').on('click.cmRestoreConsolidation', '#cm_modal_promptRestoreConsolidation', function () {
+            $('#cm_modal_promptEditor').val(CONSOLIDATION_PRESETS[strategy]?.prompt || '');
+        });
+        const result = await callGenericPopup(editorHtml, POPUP_TYPE.CONFIRM, 'Consolidation Prompt', { wide: true, allowVerticalScrolling: true });
+        if (result) {
+            if (!extension_settings[MODULE_NAME].consolidationPrompts) {
+                extension_settings[MODULE_NAME].consolidationPrompts = {};
+            }
+            extension_settings[MODULE_NAME].consolidationPrompts[strategy] = $('#cm_modal_promptEditor').val();
+            saveSettingsDebounced();
+            updateConsolidationStrategyUI();
+        }
+        $(document).off('click.cmRestoreConsolidation');
+    });
+
+    $('#cm_modal_promptsViewConversion').off('click').on('click', async function () {
+        const current = extension_settings[MODULE_NAME].conversionPrompt || defaultConversionPrompt;
+        const editorHtml = `<div style="text-align:left;">
+            <textarea id="cm_modal_promptEditor" class="text_pole" rows="14" style="width:100%;resize:vertical;min-height:200px;">${escapeHtml(current)}</textarea>
+            <div class="charMemory_buttonRow" style="margin-top:8px;">
+                <input type="button" id="cm_modal_promptRestoreConversion" class="menu_button" value="Restore Default" />
+            </div>
+        </div>`;
+        $(document).off('click.cmRestoreConversion').on('click.cmRestoreConversion', '#cm_modal_promptRestoreConversion', function () {
+            $('#cm_modal_promptEditor').val(defaultConversionPrompt);
+        });
+        const result = await callGenericPopup(editorHtml, POPUP_TYPE.CONFIRM, 'Conversion Prompt', { wide: true, allowVerticalScrolling: true });
+        if (result) {
+            extension_settings[MODULE_NAME].conversionPrompt = $('#cm_modal_promptEditor').val();
+            saveSettingsDebounced();
+            $('#charMemory_convertPrompt').val(extension_settings[MODULE_NAME].conversionPrompt);
+        }
+        $(document).off('click.cmRestoreConversion');
+    });
+
+    // === Storage handlers ===
+    $('#cm_modal_perChat').off('change').on('change', function () {
+        extension_settings[MODULE_NAME].perChat = !!$(this).prop('checked');
+        saveSettingsDebounced();
+        // Sync sidebar
+        $('#charMemory_perChat').prop('checked', extension_settings[MODULE_NAME].perChat);
+    });
+
+    $('#cm_modal_fileName').off('input').on('input', function () {
+        const val = String($(this).val()).trim();
+        extension_settings[MODULE_NAME].fileName = val;
+        saveSettingsDebounced();
+        // Sync sidebar
+        $('#charMemory_fileName').val(val);
+    });
+
+    // === Advanced handlers ===
+    $('#cm_modal_chunkBoundary').off('change').on('change', async function () {
+        const val = $(this).val();
+        extension_settings[MODULE_NAME].chunkBoundary = val;
+        saveSettingsDebounced();
+        $('#cm_modal_customSeparatorRow').toggle(val === 'custom');
+        $('#cm_modal_chunkMetadataRow').toggle(val === 'bullet' || val === 'custom');
+        // Sync sidebar
+        $('#charMemory_chunkBoundary').val(val);
+        toggleChunkBoundaryUI(val);
+        await offerReformat();
+    });
+
+    $('#cm_modal_customSeparator').off('input').on('input', function () {
+        extension_settings[MODULE_NAME].customSeparator = $(this).val();
+        saveSettingsDebounced();
+        // Sync sidebar
+        $('#charMemory_customSeparator').val(extension_settings[MODULE_NAME].customSeparator);
+    });
+
+    $('#cm_modal_chunkMetadata').off('change').on('change', function () {
+        extension_settings[MODULE_NAME].chunkMetadata = $(this).prop('checked');
+        saveSettingsDebounced();
+        // Sync sidebar
+        $('#charMemory_chunkMetadata').prop('checked', extension_settings[MODULE_NAME].chunkMetadata);
+    });
+
+    // Reset / Clear handlers
+    $('#cm_modal_resetTracking').off('click').on('click', function () {
+        // Delegate to the sidebar button handler
+        $('#charMemory_resetTracking').click();
+    });
+
+    $('#cm_modal_resetExtraction').off('click').on('click', async function () {
+        // Delegate to the sidebar button handler
+        $('#charMemory_resetExtraction').click();
+    });
+
+    // Populate group members list if in a group chat
+    if (isGroupChat()) {
+        const targets = getMemoryTargets();
+        if (targets.length > 0) {
+            const memberHtml = targets.map(t => {
+                const override = extension_settings[MODULE_NAME].characterFileNames?.[t.avatar] || '';
+                return `<div class="charMemory_groupMemberRow">
+                    <img class="charMemory_groupAvatar" src="/thumbnail?type=avatar&file=${encodeURIComponent(t.avatar)}" alt="${escapeHtml(t.name)}" onerror="this.style.display='none'" />
+                    <span class="charMemory_groupMemberName">${escapeHtml(t.name)}</span>
+                    <input type="text" class="text_pole charMemory_groupMemberFile cm_modal_groupMemberFile" data-avatar="${escapeAttr(t.avatar)}" placeholder="${escapeAttr(t.fileName)}" value="${escapeAttr(override)}" style="flex:1;" />
+                </div>`;
+            }).join('');
+            $('#cm_modal_groupMembersList').html(memberHtml);
+
+            $(document).off('input.cmModalGroupMember').on('input.cmModalGroupMember', '.cm_modal_groupMemberFile', function () {
+                const avatar = $(this).data('avatar');
+                const value = String($(this).val()).trim();
+                if (!extension_settings[MODULE_NAME].characterFileNames) {
+                    extension_settings[MODULE_NAME].characterFileNames = {};
+                }
+                if (value) {
+                    extension_settings[MODULE_NAME].characterFileNames[avatar] = value;
+                } else {
+                    delete extension_settings[MODULE_NAME].characterFileNames[avatar];
+                }
+                saveSettingsDebounced();
+            });
+        }
+    }
+
+    // Clean up delegated handlers when popup closes
+    popup.then(() => {
+        $(document).off('click.cmModalNav');
+        $(document).off('click.cmModalModelPicker');
+        $(document).off('input.cmModalGroupMember');
+    });
+}
+
+/**
+ * Render the model dropdown in the Settings modal.
+ * Mirrors renderModelDropdown() but targets modal-specific elements.
+ * @param {string} filter Search filter string
+ */
+function renderModalModelDropdown(filter) {
+    const $dropdown = $('#cm_modal_modelDropdown');
+    $dropdown.empty();
+
+    const lowerFilter = (filter || '').toLowerCase();
+    const selectedId = $('#cm_modal_providerModel').val();
+
+    if (currentModelList.length === 0) {
+        $dropdown.append('<div class="charMemory_modelEmpty">No models \u2014 click Connect to fetch</div>');
+        return;
+    }
+
+    let hasResults = false;
+    let lastGroup = null;
+
+    for (const model of currentModelList) {
+        if (lowerFilter && !model.id.toLowerCase().includes(lowerFilter) && !model.name.toLowerCase().includes(lowerFilter)) {
+            continue;
+        }
+        if (model.group && model.group !== lastGroup) {
+            $dropdown.append(`<div class="charMemory_modelGroup">${escapeHtml(model.group)}</div>`);
+            lastGroup = model.group;
+        }
+        const selectedClass = model.id === selectedId ? ' selected' : '';
+        $dropdown.append(
+            `<div class="charMemory_modelOption${selectedClass}" data-model-id="${escapeHtml(model.id)}">${escapeHtml(model.name)}</div>`
+        );
+        hasResults = true;
+    }
+
+    if (!hasResults) {
+        $dropdown.append('<div class="charMemory_modelEmpty">No matching models</div>');
+    }
+}
+
+/**
+ * Update the modal provider UI after switching providers.
+ * Re-renders provider-specific fields (API key, base URL, model picker, etc.).
+ */
+function updateModalProviderUI() {
+    const providerKey = extension_settings[MODULE_NAME].selectedProvider;
+    const preset = PROVIDER_PRESETS[providerKey];
+    if (!preset) return;
+
+    const providerSettings = getProviderSettings(providerKey);
+
+    // API Key row
+    $('#cm_modal_apiKeyRow').toggle(!!preset.requiresApiKey);
+    $('#cm_modal_apiKey').val(providerSettings.apiKey || '');
+
+    // Help link
+    if (preset.helpUrl) {
+        $('#cm_modal_helpLink').attr('href', preset.helpUrl).show();
+    } else {
+        $('#cm_modal_helpLink').hide();
+    }
+
+    // Base URL row
+    $('#cm_modal_baseUrlRow').toggle(!!preset.allowCustomUrl);
+    if (preset.allowCustomUrl) {
+        const isLocal = preset.authStyle === 'none' && !preset.requiresApiKey;
+        $('#cm_modal_baseUrl')
+            .attr('placeholder', isLocal ? 'http://127.0.0.1:1234/v1' : 'https://your-server.com/v1')
+            .val(providerSettings.customBaseUrl || preset.baseUrl || '');
+        $('#cm_modal_baseUrlHint').text(
+            isLocal ? 'http://IP:port/v1 — the /v1 suffix is required' : 'OpenAI-compatible base URL ending in /v1'
+        ).show();
+    } else {
+        $('#cm_modal_baseUrl').val('');
+        $('#cm_modal_baseUrlHint').hide();
+    }
+
+    // Connect button row
+    const hasModelsEndpoint = preset.modelsEndpoint === 'standard' || preset.modelsEndpoint === 'custom';
+    $('#cm_modal_connectRow').toggle(hasModelsEndpoint);
+
+    // Model: dropdown vs text input
+    $('#cm_modal_modelDropdownRow').toggle(hasModelsEndpoint);
+    $('#cm_modal_modelInputRow').toggle(!hasModelsEndpoint);
+
+    // NanoGPT filters
+    const isNano = providerKey === 'nanogpt';
+    $('#cm_modal_nanogptFilters').toggle(isNano);
+    if (isNano) {
+        $('#cm_modal_nanogptFilterSub').prop('checked', !!providerSettings.nanogptFilterSubscription);
+        $('#cm_modal_nanogptFilterOS').prop('checked', !!providerSettings.nanogptFilterOpenSource);
+        $('#cm_modal_nanogptFilterRP').prop('checked', !!providerSettings.nanogptFilterRoleplay);
+        $('#cm_modal_nanogptFilterReasoning').prop('checked', !!providerSettings.nanogptFilterReasoning);
+    }
+
+    if (hasModelsEndpoint) {
+        const savedModel = providerSettings.model || '';
+        $('#cm_modal_providerModel').val(savedModel);
+        $('#cm_modal_modelSearch').val(savedModel || '').attr('placeholder', 'Click Connect to fetch models');
+        currentModelList = [];
+        renderModalModelDropdown('');
+    } else {
+        $('#cm_modal_modelInput').val(providerSettings.model || '');
+    }
+
+    // System prompt
+    $('#cm_modal_systemPrompt').val(providerSettings.systemPrompt || '');
+
+    // Clear status messages
+    $('#cm_modal_connectStatus').hide().text('');
+    $('#cm_modal_testStatus').hide().text('');
+
+    // Also update sidebar UI
+    updateProviderUI();
+}
+
 // ============ Memory Manager ============
 
 /**
@@ -5072,6 +5913,12 @@ function setupListeners() {
     setupToolControls();
     setupStorageControls();
     setupLogControls();
+
+    // Gear icon → Settings modal
+    $('#charMemory_openSettingsModal').off('click').on('click', function (e) {
+        e.stopPropagation(); // Prevent toggling the inline-drawer
+        showSettingsModal();
+    });
 }
 
 // ============ Per-Message Buttons & Indicators ============
