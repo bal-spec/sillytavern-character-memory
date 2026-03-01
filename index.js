@@ -3655,8 +3655,18 @@ async function showSettingsModal() {
         <hr class="charMemory_separator" />
         <h4 class="charMemory_modalSectionTitle">Reset</h4>
         <div class="charMemory_statusRow">
-            <input type="button" id="cm_modal_resetTracking" class="menu_button" value="Reset Extraction State" title="Reset extraction tracking so the next extraction re-reads all messages from the beginning" />
-            <small class="charMemory_helperText">Resets extraction tracking for this character. Use before 'Extract Now' or 'Batch Extract' to re-process from the beginning.</small>
+            <input type="button" id="cm_modal_resetThisChat" class="menu_button" value="Reset This Chat"
+                title="Reset extraction tracking for the current chat only. Next 'Extract Now' will re-read all messages from the beginning. In group chats, all characters share one extraction pointer — all are reset together." />
+            <small class="charMemory_helperText">
+                Resets the current chat's extraction pointer — next "Extract Now" re-reads from the beginning.
+                ${isGroupChat() ? '<br><i class="fa-solid fa-people-group fa-xs"></i> <em>Group chat:</em> all members share one extraction pointer, so this resets all of them at once.' : ''}
+            </small>
+            <input type="button" id="cm_modal_resetBatchProgress" class="menu_button" value="Reset Batch Progress"
+                title="Clears batch extraction records for all of this character's chats. Use before re-running Batch Extract to start fresh. Does not affect regular (non-batch) extraction for non-active chats." />
+            <small class="charMemory_helperText">
+                Clears Batch Extract progress for all of ${escapeHtml(getCharacterName() || 'this character')}'s chats.
+                Regular extraction pointers for non-active chats are unaffected — only batch records are cleared.
+            </small>
             <input type="button" id="cm_modal_resetExtraction" class="menu_button charMemory_dangerBtn" value="Clear All Memories" title="Delete this character's memory file and reset extraction tracking — cannot be undone" />
             <small class="charMemory_helperText">Deletes the memory file for this character and resets extraction tracking. In default mode, this affects all of this character's chats. Cannot be undone.</small>
         </div>
@@ -3985,14 +3995,28 @@ async function showSettingsModal() {
     });
 
     // Reset / Clear handlers
-    $('#cm_modal_resetTracking').off('click').on('click', async function () {
+    $('#cm_modal_resetThisChat').off('click').on('click', async function () {
         const charName = getCharacterName() || 'this character';
+        const isGroup = isGroupChat();
+        const scopeNote = isGroup
+            ? `<br><small>This is a group chat — all members share one extraction pointer and will all be reset together.</small>`
+            : '';
         const confirmed = await callGenericPopup(
-            `Extraction tracking for <strong>${escapeHtml(charName)}</strong> will be reset. The extension will re-process messages from the beginning on next extraction.`,
-            POPUP_TYPE.CONFIRM, 'Reset Extraction State',
+            `The current chat's extraction pointer for <strong>${escapeHtml(charName)}</strong> will be reset. Next "Extract Now" will re-read all messages from the beginning.${scopeNote}`,
+            POPUP_TYPE.CONFIRM, 'Reset This Chat',
         );
         if (!confirmed) return;
-        resetExtractionTracking();
+        resetCurrentChatTracking();
+    });
+
+    $('#cm_modal_resetBatchProgress').off('click').on('click', async function () {
+        const charName = getCharacterName() || 'this character';
+        const confirmed = await callGenericPopup(
+            `Batch extraction progress for all of <strong>${escapeHtml(charName)}</strong>'s chats will be cleared. The Batch tool will treat all chats as unprocessed. Regular extraction pointers for non-active chats are not affected.`,
+            POPUP_TYPE.CONFIRM, 'Reset Batch Progress',
+        );
+        if (!confirmed) return;
+        resetBatchProgress();
     });
 
     $('#cm_modal_resetExtraction').off('click').on('click', async function () {
@@ -5344,8 +5368,18 @@ async function showTroubleshooter(initialSection = 'health') {
                     <small class="charMemory_helperText">Walk through the setup steps again to reconfigure your LLM connection, storage, or retrieval settings.</small>
                 </div>
                 <div class="charMemory_tsResetSection">
-                    <button class="menu_button" id="cm_ts_resetTracking">Reset Extraction State</button>
-                    <small class="charMemory_helperText">Resets extraction tracking for this character. Next extraction will re-read all messages from the beginning.</small>
+                    <button class="menu_button" id="cm_ts_resetThisChat">Reset This Chat</button>
+                    <small class="charMemory_helperText">
+                        Resets the current chat's extraction pointer — next "Extract Now" re-reads from the beginning.
+                        ${isGroupChat() ? '<br><i class="fa-solid fa-people-group fa-xs"></i> <em>Group chat:</em> all members share one extraction pointer, so this resets all of them at once.' : ''}
+                    </small>
+                </div>
+                <div class="charMemory_tsResetSection">
+                    <button class="menu_button" id="cm_ts_resetBatchProgress">Reset Batch Progress</button>
+                    <small class="charMemory_helperText">
+                        Clears Batch Extract progress for all of ${escapeHtml(charName || 'this character')}'s chats.
+                        Regular extraction pointers for non-active chats are unaffected — only batch records are cleared.
+                    </small>
                 </div>
                 <div class="charMemory_tsResetSection">
                     <button class="menu_button charMemory_dangerBtn" id="cm_ts_clearMemories">Clear All Memories</button>
@@ -5652,14 +5686,28 @@ async function showTroubleshooter(initialSection = 'health') {
     });
 
     // Reset / Clear actions (with confirmation dialogs)
-    $('#cm_ts_resetTracking').off('click').on('click', async function () {
+    $('#cm_ts_resetThisChat').off('click').on('click', async function () {
         const charName = getCharacterName() || 'this character';
+        const isGroup = isGroupChat();
+        const scopeNote = isGroup
+            ? `<br><small>This is a group chat — all members share one extraction pointer and will all be reset together.</small>`
+            : '';
         const confirmed = await callGenericPopup(
-            `Extraction tracking for <strong>${escapeHtml(charName)}</strong> will be reset. The extension will re-process messages from the beginning on next extraction.`,
-            POPUP_TYPE.CONFIRM, 'Reset Extraction State',
+            `The current chat's extraction pointer for <strong>${escapeHtml(charName)}</strong> will be reset. Next "Extract Now" will re-read all messages from the beginning.${scopeNote}`,
+            POPUP_TYPE.CONFIRM, 'Reset This Chat',
         );
         if (!confirmed) return;
-        resetExtractionTracking();
+        resetCurrentChatTracking();
+    });
+
+    $('#cm_ts_resetBatchProgress').off('click').on('click', async function () {
+        const charName = getCharacterName() || 'this character';
+        const confirmed = await callGenericPopup(
+            `Batch extraction progress for all of <strong>${escapeHtml(charName)}</strong>'s chats will be cleared. The Batch tool will treat all chats as unprocessed. Regular extraction pointers for non-active chats are not affected.`,
+            POPUP_TYPE.CONFIRM, 'Reset Batch Progress',
+        );
+        if (!confirmed) return;
+        resetBatchProgress();
     });
     $('#cm_ts_clearMemories').off('click').on('click', async function () {
         const charName = getCharacterName() || 'this character';
@@ -7192,29 +7240,48 @@ function setupLogControls() {
 }
 
 /**
- * Reset extraction tracking for the current character's chats.
- * Called from Settings Modal, Troubleshooter, and dashboard.
+ * Reset extraction tracking for the currently open chat only.
+ * Resets lastExtractedIndex and messagesSinceExtraction in chat_metadata.
+ * NOTE: In group chats, all characters share one extraction pointer — this resets all of them simultaneously.
  */
-function resetExtractionTracking() {
+function resetCurrentChatTracking() {
     ensureMetadata();
     chat_metadata[MODULE_NAME].lastExtractedIndex = -1;
     chat_metadata[MODULE_NAME].messagesSinceExtraction = 0;
     saveMetadataDebounced();
-
-    // Also clear batch state for all chats of this character
-    const charName = getCharacterName();
-    if (charName && extension_settings[MODULE_NAME].batchState) {
-        const prefix = `${charName}:`;
-        for (const key of Object.keys(extension_settings[MODULE_NAME].batchState)) {
-            if (key.startsWith(prefix)) {
-                delete extension_settings[MODULE_NAME].batchState[key];
-            }
-        }
-        saveSettingsDebounced();
-    }
-
     updateStatusDisplay();
-    toastr.success('Extraction state reset for all chats. Next extraction will re-read all messages.', 'CharMemory');
+    const msg = isGroupChat()
+        ? 'Extraction state reset for this group chat. All members will re-process from the beginning.'
+        : 'Extraction state reset. Next "Extract Now" will re-read all messages.';
+    toastr.success(msg, 'CharMemory');
+}
+
+/**
+ * Clear batch extraction progress records for all of this character's chats.
+ * Does NOT affect the current chat's regular extraction pointer (chat_metadata).
+ * For non-active chats, only batch records can be cleared from here — their regular
+ * extraction pointers live in each chat's metadata and can only be reset when that chat is open.
+ */
+function resetBatchProgress() {
+    const charName = getCharacterName();
+    if (!charName || !extension_settings[MODULE_NAME].batchState) {
+        toastr.info('No batch progress to clear.', 'CharMemory');
+        return;
+    }
+    const prefix = `${charName}:`;
+    let count = 0;
+    for (const key of Object.keys(extension_settings[MODULE_NAME].batchState)) {
+        if (key.startsWith(prefix)) {
+            delete extension_settings[MODULE_NAME].batchState[key];
+            count++;
+        }
+    }
+    saveSettingsDebounced();
+    if (count > 0) {
+        toastr.success(`Batch progress cleared for ${count} chat${count !== 1 ? 's' : ''}.`, 'CharMemory');
+    } else {
+        toastr.info('No batch progress to clear.', 'CharMemory');
+    }
 }
 
 /**
