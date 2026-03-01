@@ -2839,6 +2839,11 @@ async function extractMemories({
         if (totalMemories > 0) {
             const suffix = isMultiTarget ? ` across ${targets.length} characters` : '';
             toastr.success(`${totalMemories} memor${totalMemories === 1 ? 'y' : 'ies'} saved${suffix} from ${chunksProcessed} chunk(s).`, 'CharMemory');
+
+            // Post-first-extraction verification nudge
+            if (!extension_settings[MODULE_NAME].verificationSeen) {
+                showVerificationStep();
+            }
         } else if (chunksProcessed > 0) {
             toastr.info('No new memories found.', 'CharMemory');
         }
@@ -3340,6 +3345,7 @@ async function updateHealthIndicator() {
         renderHealthStatusBarItem(result);
         renderHealthDiagnosticsCard(result);
         updateDashboardDiagSummary();
+        updateNudgeBanner(result);
     } catch (err) {
         console.warn(LOG_PREFIX, 'Health check failed:', err);
     }
@@ -3666,6 +3672,8 @@ async function showSettingsModal() {
                 <small class="charMemory_helperText">Prepended to extraction/consolidation calls. Use for jailbreaks or custom instructions.</small>
             </div>
         </div>
+        <hr class="charMemory_separator" />
+        <a id="cm_modal_runWizard" class="charMemory_link">Run Setup Wizard</a>
     `;
 
     // Extraction section HTML
@@ -4077,6 +4085,17 @@ async function showSettingsModal() {
     $('#cm_modal_nanogptFilterOS').off('change').on('change', nanoFilterHandler('nanogptFilterOpenSource'));
     $('#cm_modal_nanogptFilterRP').off('change').on('change', nanoFilterHandler('nanogptFilterRoleplay'));
     $('#cm_modal_nanogptFilterReasoning').off('change').on('change', nanoFilterHandler('nanogptFilterReasoning'));
+
+    // Run Setup Wizard link — close settings and open wizard
+    $('#cm_modal_runWizard').off('click').on('click', function () {
+        // Close the settings modal
+        const $dialog = $settingsModal.closest('.popup');
+        if ($dialog.length) {
+            $dialog.find('.popup-button-ok, .popup-button-close').first().trigger('click');
+        }
+        // Open wizard after a brief delay to let the popup close
+        setTimeout(() => showSetupWizard(1), 200);
+    });
 
     // === Extraction handlers ===
     const sliderHandler = (sliderId, counterId, settingKey, syncSliderId, syncCounterId) => {
@@ -4521,6 +4540,505 @@ function updateModalProviderUI() {
 
     // Also update sidebar UI
     updateProviderUI();
+}
+
+// ============ Setup Wizard ============
+
+/**
+ * Build and display the 3-step Setup Wizard modal.
+ * Steps: 1) LLM Connection  2) Vector Storage  3) Ready
+ * @param {number} [startStep=1] Step to start on (1, 2, or 3)
+ */
+async function showSetupWizard(startStep = 1) {
+    const s = extension_settings[MODULE_NAME];
+    const providerKey = s.selectedProvider || '';
+    const providerSettings = providerKey ? getProviderSettings(providerKey) : {};
+    const preset = providerKey ? (PROVIDER_PRESETS[providerKey] || {}) : {};
+
+    // Build provider options — highlight Pollinations
+    const providerOptions = Object.entries(PROVIDER_PRESETS).map(([key, p]) => {
+        const label = key === 'pollinations' ? `${p.name} \u2014 recommended for quick start` : p.name;
+        return `<option value="${escapeHtml(key)}" ${key === providerKey ? 'selected' : ''}>${escapeHtml(label)}</option>`;
+    }).join('');
+
+    // Step indicator
+    const stepIndicatorHtml = `
+        <div class="charMemory_wizardStepIndicator">
+            <span class="charMemory_wizardDot" data-step="1"></span>
+            <span style="opacity:0.3;">\u2014</span>
+            <span class="charMemory_wizardDot" data-step="2"></span>
+            <span style="opacity:0.3;">\u2014</span>
+            <span class="charMemory_wizardDot" data-step="3"></span>
+        </div>`;
+
+    // Step 1: LLM Connection
+    const step1Html = `
+        <div class="charMemory_wizardStep" data-step="1">
+            <div class="charMemory_wizardExplanation">
+                <strong>CharMemory</strong> automatically extracts structured memories from your roleplay chats and stores them so your characters can recall past events.
+                It needs access to an LLM to read your messages and create memory summaries. This can be any OpenAI-compatible provider.
+            </div>
+            <div class="charMemory_modalFieldGroup">
+                <label><small>Provider</small></label>
+                <select id="cm_wiz_provider" class="text_pole">${providerOptions}</select>
+                <small class="charMemory_helperText">
+                    <strong>Pollinations</strong> is free and requires no API key \u2014 great for trying out CharMemory.
+                    For higher quality, try OpenRouter, Groq, or DeepSeek with an API key.
+                </small>
+            </div>
+            <div class="charMemory_modalFieldGroup" id="cm_wiz_apiKeyRow" style="${preset.requiresApiKey ? '' : 'display:none;'}">
+                <label><small>API Key <a id="cm_wiz_helpLink" href="${escapeAttr(preset.helpUrl || '#')}" target="_blank" style="font-size:0.85em;${preset.helpUrl ? '' : 'display:none;'}">(get key)</a></small></label>
+                <input type="password" id="cm_wiz_apiKey" class="text_pole" placeholder="Enter API key" value="${escapeAttr(providerSettings.apiKey || '')}" />
+            </div>
+            <div class="charMemory_modalFieldGroup" id="cm_wiz_baseUrlRow" style="${preset.allowCustomUrl ? '' : 'display:none;'}">
+                <label><small>Base URL</small></label>
+                <input type="text" id="cm_wiz_baseUrl" class="text_pole" placeholder="${preset.authStyle === 'none' ? 'http://127.0.0.1:1234/v1' : 'https://your-server.com/v1'}" value="${escapeAttr(providerSettings.customBaseUrl || preset.baseUrl || '')}" />
+            </div>
+            <div class="charMemory_modalFieldGroup">
+                <input type="button" id="cm_wiz_connect" class="menu_button charMemory_fullWidth" value="Connect &amp; Test" />
+                <small id="cm_wiz_connectStatus" class="charMemory_helperText" style="display:none;"></small>
+            </div>
+            <div class="charMemory_modalFieldGroup" id="cm_wiz_modelRow" style="display:none;">
+                <label><small>Model</small></label>
+                <div class="charMemory_modelPicker" style="position:relative;">
+                    <input type="text" id="cm_wiz_modelSearch" class="text_pole" placeholder="Search models..." autocomplete="off" value="" />
+                    <input type="hidden" id="cm_wiz_modelValue" value="" />
+                    <div id="cm_wiz_modelDropdown" class="charMemory_modelDropdown"></div>
+                </div>
+                <small id="cm_wiz_modelStatus" class="charMemory_helperText" style="display:none;"></small>
+            </div>
+            <div class="charMemory_wizardNav">
+                <input type="button" id="cm_wiz_next1" class="menu_button" value="Next \u2192" disabled />
+            </div>
+        </div>`;
+
+    // Step 2: Vector Storage
+    const step2Html = `
+        <div class="charMemory_wizardStep" data-step="2">
+            <div class="charMemory_wizardExplanation">
+                <strong>Vector Storage</strong> is how SillyTavern retrieves the right memories at the right time.
+                When your character speaks, Vector Storage finds the most relevant stored memories and injects them into the prompt.
+                CharMemory stores its memories in the character's Data Bank; Vector Storage handles the rest automatically.
+            </div>
+            <div id="cm_wiz_healthChecks">
+                <div class="charMemory_diagEmpty">Checking Vector Storage configuration...</div>
+            </div>
+            <div class="charMemory_wizardNav">
+                <input type="button" id="cm_wiz_back2" class="menu_button" value="\u2190 Back" />
+                <input type="button" id="cm_wiz_next2" class="menu_button" value="Next \u2192" />
+            </div>
+        </div>`;
+
+    // Step 3: Ready
+    const step3Html = `
+        <div class="charMemory_wizardStep" data-step="3">
+            <div class="charMemory_wizardExplanation">
+                <strong>You're all set!</strong> CharMemory is configured and ready to go.
+            </div>
+            <div id="cm_wiz_summary" class="charMemory_wizardSummary"></div>
+            <div style="font-size:0.9em; line-height:1.5; opacity:0.85; margin-bottom:10px;">
+                <strong>What happens next:</strong>
+                <ul style="margin:6px 0; padding-left:1.5em;">
+                    <li>Every <strong>${s.interval || 20} messages</strong>, CharMemory will automatically extract memories from the conversation.</li>
+                    <li>Memories are stored as bullet points in a Data Bank file for each character.</li>
+                    <li>Vector Storage retrieves the most relevant memories and injects them into the prompt, so your character remembers past events.</li>
+                    <li>You can also click <strong>Extract Now</strong> on the dashboard to extract manually at any time.</li>
+                </ul>
+            </div>
+            <div class="charMemory_wizardNav">
+                <input type="button" id="cm_wiz_back3" class="menu_button" value="\u2190 Back" />
+                <input type="button" id="cm_wiz_done" class="menu_button" value="Get Started" />
+            </div>
+        </div>`;
+
+    const html = `<div class="charMemory_wizard">
+        ${stepIndicatorHtml}
+        ${step1Html}
+        ${step2Html}
+        ${step3Html}
+    </div>`;
+
+    const popup = callGenericPopup(html, POPUP_TYPE.TEXT, '', { wide: true, allowVerticalScrolling: true });
+    const $wizard = $('.charMemory_wizard').last();
+
+    // --- Step navigation helpers ---
+    let wizCurrentStep = startStep;
+    let wizConnectionOk = false;
+
+    function showStep(step) {
+        wizCurrentStep = step;
+        $wizard.find('.charMemory_wizardStep').removeClass('active');
+        $wizard.find(`.charMemory_wizardStep[data-step="${step}"]`).addClass('active');
+
+        // Update step dots
+        $wizard.find('.charMemory_wizardDot').each(function () {
+            const dotStep = Number($(this).data('step'));
+            $(this).removeClass('active completed');
+            if (dotStep === step) $(this).addClass('active');
+            else if (dotStep < step) $(this).addClass('completed');
+        });
+
+        // Run step-specific init
+        if (step === 2) initStep2();
+        if (step === 3) initStep3();
+    }
+
+    // --- Step 1: LLM Connection ---
+    function updateWizProviderUI() {
+        const pk = extension_settings[MODULE_NAME].selectedProvider;
+        const p = PROVIDER_PRESETS[pk] || {};
+        const ps = getProviderSettings(pk);
+
+        $wizard.find('#cm_wiz_apiKeyRow').toggle(!!p.requiresApiKey);
+        $wizard.find('#cm_wiz_apiKey').val(ps.apiKey || '');
+
+        if (p.helpUrl) {
+            $wizard.find('#cm_wiz_helpLink').attr('href', p.helpUrl).show();
+        } else {
+            $wizard.find('#cm_wiz_helpLink').hide();
+        }
+
+        $wizard.find('#cm_wiz_baseUrlRow').toggle(!!p.allowCustomUrl);
+        if (p.allowCustomUrl) {
+            $wizard.find('#cm_wiz_baseUrl')
+                .attr('placeholder', p.authStyle === 'none' ? 'http://127.0.0.1:1234/v1' : 'https://your-server.com/v1')
+                .val(ps.customBaseUrl || p.baseUrl || '');
+        }
+
+        // Reset connection state
+        wizConnectionOk = false;
+        $wizard.find('#cm_wiz_next1').prop('disabled', true);
+        $wizard.find('#cm_wiz_connectStatus').hide().text('');
+        $wizard.find('#cm_wiz_modelRow').hide();
+    }
+
+    $wizard.on('change', '#cm_wiz_provider', function () {
+        const key = String($(this).val());
+        extension_settings[MODULE_NAME].selectedProvider = key;
+        extension_settings[MODULE_NAME].source = EXTRACTION_SOURCE.PROVIDER;
+        saveSettingsDebounced();
+        updateWizProviderUI();
+    });
+
+    $wizard.on('input', '#cm_wiz_apiKey', function () {
+        const pk = extension_settings[MODULE_NAME].selectedProvider;
+        const ps = getProviderSettings(pk);
+        ps.apiKey = String($(this).val());
+        saveSettingsDebounced();
+    });
+
+    $wizard.on('input', '#cm_wiz_baseUrl', function () {
+        const pk = extension_settings[MODULE_NAME].selectedProvider;
+        const ps = getProviderSettings(pk);
+        ps.customBaseUrl = String($(this).val());
+        saveSettingsDebounced();
+    });
+
+    $wizard.on('click', '#cm_wiz_connect', async function () {
+        const pk = extension_settings[MODULE_NAME].selectedProvider;
+        const p = PROVIDER_PRESETS[pk];
+        const ps = getProviderSettings(pk);
+        const $btn = $(this);
+        const $status = $wizard.find('#cm_wiz_connectStatus');
+
+        if (p?.requiresApiKey && !ps.apiKey) {
+            $status.text('Enter an API key first.').css('color', '#e74c3c').show();
+            return;
+        }
+
+        $btn.prop('disabled', true).val('Connecting...');
+        $status.text('Connecting to provider...').css('color', '').show();
+
+        try {
+            // Fetch models if the provider supports it
+            const hasModels = p.modelsEndpoint === 'standard' || p.modelsEndpoint === 'custom';
+            if (hasModels) {
+                await populateProviderModels(pk, true);
+                const modelCount = currentModelList.length;
+
+                // Auto-select a model: prefer saved, then default, then first available
+                let selectedModel = ps.model || p.defaultModel || '';
+                if (selectedModel && !currentModelList.find(m => m.id === selectedModel)) {
+                    selectedModel = currentModelList.length > 0 ? currentModelList[0].id : '';
+                }
+                if (!selectedModel && currentModelList.length > 0) {
+                    selectedModel = currentModelList[0].id;
+                }
+
+                if (selectedModel) {
+                    ps.model = selectedModel;
+                    saveSettingsDebounced();
+                    const match = currentModelList.find(m => m.id === selectedModel);
+                    $wizard.find('#cm_wiz_modelValue').val(selectedModel);
+                    $wizard.find('#cm_wiz_modelSearch').val(match ? match.name : selectedModel);
+                    $wizard.find('#cm_wiz_modelRow').show();
+                }
+
+                $status.text(`Connected \u2014 ${modelCount} model${modelCount !== 1 ? 's' : ''} available.`).css('color', '#27ae60').show();
+            } else {
+                // No models endpoint (e.g. Pollinations, Anthropic) — use defaultModel
+                const model = ps.model || p.defaultModel || '';
+                if (model) {
+                    ps.model = model;
+                    saveSettingsDebounced();
+                }
+                $status.text('Provider configured.').css('color', '#27ae60').show();
+            }
+
+            // Test the connection
+            $status.text('Testing model response...').css('color', '').show();
+            const baseUrl = resolveBaseUrl(p, ps);
+            const testModel = ps.model || p.defaultModel;
+            if (!testModel) {
+                $status.text('Connected, but no model selected. Choose a model below.').css('color', '#e67e22').show();
+                if (hasModels) $wizard.find('#cm_wiz_modelRow').show();
+                return;
+            }
+
+            const testMessages = [{ role: 'user', content: 'Respond with exactly: CHARMMEMORY_TEST_OK' }];
+            const t0 = performance.now();
+            let response;
+            if (p.isAnthropic) {
+                response = await generateAnthropicResponse(baseUrl, ps.apiKey, testModel, testMessages, 20, p);
+            } else {
+                response = await generateOpenAICompatibleResponse(baseUrl, ps.apiKey, testModel, testMessages, 20, p);
+            }
+            const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
+            const reply = (response || '').trim();
+            const passed = reply.includes('CHARMMEMORY_TEST_OK');
+
+            const modelShort = testModel.length > 30 ? testModel.slice(0, 30) + '\u2026' : testModel;
+            if (passed) {
+                $status.text(`\u2714 ${modelShort} responded correctly (${elapsed}s)`).css('color', '#2ecc71').show();
+            } else {
+                $status.html(`\u2714 ${escapeHtml(modelShort)} connected (${elapsed}s). It may still work for extraction.`).css('color', '#27ae60').show();
+            }
+
+            wizConnectionOk = true;
+            $wizard.find('#cm_wiz_next1').prop('disabled', false);
+        } catch (err) {
+            $status.text(`\u2718 ${err.message || 'Connection failed'}`).css('color', '#e74c3c').show();
+            wizConnectionOk = false;
+            $wizard.find('#cm_wiz_next1').prop('disabled', true);
+        } finally {
+            $btn.prop('disabled', false).val('Connect & Test');
+        }
+    });
+
+    // Wizard model dropdown
+    function renderWizModelDropdown(filter) {
+        const $dropdown = $wizard.find('#cm_wiz_modelDropdown');
+        $dropdown.empty();
+
+        const lowerFilter = (filter || '').toLowerCase();
+        const selectedId = $wizard.find('#cm_wiz_modelValue').val();
+
+        if (currentModelList.length === 0) {
+            $dropdown.append('<div class="charMemory_modelEmpty">No models loaded</div>');
+            return;
+        }
+
+        let hasResults = false;
+        let lastGroup = null;
+        for (const model of currentModelList) {
+            if (lowerFilter && !model.id.toLowerCase().includes(lowerFilter) && !model.name.toLowerCase().includes(lowerFilter)) continue;
+            if (model.group && model.group !== lastGroup) {
+                $dropdown.append(`<div class="charMemory_modelGroup">${escapeHtml(model.group)}</div>`);
+                lastGroup = model.group;
+            }
+            const selectedClass = model.id === selectedId ? ' selected' : '';
+            $dropdown.append(`<div class="charMemory_modelOption${selectedClass}" data-model-id="${escapeAttr(model.id)}">${escapeHtml(model.name)}</div>`);
+            hasResults = true;
+        }
+
+        if (!hasResults) {
+            $dropdown.append('<div class="charMemory_modelEmpty">No matching models</div>');
+        }
+    }
+
+    $wizard.on('input', '#cm_wiz_modelSearch', function () {
+        renderWizModelDropdown($(this).val());
+        $wizard.find('#cm_wiz_modelDropdown').addClass('open');
+    });
+
+    $wizard.on('focus', '#cm_wiz_modelSearch', function () {
+        renderWizModelDropdown($(this).val());
+        $wizard.find('#cm_wiz_modelDropdown').addClass('open');
+    });
+
+    $wizard.on('click', '#cm_wiz_modelDropdown .charMemory_modelOption', function () {
+        const modelId = $(this).data('model-id');
+        const model = currentModelList.find(m => m.id === modelId);
+        if (!model) return;
+
+        $wizard.find('#cm_wiz_modelValue').val(modelId);
+        $wizard.find('#cm_wiz_modelSearch').val(model.name);
+        $wizard.find('#cm_wiz_modelDropdown').removeClass('open');
+
+        const pk = extension_settings[MODULE_NAME].selectedProvider;
+        const ps = getProviderSettings(pk);
+        ps.model = modelId;
+        saveSettingsDebounced();
+    });
+
+    // Close dropdown on outside click
+    $(document).off('click.cmWizModelPicker').on('click.cmWizModelPicker', function (e) {
+        if (!$(e.target).closest('#cm_wiz_modelRow .charMemory_modelPicker').length) {
+            $wizard.find('#cm_wiz_modelDropdown').removeClass('open');
+        }
+    });
+
+    // --- Step 2: Vector Storage ---
+    async function initStep2() {
+        const $container = $wizard.find('#cm_wiz_healthChecks');
+        $container.html('<div class="charMemory_diagEmpty">Checking Vector Storage configuration...</div>');
+
+        const healthResult = await computeHealthScore();
+        const colors = { green: '#4a4', yellow: '#e8a33d', red: '#c44', unknown: 'var(--SmartThemeBorderColor, #555)' };
+        const icons = { green: 'fa-circle-check', yellow: 'fa-triangle-exclamation', red: 'fa-circle-xmark', unknown: 'fa-circle-question' };
+
+        const fixHints = {
+            vec_files_enabled: 'Go to Extensions \u2192 Vector Storage and enable "Files".',
+            memory_file_exists: 'Run "Extract Now" on the dashboard to create the memory file.',
+            file_vectorized: 'Open the character\'s Data Bank and re-vectorize the file.',
+            chunk_overlap: 'Set overlap to 10-25% in Vector Storage settings.',
+            chunk_size: 'Set chunk size to 800-1000 chars in Vector Storage settings.',
+        };
+
+        let checksHtml = '';
+        if (healthResult.level === 'unknown') {
+            checksHtml = `<div class="charMemory_wizardCheck">
+                <i class="fa-solid fa-circle-question fa-sm" style="color:var(--SmartThemeBorderColor,#555);"></i>
+                <div class="charMemory_wizardCheckDetail">
+                    <div class="charMemory_wizardCheckLabel">No character selected</div>
+                    <div class="charMemory_wizardCheckText">Select a character first, then Vector Storage checks will run automatically. You can skip this step for now.</div>
+                </div>
+            </div>`;
+        } else {
+            for (const check of healthResult.checks) {
+                const fixHtml = (check.level !== 'green' && fixHints[check.id])
+                    ? `<div class="charMemory_wizardCheckFix"><i class="fa-solid fa-lightbulb fa-xs"></i> ${escapeHtml(fixHints[check.id])}</div>`
+                    : '';
+                checksHtml += `<div class="charMemory_wizardCheck">
+                    <i class="fa-solid ${icons[check.level]} fa-sm" style="color:${colors[check.level]};"></i>
+                    <div class="charMemory_wizardCheckDetail">
+                        <div class="charMemory_wizardCheckLabel">${escapeHtml(check.label)}</div>
+                        <div class="charMemory_wizardCheckText">${escapeHtml(check.detail)}</div>
+                        ${fixHtml}
+                    </div>
+                </div>`;
+            }
+        }
+
+        $container.html(checksHtml);
+    }
+
+    // --- Step 3: Ready ---
+    function initStep3() {
+        const pk = extension_settings[MODULE_NAME].selectedProvider;
+        const p = PROVIDER_PRESETS[pk] || {};
+        const ps = getProviderSettings(pk);
+        const modelName = ps.model || p.defaultModel || '(default)';
+        const modelShort = modelName.length > 40 ? modelName.slice(0, 40) + '\u2026' : modelName;
+
+        $wizard.find('#cm_wiz_summary').html(`
+            <div class="charMemory_wizardSummaryRow">
+                <span class="label">Provider</span>
+                <span>${escapeHtml(p.name || pk)}</span>
+            </div>
+            <div class="charMemory_wizardSummaryRow">
+                <span class="label">Model</span>
+                <span>${escapeHtml(modelShort)}</span>
+            </div>
+            <div class="charMemory_wizardSummaryRow">
+                <span class="label">Connection</span>
+                <span class="charMemory_wizardHighlight">${wizConnectionOk ? '\u2714 Connected' : '\u26A0 Not tested'}</span>
+            </div>
+        `);
+    }
+
+    // --- Navigation handlers ---
+    $wizard.on('click', '#cm_wiz_next1', function () {
+        if (wizConnectionOk) showStep(2);
+    });
+
+    $wizard.on('click', '#cm_wiz_back2', function () { showStep(1); });
+    $wizard.on('click', '#cm_wiz_next2', function () { showStep(3); });
+    $wizard.on('click', '#cm_wiz_back3', function () { showStep(2); });
+
+    $wizard.on('click', '#cm_wiz_done', function () {
+        extension_settings[MODULE_NAME].wizardCompleted = true;
+        saveSettingsDebounced();
+        // Close the popup by clicking the dialog's close/OK button
+        const $dialog = $wizard.closest('.popup');
+        if ($dialog.length) {
+            $dialog.find('.popup-button-ok, .popup-button-close').first().trigger('click');
+        }
+    });
+
+    // Cleanup when popup closes
+    popup.then(() => {
+        $(document).off('click.cmWizModelPicker');
+    });
+
+    // Show starting step
+    showStep(startStep);
+}
+
+/**
+ * Show a post-first-extraction verification modal.
+ * Explains how to check that retrieval is working correctly.
+ */
+function showVerificationStep() {
+    extension_settings[MODULE_NAME].verificationSeen = true;
+    saveSettingsDebounced();
+
+    const html = `<div class="charMemory_verification">
+        <h4>Memories Extracted Successfully!</h4>
+        <p>Your first batch of memories has been saved. Here's how to verify everything is working:</p>
+        <ol>
+            <li><strong>Generate a message</strong> from your character so Vector Storage injects relevant memories.</li>
+            <li>Look for the <i class="fa-solid fa-syringe" style="opacity:0.7;"></i> <strong>syringe icon</strong> next to the character's name. Click it to see what memories were injected.</li>
+            <li>Check the <strong>health indicator</strong> (colored dot) on the dashboard. Green means everything is working. Yellow or red means there may be Vector Storage configuration issues.</li>
+            <li>Use the <strong>Troubleshooter</strong> (<i class="fa-solid fa-screwdriver-wrench" style="opacity:0.7;"></i>) for detailed diagnostics if anything looks off.</li>
+        </ol>
+        <p style="opacity:0.7; font-size:0.9em;">This message will only appear once. You can always access the Troubleshooter from the dashboard header.</p>
+    </div>`;
+
+    callGenericPopup(html, POPUP_TYPE.TEXT, '', { wide: false, allowVerticalScrolling: true });
+}
+
+/**
+ * Update the nudge banner visibility based on health status.
+ * Called after health checks complete and when the wizard has been completed previously.
+ * @param {object} [healthResult] Pre-computed health result to avoid re-running checks
+ */
+function updateNudgeBanner(healthResult) {
+    const $banner = $('#charMemory_nudgeBanner');
+    if (!$banner.length) return;
+
+    const s = extension_settings[MODULE_NAME];
+    if (!s.wizardCompleted) {
+        $banner.hide();
+        return;
+    }
+
+    if (!healthResult) {
+        $banner.hide();
+        return;
+    }
+
+    if (healthResult.level === 'red' || healthResult.level === 'yellow') {
+        const issueCount = healthResult.checks.filter(c => c.level !== 'green').length;
+        const label = healthResult.level === 'red' ? 'Issues detected' : 'Warnings detected';
+        $banner.find('span').first().text(`${label} (${issueCount})`);
+        // Determine which step to open
+        const hasConnectionIssue = !s.selectedProvider || !getProviderSettings(s.selectedProvider || '').model;
+        $banner.data('wizStep', hasConnectionIssue ? 1 : 2);
+        $banner.show();
+    } else {
+        $banner.hide();
+    }
 }
 
 // ============ Troubleshooter Modal ============
@@ -7211,6 +7729,17 @@ jQuery(async function () {
     loadSettings();
     setupListeners();
     registerSlashCommands();
+
+    // Setup Wizard: auto-trigger on first launch if no provider configured
+    if (!extension_settings[MODULE_NAME].selectedProvider && !extension_settings[MODULE_NAME].wizardCompleted) {
+        showSetupWizard(1);
+    }
+
+    // Nudge banner: fix button opens wizard to the relevant step
+    $('#charMemory_nudgeFix').on('click', function () {
+        const step = $('#charMemory_nudgeBanner').data('wizStep') || 1;
+        showSetupWizard(step);
+    });
 
     // Event hooks
     eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, onCharacterMessageRendered);
