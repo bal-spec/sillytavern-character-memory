@@ -3558,7 +3558,7 @@ async function showSettingsModal() {
                 <input type="checkbox" id="cm_modal_mergeChunks" ${s.mergeChunks ? 'checked' : ''} />
                 <span>Merge extraction chunks</span>
             </label>
-            <small class="charMemory_helperText">Multi-chunk extractions merged into one block. Disable for long chats.</small>
+            <small class="charMemory_helperText">When enabled, multiple LLM calls from one extraction session are merged into a single memory block. Keep off for long chats — separate blocks give Vector Storage better retrieval granularity.</small>
         </div>
 
         <hr class="charMemory_separator" />
@@ -3653,10 +3653,10 @@ async function showSettingsModal() {
         <hr class="charMemory_separator" />
         <h4 class="charMemory_modalSectionTitle">Reset</h4>
         <div class="charMemory_statusRow">
-            <input type="button" id="cm_modal_resetTracking" class="menu_button" value="Reset Extraction State" title="Reset extraction tracking for the current character's chats" />
-            <small class="charMemory_helperText">Resets extraction tracking. Use before 'Extract Now' or 'Batch Extract' to re-process from the beginning.</small>
-            <input type="button" id="cm_modal_resetExtraction" class="menu_button charMemory_dangerBtn" value="Clear All Memories" title="Delete the memory file and reset extraction state." />
-            <small class="charMemory_helperText">Deletes the memory file and resets extraction tracking. This cannot be undone.</small>
+            <input type="button" id="cm_modal_resetTracking" class="menu_button" value="Reset Extraction State" title="Reset extraction tracking so the next extraction re-reads all messages from the beginning" />
+            <small class="charMemory_helperText">Resets extraction tracking for this character. Use before 'Extract Now' or 'Batch Extract' to re-process from the beginning.</small>
+            <input type="button" id="cm_modal_resetExtraction" class="menu_button charMemory_dangerBtn" value="Clear All Memories" title="Delete this character's memory file and reset extraction tracking — cannot be undone" />
+            <small class="charMemory_helperText">Deletes the memory file for this character and resets extraction tracking. In default mode, this affects all of this character's chats. Cannot be undone.</small>
         </div>
     `;
 
@@ -5336,11 +5336,11 @@ async function showTroubleshooter(initialSection = 'health') {
                 </div>
                 <div class="charMemory_tsResetSection">
                     <button class="menu_button" id="cm_ts_resetTracking">Reset Extraction State</button>
-                    <small class="charMemory_helperText">Resets extraction tracking for the current character. Next extraction will re-read all messages from the beginning.</small>
+                    <small class="charMemory_helperText">Resets extraction tracking for this character. Next extraction will re-read all messages from the beginning.</small>
                 </div>
                 <div class="charMemory_tsResetSection">
                     <button class="menu_button charMemory_dangerBtn" id="cm_ts_clearMemories">Clear All Memories</button>
-                    <small class="charMemory_helperText">Deletes the memory file and resets extraction tracking. This cannot be undone.</small>
+                    <small class="charMemory_helperText">Deletes the memory file for this character and resets extraction tracking. In default mode, this affects all of this character's chats. Cannot be undone.</small>
                 </div>
             </div>
         </div>
