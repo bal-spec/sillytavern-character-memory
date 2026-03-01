@@ -39,16 +39,16 @@ export function createMemoryEditor({ blocks }) {
 
         addBullet(blockIndex) {
             saveVersion();
-            editorBlocks[blockIndex].bullets.push('- ');
+            editorBlocks[blockIndex].bullets.push('');
             editingSet.add(blockIndex);
         },
 
         addBlock(timestamp) {
             saveVersion();
             editorBlocks.push({
-                chat: 'New block',
+                chat: 'New Group',
                 date: timestamp || getTimestamp(),
-                bullets: ['- '],
+                bullets: [''],
             });
             editingSet.add(editorBlocks.length - 1);
         },

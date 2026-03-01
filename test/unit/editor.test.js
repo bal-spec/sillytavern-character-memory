@@ -37,7 +37,7 @@ describe('createMemoryEditor', () => {
         const editor = createMemoryEditor({ blocks: sampleBlocks });
         editor.addBullet(0);
         const bullets = editor.getBlocks()[0].bullets;
-        expect(bullets[bullets.length - 1]).toBe('- ');
+        expect(bullets[bullets.length - 1]).toBe('');
     });
 
     it('addBlock appends a new empty block', () => {
@@ -45,7 +45,7 @@ describe('createMemoryEditor', () => {
         editor.addBlock();
         const blocks = editor.getBlocks();
         expect(blocks).toHaveLength(3);
-        expect(blocks[2].bullets).toEqual(['- ']);
+        expect(blocks[2].bullets).toEqual(['']);
     });
 
     it('addBlock uses provided timestamp', () => {
@@ -94,6 +94,24 @@ describe('createMemoryEditor', () => {
         expect(editor.getBlocks()).toHaveLength(1);
         expect(editor.getBlocks()[0].chat).toBe('Fresh');
         expect(editor.canUndo()).toBe(false);
+    });
+
+    it('deleteBullet auto-removes block when last bullet deleted', () => {
+        const editor = createMemoryEditor({ blocks: [
+            { chat: 'Solo', date: '2026-01-01 10:00', bullets: ['- Only one'] },
+            { chat: 'Other', date: '2026-01-02 10:00', bullets: ['- Keep'] },
+        ] });
+        editor.deleteBullet(0, 0);
+        expect(editor.getBlocks()).toHaveLength(1);
+        expect(editor.getBlocks()[0].chat).toBe('Other');
+    });
+
+    it('getEditingSet returns a copy, not a reference', () => {
+        const editor = createMemoryEditor({ blocks: sampleBlocks });
+        editor.toggleEdit(0);
+        const set = editor.getEditingSet();
+        set.delete(0);
+        expect(editor.isEditing(0)).toBe(true);
     });
 
     it('toggleEdit tracks which blocks are in edit mode', () => {
