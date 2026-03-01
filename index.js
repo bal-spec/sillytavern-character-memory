@@ -1290,7 +1290,7 @@ function renderModelDropdown(filter) {
 
         const selectedClass = model.id === selectedId ? ' selected' : '';
         $dropdown.append(
-            `<div class="charMemory_modelOption${selectedClass}" data-model-id="${escapeHtml(model.id)}">${escapeHtml(model.name)}</div>`
+            `<div class="charMemory_modelOption${selectedClass}" data-model-id="${escapeAttr(model.id)}">${escapeHtml(model.name)}</div>`
         );
         hasResults = true;
     }
@@ -3739,13 +3739,14 @@ async function showSettingsModal() {
     // Open popup
     const popup = callGenericPopup(html, POPUP_TYPE.TEXT, '', { wide: true, allowVerticalScrolling: true });
 
-    // Wire nav switching
-    $(document).off('click.cmModalNav').on('click.cmModalNav', '.charMemory_modalNavItem', function () {
+    // Wire nav switching (scoped to this modal's container)
+    const $settingsModal = $('.charMemory_modal').last();
+    $settingsModal.on('click', '.charMemory_modalNavItem', function () {
         const section = $(this).data('section');
-        $('.charMemory_modalNavItem').removeClass('active');
+        $settingsModal.find('.charMemory_modalNavItem').removeClass('active');
         $(this).addClass('active');
-        $('.charMemory_modalSection').removeClass('active');
-        $(`.charMemory_modalSection[data-section="${section}"]`).addClass('active');
+        $settingsModal.find('.charMemory_modalSection').removeClass('active');
+        $settingsModal.find(`.charMemory_modalSection[data-section="${section}"]`).addClass('active');
     });
 
     // === Connection handlers ===
@@ -4011,18 +4012,17 @@ async function showSettingsModal() {
     $('#cm_modal_viewExtractionPrompt, #cm_modal_promptsViewExtraction').off('click').on('click', async function () {
         const current = extension_settings[MODULE_NAME].extractionPrompt || defaultExtractionPrompt;
         const editorHtml = `<div style="text-align:left;">
-            <textarea id="cm_modal_promptEditor" class="text_pole" rows="14" style="width:100%;resize:vertical;min-height:200px;" data-default-prompt="extraction">${escapeHtml(current)}</textarea>
+            <textarea id="cm_modal_promptEditor_extraction" class="text_pole" rows="14" style="width:100%;resize:vertical;min-height:200px;">${escapeHtml(current)}</textarea>
             <div class="charMemory_buttonRow" style="margin-top:8px;">
                 <input type="button" id="cm_modal_promptRestoreExtraction" class="menu_button" value="Restore Default" />
             </div>
         </div>`;
-        // Wire restore before opening popup via delegation
         $(document).off('click.cmRestoreExtraction').on('click.cmRestoreExtraction', '#cm_modal_promptRestoreExtraction', function () {
-            $('#cm_modal_promptEditor').val(defaultExtractionPrompt);
+            $('#cm_modal_promptEditor_extraction').val(defaultExtractionPrompt);
         });
         const result = await callGenericPopup(editorHtml, POPUP_TYPE.CONFIRM, 'Extraction Prompt (1:1 Chats)', { wide: true, allowVerticalScrolling: true });
         if (result) {
-            extension_settings[MODULE_NAME].extractionPrompt = $('#cm_modal_promptEditor').val();
+            extension_settings[MODULE_NAME].extractionPrompt = $('#cm_modal_promptEditor_extraction').val();
             saveSettingsDebounced();
             $('#charMemory_extractionPrompt').val(extension_settings[MODULE_NAME].extractionPrompt);
         }
@@ -4032,17 +4032,17 @@ async function showSettingsModal() {
     $('#cm_modal_viewGroupPrompt, #cm_modal_promptsViewGroup').off('click').on('click', async function () {
         const current = extension_settings[MODULE_NAME].groupExtractionPrompt || defaultGroupExtractionPrompt;
         const editorHtml = `<div style="text-align:left;">
-            <textarea id="cm_modal_promptEditor" class="text_pole" rows="14" style="width:100%;resize:vertical;min-height:200px;">${escapeHtml(current)}</textarea>
+            <textarea id="cm_modal_promptEditor_group" class="text_pole" rows="14" style="width:100%;resize:vertical;min-height:200px;">${escapeHtml(current)}</textarea>
             <div class="charMemory_buttonRow" style="margin-top:8px;">
                 <input type="button" id="cm_modal_promptRestoreGroup" class="menu_button" value="Restore Default" />
             </div>
         </div>`;
         $(document).off('click.cmRestoreGroup').on('click.cmRestoreGroup', '#cm_modal_promptRestoreGroup', function () {
-            $('#cm_modal_promptEditor').val(defaultGroupExtractionPrompt);
+            $('#cm_modal_promptEditor_group').val(defaultGroupExtractionPrompt);
         });
         const result = await callGenericPopup(editorHtml, POPUP_TYPE.CONFIRM, 'Extraction Prompt (Group Chats)', { wide: true, allowVerticalScrolling: true });
         if (result) {
-            extension_settings[MODULE_NAME].groupExtractionPrompt = $('#cm_modal_promptEditor').val();
+            extension_settings[MODULE_NAME].groupExtractionPrompt = $('#cm_modal_promptEditor_group').val();
             saveSettingsDebounced();
             $('#charMemory_groupExtractionPrompt').val(extension_settings[MODULE_NAME].groupExtractionPrompt);
         }
@@ -4055,20 +4055,20 @@ async function showSettingsModal() {
         const current = overrides[strategy] || CONSOLIDATION_PRESETS[strategy]?.prompt || '';
         const editorHtml = `<div style="text-align:left;">
             <small>Strategy: <b>${escapeHtml(CONSOLIDATION_PRESETS[strategy]?.name || strategy)}</b></small>
-            <textarea id="cm_modal_promptEditor" class="text_pole" rows="14" style="width:100%;resize:vertical;min-height:200px;margin-top:8px;">${escapeHtml(current)}</textarea>
+            <textarea id="cm_modal_promptEditor_consolidation" class="text_pole" rows="14" style="width:100%;resize:vertical;min-height:200px;margin-top:8px;">${escapeHtml(current)}</textarea>
             <div class="charMemory_buttonRow" style="margin-top:8px;">
                 <input type="button" id="cm_modal_promptRestoreConsolidation" class="menu_button" value="Restore Default" />
             </div>
         </div>`;
         $(document).off('click.cmRestoreConsolidation').on('click.cmRestoreConsolidation', '#cm_modal_promptRestoreConsolidation', function () {
-            $('#cm_modal_promptEditor').val(CONSOLIDATION_PRESETS[strategy]?.prompt || '');
+            $('#cm_modal_promptEditor_consolidation').val(CONSOLIDATION_PRESETS[strategy]?.prompt || '');
         });
         const result = await callGenericPopup(editorHtml, POPUP_TYPE.CONFIRM, 'Consolidation Prompt', { wide: true, allowVerticalScrolling: true });
         if (result) {
             if (!extension_settings[MODULE_NAME].consolidationPrompts) {
                 extension_settings[MODULE_NAME].consolidationPrompts = {};
             }
-            extension_settings[MODULE_NAME].consolidationPrompts[strategy] = $('#cm_modal_promptEditor').val();
+            extension_settings[MODULE_NAME].consolidationPrompts[strategy] = $('#cm_modal_promptEditor_consolidation').val();
             saveSettingsDebounced();
             updateConsolidationStrategyUI();
         }
@@ -4078,17 +4078,17 @@ async function showSettingsModal() {
     $('#cm_modal_promptsViewConversion').off('click').on('click', async function () {
         const current = extension_settings[MODULE_NAME].conversionPrompt || defaultConversionPrompt;
         const editorHtml = `<div style="text-align:left;">
-            <textarea id="cm_modal_promptEditor" class="text_pole" rows="14" style="width:100%;resize:vertical;min-height:200px;">${escapeHtml(current)}</textarea>
+            <textarea id="cm_modal_promptEditor_conversion" class="text_pole" rows="14" style="width:100%;resize:vertical;min-height:200px;">${escapeHtml(current)}</textarea>
             <div class="charMemory_buttonRow" style="margin-top:8px;">
                 <input type="button" id="cm_modal_promptRestoreConversion" class="menu_button" value="Restore Default" />
             </div>
         </div>`;
         $(document).off('click.cmRestoreConversion').on('click.cmRestoreConversion', '#cm_modal_promptRestoreConversion', function () {
-            $('#cm_modal_promptEditor').val(defaultConversionPrompt);
+            $('#cm_modal_promptEditor_conversion').val(defaultConversionPrompt);
         });
         const result = await callGenericPopup(editorHtml, POPUP_TYPE.CONFIRM, 'Conversion Prompt', { wide: true, allowVerticalScrolling: true });
         if (result) {
-            extension_settings[MODULE_NAME].conversionPrompt = $('#cm_modal_promptEditor').val();
+            extension_settings[MODULE_NAME].conversionPrompt = $('#cm_modal_promptEditor_conversion').val();
             saveSettingsDebounced();
             $('#charMemory_convertPrompt').val(extension_settings[MODULE_NAME].conversionPrompt);
         }
@@ -4181,7 +4181,6 @@ async function showSettingsModal() {
 
     // Clean up delegated handlers when popup closes
     popup.then(() => {
-        $(document).off('click.cmModalNav');
         $(document).off('click.cmModalModelPicker');
         $(document).off('input.cmModalGroupMember');
     });
@@ -4217,7 +4216,7 @@ function renderModalModelDropdown(filter) {
         }
         const selectedClass = model.id === selectedId ? ' selected' : '';
         $dropdown.append(
-            `<div class="charMemory_modelOption${selectedClass}" data-model-id="${escapeHtml(model.id)}">${escapeHtml(model.name)}</div>`
+            `<div class="charMemory_modelOption${selectedClass}" data-model-id="${escapeAttr(model.id)}">${escapeHtml(model.name)}</div>`
         );
         hasResults = true;
     }
