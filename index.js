@@ -90,21 +90,22 @@ function logActivity(message, type = 'info') {
     updateLogDrawer(entry);
 }
 
+function renderLogEntryHtml(entry) {
+    const typeClass = `charMemory_log_${entry.type}`;
+    const isVerbose = entry.message.includes('\n');
+    const msgHtml = isVerbose
+        ? `<details><summary>${escapeHtml(entry.message.split('\n')[0])}</summary><pre class="charMemory_logVerbose">${escapeHtml(entry.message)}</pre></details>`
+        : escapeHtml(entry.message);
+    return `<div class="charMemory_logEntry ${typeClass}"><span class="charMemory_logTime">${entry.timestamp}</span> ${msgHtml}</div>`;
+}
+
 function updateActivityLogDisplay() {
     const $container = $('#charMemory_activityLog');
     if ($container.length) {
         if (activityLog.length === 0) {
             $container.html('<div class="charMemory_diagEmpty">No activity yet.</div>');
         } else {
-            const html = activityLog.map(entry => {
-                const typeClass = `charMemory_log_${entry.type}`;
-                const isVerbose = entry.message.includes('\n');
-                const msgHtml = isVerbose
-                    ? `<details><summary>${escapeHtml(entry.message.split('\n')[0])}</summary><pre class="charMemory_logVerbose">${escapeHtml(entry.message)}</pre></details>`
-                    : escapeHtml(entry.message);
-                return `<div class="charMemory_logEntry ${typeClass}"><span class="charMemory_logTime">${entry.timestamp}</span> ${msgHtml}</div>`;
-            }).join('');
-            $container.html(html);
+            $container.html(activityLog.map(renderLogEntryHtml).join(''));
         }
     }
 
@@ -6262,6 +6263,9 @@ function toggleInjectionDrawer(forceState) {
     const isOpen = $drawer.hasClass('open');
     const shouldOpen = forceState !== undefined ? forceState : !isOpen;
 
+    // Close log drawer if opening injection drawer (same screen position)
+    if (shouldOpen) $('#charMemory_logDrawer').removeClass('open');
+
     // Position drawer below ST's top bar so header isn't clipped by browser chrome
     if (shouldOpen) {
         const topBar = document.getElementById('top-settings-holder');
@@ -6287,6 +6291,13 @@ function toggleLogDrawer(forceState) {
     const $drawer = $('#charMemory_logDrawer');
     const isOpen = $drawer.hasClass('open');
     const shouldOpen = forceState !== undefined ? forceState : !isOpen;
+
+    // Close injection drawer if opening log drawer (same screen position)
+    // Log drawer state is not persisted — it's session-only, unlike the injection drawer
+    if (shouldOpen) {
+        $('#charMemory_injectionDrawer').removeClass('open');
+        $('#charMemory_drawerToggle').removeClass('open');
+    }
 
     // Position drawer below ST's top bar so header isn't clipped by browser chrome
     if (shouldOpen) {
@@ -6316,15 +6327,7 @@ function renderLogDrawerEntries() {
         return;
     }
 
-    const html = activityLog.map(entry => {
-        const typeClass = `charMemory_log_${entry.type}`;
-        const isVerbose = entry.message.includes('\n');
-        const msgHtml = isVerbose
-            ? `<details><summary>${escapeHtml(entry.message.split('\n')[0])}</summary><pre class="charMemory_logVerbose">${escapeHtml(entry.message)}</pre></details>`
-            : escapeHtml(entry.message);
-        return `<div class="charMemory_logEntry ${typeClass}"><span class="charMemory_logTime">${entry.timestamp}</span> ${msgHtml}</div>`;
-    }).join('');
-    $body.html(html);
+    $body.html(activityLog.map(renderLogEntryHtml).join(''));
 }
 
 /**
@@ -6342,15 +6345,8 @@ function updateLogDrawer(entry) {
     // Remove empty-state placeholder if present
     $body.find('.charMemory_diagEmpty').remove();
 
-    const typeClass = `charMemory_log_${entry.type}`;
-    const isVerbose = entry.message.includes('\n');
-    const msgHtml = isVerbose
-        ? `<details><summary>${escapeHtml(entry.message.split('\n')[0])}</summary><pre class="charMemory_logVerbose">${escapeHtml(entry.message)}</pre></details>`
-        : escapeHtml(entry.message);
-    const entryHtml = `<div class="charMemory_logEntry ${typeClass}"><span class="charMemory_logTime">${entry.timestamp}</span> ${msgHtml}</div>`;
-
     // Prepend since activityLog stores newest first
-    $body.prepend(entryHtml);
+    $body.prepend(renderLogEntryHtml(entry));
 }
 
 /**
