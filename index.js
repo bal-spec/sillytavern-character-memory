@@ -3128,11 +3128,11 @@ async function computeHealthScore() {
     const attachment = findMemoryAttachmentForCharacter(target.avatar, target.fileName);
     checks.push({
         id: 'memory_file_exists',
-        level: attachment ? 'green' : 'red',
+        level: attachment ? 'green' : 'yellow',
         label: 'Memory file in Data Bank',
         detail: attachment
             ? `Found: ${target.fileName}`
-            : `Not found: ${target.fileName}. Extract memories first.`,
+            : `Not found: ${target.fileName}. Extract memories first to create it.`,
     });
 
     if (!attachment) {
@@ -4670,7 +4670,7 @@ async function showSetupWizard(startStep = 1) {
             <div id="cm_wiz_summary" class="charMemory_wizardSummary"></div>
             <div class="charMemory_wizardCallout">
                 <i class="fa-solid fa-circle-info fa-sm"></i>
-                <span>Open the <strong>Injection Sidebar</strong> from the dashboard to see which memories are being used in your character's prompt in real time.</span>
+                <span>Open the <strong>Injection Sidebar</strong> (<i class="fa-solid fa-syringe fa-sm"></i>) from the dashboard to see which memories are being used in your character's prompt in real time.</span>
             </div>
             <div id="cm_wiz_existingMemories" style="display:none;">
                 <div class="charMemory_wizardExistingMemSection">
@@ -5002,6 +5002,8 @@ async function showSetupWizard(startStep = 1) {
                         Enable it in <strong>Extensions \u2192 Vector Storage</strong> when you're ready.</div>
                 </div>
             </div>`);
+            $vsAdvisory.find('small').html(`<i class="fa-solid fa-triangle-exclamation fa-xs"></i>
+                You can continue \u2014 memories will be stored. Without Vector Storage enabled, your character won't be able to recall them.`);
             $vsAdvisory.show();
         } else {
             // Check settings quality
@@ -5034,6 +5036,8 @@ async function showSetupWizard(startStep = 1) {
                         <div class="charMemory_wizardCheckFix"><i class="fa-solid fa-lightbulb fa-xs"></i> Adjust these in <strong>Extensions \u2192 Vector Storage</strong>.</div>
                     </div>
                 </div>`);
+                $vsAdvisory.find('small').html(`<i class="fa-solid fa-triangle-exclamation fa-xs"></i>
+                    You can continue \u2014 memories will be stored and retrieved. Tuning these settings may improve recall accuracy.`);
                 $vsAdvisory.show();
             } else {
                 // Tier 3: VS fully configured
@@ -5242,6 +5246,8 @@ async function showTroubleshooter(initialSection = 'health') {
     // Fix hints for checks that have actionable solutions
     const fixHints = {
         vec_files_enabled: 'Enable "Files" in the Vector Storage extension settings.',
+        memory_file_exists: 'Use "Extract Now" on the dashboard to create this character\'s memory file.',
+        file_vectorized: 'Open the Data Bank (Troubleshooter → Data Bank), then click the vectorize button on the memory file. Or send a message — Vector Storage vectorizes files automatically when a chat is loaded.',
         chunk_overlap: 'Set overlap to 10-25% in Vector Storage settings.',
         chunk_size: 'Set chunk size to 800-1000 chars in Vector Storage settings.',
     };
@@ -5350,6 +5356,7 @@ async function showTroubleshooter(initialSection = 'health') {
     </div>`;
 
     const popup = callGenericPopup(html, POPUP_TYPE.TEXT, '', { wide: true, allowVerticalScrolling: true });
+    popup.then(() => updateHealthIndicator());
 
     // Wire nav switching
     const $modal = $('.charMemory_troubleshooter').last();
@@ -5384,6 +5391,9 @@ async function showTroubleshooter(initialSection = 'health') {
                 </div>`;
             }
             $('#cm_ts_healthChecks').html(newHtml);
+            // Also sync the sidebar health indicator and nudge banner in real time
+            renderHealthStatusBarItem(result);
+            updateNudgeBanner(result);
         } finally {
             $(this).prop('disabled', false).find('i').removeClass('fa-spin');
         }
@@ -7267,6 +7277,12 @@ function setupListeners() {
         e.stopPropagation();
         showTroubleshooter();
     });
+
+    // Syringe icon → Toggle Injection Sidebar
+    $('#charMemory_toggleInjectionBtn').off('click').on('click', function (e) {
+        e.stopPropagation();
+        toggleInjectionDrawer();
+    });
 }
 
 // ============ Per-Message Buttons & Indicators ============
@@ -7941,10 +7957,9 @@ jQuery(async function () {
         showSetupWizard(1);
     });
 
-    // Nudge banner: fix button opens wizard to the relevant step
+    // Nudge banner: fix button opens troubleshooter health checks
     $('#charMemory_nudgeFix').on('click', function () {
-        const step = $('#charMemory_nudgeBanner').data('wizStep') || 1;
-        showSetupWizard(step);
+        showTroubleshooter('health');
     });
 
     // Event hooks
