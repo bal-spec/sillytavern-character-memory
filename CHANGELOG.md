@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.8.0
+
+### Developer
+
+No user-facing changes. Internal refactoring to make the codebase maintainable ahead of the v2.0 UX redesign.
+
+- **ES module imports from lib.js**: `index.js` now imports pure functions from `lib.js` instead of maintaining duplicate copies. `lib.js` is the single source of truth for parsing, escaping, formatting, and migration functions. The sync-check test that verified duplication consistency is removed.
+- **Shared memory editor factory**: New `editor.js` module with `createMemoryEditor()` — encapsulates block state management, undo, and edit-mode tracking. Replaces ~300 lines of duplicated state management across the Consolidation, Conversion, and Reformat dialog editors.
+- **Split setupListeners()**: The 527-line monolithic event-wiring function is now a 7-line coordinator calling `setupConnectionControls()`, `setupExtractionControls()`, `setupToolControls()`, `setupStorageControls()`, and `setupLogControls()`.
+- **Utility extractions**: `getTimestamp()` and `cloneMemoryBlocks()` replace 9 inline timestamp constructions and 3 inline block-clone patterns.
+- **Net result**: `index.js` reduced from ~6,086 to ~5,709 lines. Test count increased from 100 to 117.
+
 ## 1.7.0
 
 ### New Features
