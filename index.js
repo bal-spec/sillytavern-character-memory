@@ -47,6 +47,7 @@ import {
     getTimestamp,
     cloneMemoryBlocks,
 } from './lib.js';
+import { createMemoryEditor } from './editor.js';
 
 const MODULE_NAME = 'charMemory';
 const DEFAULT_FILE_NAME = 'char-memories.md';
@@ -774,79 +775,60 @@ async function previewConversion() {
     }
 
     // === Editor state (lives in closure, survives popup DOM lifecycle) ===
-    let editorBlocks = cloneMemoryBlocks(result.blocks);
-    const versionStack = [];
-    const editingSet = new Set();
+    const editor = createMemoryEditor({ blocks: result.blocks });
+    const rerunBackups = []; // separate stack for re-run undo (editor.replaceAll clears internal undo)
     let destType = 'auto';
     let destCustomName = '';
     let dialogClosed = false; // cancellation flag for in-flight re-run callbacks
 
     const refreshEditor = () => {
-        $('#charMemory_convEditorPane').html(renderConsolidatedCards(editorBlocks, editingSet));
-        $('#charMemory_convAfterCount').text(countMemories(editorBlocks));
-        $('#charMemory_convBlockCount').text(editorBlocks.length);
-        $('#charMemory_convAddBlock').toggleClass('charMemory_editorAddBlock--hidden', editingSet.size === 0);
+        const blocks = editor.getBlocks();
+        $('#charMemory_convEditorPane').html(renderConsolidatedCards(blocks, editor.getEditingSet()));
+        $('#charMemory_convAfterCount').text(countMemories(blocks));
+        $('#charMemory_convBlockCount').text(blocks.length);
+        $('#charMemory_convAddBlock').toggleClass('charMemory_editorAddBlock--hidden', editor.getEditingSet().size === 0);
     };
 
     // Build and show dialog
     const formatLabel = formatLabels[format] || format;
     const method = useLLM && format !== 'memory_tags' ? 'LLM' : 'Heuristic';
-    const dialogHtml = buildConversionDialog(sourceContent, formatLabel, method, editorBlocks, editingSet, useLLM && format !== 'memory_tags');
+    const dialogHtml = buildConversionDialog(sourceContent, formatLabel, method, editor.getBlocks(), editor.getEditingSet(), useLLM && format !== 'memory_tags');
     const popup = callGenericPopup(dialogHtml, POPUP_TYPE.CONFIRM, '', { wide: true, allowVerticalScrolling: true });
 
     // === Editor event delegation (same card classes as consolidation, different namespaces) ===
 
     $(document).off('click.charMemoryConvToggle').on('click.charMemoryConvToggle', '.charMemory_editorToggleEdit', function () {
-        const bi = Number($(this).data('block'));
-        if (editingSet.has(bi)) editingSet.delete(bi);
-        else editingSet.add(bi);
+        editor.toggleEdit(Number($(this).data('block')));
         refreshEditor();
     });
 
     $(document).off('input.charMemoryConvBullet').on('input.charMemoryConvBullet', '.charMemory_editorBulletInput', function () {
-        const bi = Number($(this).data('block'));
-        const bui = Number($(this).data('bullet'));
-        if (editorBlocks[bi]) editorBlocks[bi].bullets[bui] = $(this).val();
+        editor.updateBullet(Number($(this).data('block')), Number($(this).data('bullet')), $(this).val());
     });
 
     $(document).off('input.charMemoryConvTheme').on('input.charMemoryConvTheme', '.charMemory_editorThemeInput', function () {
-        const bi = Number($(this).data('block'));
-        if (editorBlocks[bi]) editorBlocks[bi].chat = $(this).val();
+        editor.updateTheme(Number($(this).data('block')), $(this).val());
     });
 
     $(document).off('click.charMemoryConvDelBullet').on('click.charMemoryConvDelBullet', '.charMemory_editorDeleteBullet', function () {
-        const bi = Number($(this).data('block'));
-        const bui = Number($(this).data('bullet'));
-        if (editorBlocks[bi]) {
-            editorBlocks[bi].bullets.splice(bui, 1);
-            if (editorBlocks[bi].bullets.length === 0) {
-                editorBlocks.splice(bi, 1);
-                reindexEditingSet(editingSet, bi);
-            }
-            refreshEditor();
-        }
+        editor.deleteBullet(Number($(this).data('block')), Number($(this).data('bullet')));
+        refreshEditor();
     });
 
     $(document).off('click.charMemoryConvDelBlock').on('click.charMemoryConvDelBlock', '.charMemory_editorDeleteBlock', function () {
-        const bi = Number($(this).data('block'));
-        editorBlocks.splice(bi, 1);
-        reindexEditingSet(editingSet, bi);
+        editor.deleteBlock(Number($(this).data('block')));
         refreshEditor();
     });
 
     $(document).off('click.charMemoryConvAddBullet').on('click.charMemoryConvAddBullet', '.charMemory_editorAddBullet', function () {
         const bi = Number($(this).data('block'));
-        if (editorBlocks[bi]) {
-            editorBlocks[bi].bullets.push('');
-            refreshEditor();
-            $(`#charMemory_convEditorPane .charMemory_editorCard[data-block="${bi}"] .charMemory_editorBulletInput:last`).focus();
-        }
+        editor.addBullet(bi);
+        refreshEditor();
+        $(`#charMemory_convEditorPane .charMemory_editorCard[data-block="${bi}"] .charMemory_editorBulletInput:last`).focus();
     });
 
     $(document).off('click.charMemoryConvAddBlock').on('click.charMemoryConvAddBlock', '#charMemory_convAddBlock', function () {
-        const newIdx = editorBlocks.length;
-        editorBlocks.push({ chat: 'New Group', date: getTimestamp(), bullets: [''] });
-        editingSet.add(newIdx);
+        editor.addBlock();
         refreshEditor();
         $('#charMemory_convEditorPane .charMemory_editorCard:last .charMemory_editorBulletInput:last').focus();
     });
@@ -866,7 +848,7 @@ async function previewConversion() {
 
     $('#charMemory_rerunConversion').off('click').on('click', async () => {
         if (inApiCall) return;
-        const currentBlocks = cloneMemoryBlocks(editorBlocks);
+        const backupBlocks = editor.getBlocks();
         const llmChecked = $('#charMemory_convDialogLLM').prop('checked');
 
         $('#charMemory_convRerunSpinner').show();
@@ -898,10 +880,9 @@ async function previewConversion() {
         $('#charMemory_convEditorPane').removeClass('charMemory_editorDisabled');
 
         if (newResult && newResult.blocks.length > 0) {
-            versionStack.push(currentBlocks);
+            rerunBackups.push(backupBlocks);
             $('#charMemory_undoConvRerun').prop('disabled', false);
-            editorBlocks = cloneMemoryBlocks(newResult.blocks);
-            editingSet.clear();
+            editor.replaceAll(newResult.blocks);
             refreshEditor();
             for (const w of newResult.warnings) {
                 toastr.warning(w, 'CharMemory');
@@ -914,11 +895,10 @@ async function previewConversion() {
     // === Undo ===
 
     $('#charMemory_undoConvRerun').off('click').on('click', () => {
-        if (versionStack.length === 0) return;
-        editorBlocks = versionStack.pop();
-        editingSet.clear();
+        if (rerunBackups.length === 0) return;
+        editor.replaceAll(rerunBackups.pop());
         refreshEditor();
-        if (versionStack.length === 0) $('#charMemory_undoConvRerun').prop('disabled', true);
+        if (rerunBackups.length === 0) $('#charMemory_undoConvRerun').prop('disabled', true);
     });
 
     // === Wait for dialog Accept/Cancel ===
@@ -944,7 +924,7 @@ async function previewConversion() {
 
     // === Save converted memories ===
 
-    const cleanBlocks = editorBlocks
+    const cleanBlocks = editor.getBlocks()
         .map(b => ({ ...b, bullets: b.bullets.filter(bullet => bullet.trim() !== '') }))
         .filter(b => b.bullets.length > 0);
 
