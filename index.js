@@ -3475,13 +3475,13 @@ async function showSettingsModal() {
                         <label class="checkbox_label"><input type="checkbox" id="cm_modal_nanogptFilterReasoning" ${providerSettings.nanogptFilterReasoning ? 'checked' : ''} /> <small>Reasoning</small></label>
                     </div>
                 </div>
-                <div style="display:flex;gap:5px;align-items:center;">
-                    <div class="charMemory_modelPicker" style="flex:1;position:relative;">
-                        <input type="text" id="cm_modal_modelSearch" class="text_pole" placeholder="${providerSettings.model ? 'Search models...' : 'Click Connect to fetch models'}" autocomplete="off" value="${escapeAttr(providerSettings.model || '')}" />
+                <div class="charMemory_wizModelPicker">
+                    <div style="display:flex;gap:5px;align-items:center;">
+                        <input type="text" id="cm_modal_modelSearch" class="charMemory_wizModelSearch" style="flex:1;" placeholder="${providerSettings.model ? 'Search models...' : 'Click Connect to fetch models'}" autocomplete="off" value="${escapeAttr(providerSettings.model || '')}" />
                         <input type="hidden" id="cm_modal_providerModel" value="${escapeAttr(providerSettings.model || '')}" />
-                        <div id="cm_modal_modelDropdown" class="charMemory_modelDropdown"></div>
+                        <input type="button" id="cm_modal_refreshModels" class="menu_button" value="&#x21bb;" title="Refresh model list" />
                     </div>
-                    <input type="button" id="cm_modal_refreshModels" class="menu_button" value="&#x21bb;" title="Refresh model list" />
+                    <div id="cm_modal_modelList" class="charMemory_wizModelList" style="${currentModelList.length > 0 ? '' : 'display:none;'}"></div>
                 </div>
                 <small id="cm_modal_modelInfo" class="charMemory_helperText"></small>
             </div>
@@ -3561,16 +3561,6 @@ async function showSettingsModal() {
             <small class="charMemory_helperText">When enabled, multiple LLM calls from one extraction session are merged into a single memory block. Keep off for long chats — separate blocks give Vector Storage better retrieval granularity.</small>
         </div>
 
-        <hr class="charMemory_separator" />
-        <h4 class="charMemory_modalSectionTitle">Prompts</h4>
-        <div class="charMemory_modalPromptRow">
-            <span class="charMemory_modalPromptLabel">Extraction prompt (1:1 chats)</span>
-            <input type="button" class="menu_button charMemory_modalPromptBtn" id="cm_modal_viewExtractionPrompt" value="View / Edit" />
-        </div>
-        <div class="charMemory_modalPromptRow">
-            <span class="charMemory_modalPromptLabel">Extraction prompt (group chats)</span>
-            <input type="button" class="menu_button charMemory_modalPromptBtn" id="cm_modal_viewGroupPrompt" value="View / Edit" />
-        </div>
     `;
 
     // Storage section HTML
@@ -3605,23 +3595,35 @@ async function showSettingsModal() {
 
     // Prompts overview section HTML
     const promptsHtml = `
-        <h4 class="charMemory_modalSectionTitle">Prompt Overview</h4>
-        <small class="charMemory_helperText" style="margin-bottom:10px;display:block;">All prompts used by CharMemory. Click View / Edit to customize.</small>
-        <div class="charMemory_modalPromptRow">
-            <span class="charMemory_modalPromptLabel">Extraction prompt (1:1)</span>
-            <input type="button" class="menu_button charMemory_modalPromptBtn" id="cm_modal_promptsViewExtraction" value="View / Edit" />
+        <h4 class="charMemory_modalSectionTitle">Prompts</h4>
+        <small class="charMemory_helperText" style="margin-bottom:12px;display:block;">CharMemory uses four separate prompts. Click View / Edit to customize any of them.</small>
+        <div class="charMemory_modalPromptEntry">
+            <div class="charMemory_modalPromptRow">
+                <span class="charMemory_modalPromptLabel">Extraction — 1:1 chats</span>
+                <input type="button" class="menu_button charMemory_modalPromptBtn" id="cm_modal_promptsViewExtraction" value="View / Edit" />
+            </div>
+            <small class="charMemory_helperText">Used every time CharMemory reads messages from a 1:1 chat. Sent to the LLM along with recent messages, existing memories, and the character card. Controls what gets extracted and the memory bullet format.</small>
         </div>
-        <div class="charMemory_modalPromptRow">
-            <span class="charMemory_modalPromptLabel">Extraction prompt (group)</span>
-            <input type="button" class="menu_button charMemory_modalPromptBtn" id="cm_modal_promptsViewGroup" value="View / Edit" />
+        <div class="charMemory_modalPromptEntry">
+            <div class="charMemory_modalPromptRow">
+                <span class="charMemory_modalPromptLabel">Extraction — group chats</span>
+                <input type="button" class="menu_button charMemory_modalPromptBtn" id="cm_modal_promptsViewGroup" value="View / Edit" />
+            </div>
+            <small class="charMemory_helperText">Same as above, but used in group chats where multiple characters are present. Includes context about all active characters.</small>
         </div>
-        <div class="charMemory_modalPromptRow">
-            <span class="charMemory_modalPromptLabel">Consolidation prompt</span>
-            <input type="button" class="menu_button charMemory_modalPromptBtn" id="cm_modal_promptsViewConsolidation" value="View / Edit" />
+        <div class="charMemory_modalPromptEntry">
+            <div class="charMemory_modalPromptRow">
+                <span class="charMemory_modalPromptLabel">Consolidation</span>
+                <input type="button" class="menu_button charMemory_modalPromptBtn" id="cm_modal_promptsViewConsolidation" value="View / Edit" />
+            </div>
+            <small class="charMemory_helperText">Used by the Consolidate tool (Data Bank Tools). Instructs the LLM to merge duplicate or near-duplicate memories into fewer entries. Has two presets (Balanced / Aggressive) in the Consolidate tool.</small>
         </div>
-        <div class="charMemory_modalPromptRow">
-            <span class="charMemory_modalPromptLabel">Conversion prompt</span>
-            <input type="button" class="menu_button charMemory_modalPromptBtn" id="cm_modal_promptsViewConversion" value="View / Edit" />
+        <div class="charMemory_modalPromptEntry">
+            <div class="charMemory_modalPromptRow">
+                <span class="charMemory_modalPromptLabel">Conversion</span>
+                <input type="button" class="menu_button charMemory_modalPromptBtn" id="cm_modal_promptsViewConversion" value="View / Edit" />
+            </div>
+            <small class="charMemory_helperText">Used by the Reformat tool (Data Bank Tools). Converts memories in non-standard formats (e.g., plain prose) into CharMemory's structured bullet-point format with topic tags.</small>
         </div>
     `;
 
@@ -3770,11 +3772,14 @@ async function showSettingsModal() {
             } else {
                 $status.text('Connected, but no models returned.').css('color', '#e67e22').show();
             }
-            // Update modal model search
+            // Update modal model list
             const savedModel = ps.model || '';
             const match = currentModelList.find(m => m.id === savedModel);
             $('#cm_modal_providerModel').val(savedModel);
             $('#cm_modal_modelSearch').val(match ? match.name : savedModel).attr('placeholder', 'Search models...');
+            const rawModels = pk === 'nanogpt' ? (cachedNanoGptModels || []) : [];
+            $('#cm_modal_modelList').show();
+            renderModalModelList('', rawModels);
         } catch (err) {
             $status.text(`Connection failed: ${err.message}`).css('color', '#e74c3c').show();
         } finally {
@@ -3782,25 +3787,22 @@ async function showSettingsModal() {
         }
     });
 
-    // Model search and dropdown (reuse currentModelList from the sidebar's shared state)
+    // Model search — filter always-visible list
     $('#cm_modal_modelSearch').off('input').on('input', function () {
-        renderModalModelDropdown($(this).val());
-        $('#cm_modal_modelDropdown').addClass('open');
+        const rawModels = extension_settings[MODULE_NAME].selectedProvider === 'nanogpt' ? (cachedNanoGptModels || []) : [];
+        renderModalModelList($(this).val(), rawModels);
     });
 
-    $('#cm_modal_modelSearch').off('focus').on('focus', function () {
-        renderModalModelDropdown($(this).val());
-        $('#cm_modal_modelDropdown').addClass('open');
-    });
-
-    $('#cm_modal_modelDropdown').off('click').on('click', '.charMemory_modelOption', function () {
+    // Model list click — select model
+    $('#cm_modal_modelList').off('click').on('click', '.charMemory_modelOption', function () {
         const modelId = $(this).data('model-id');
         const model = currentModelList.find(m => m.id === modelId);
         if (!model) return;
 
         $('#cm_modal_providerModel').val(modelId);
         $('#cm_modal_modelSearch').val(model.name);
-        $('#cm_modal_modelDropdown').removeClass('open');
+        $('#cm_modal_modelList .charMemory_modelOption').removeClass('selected');
+        $(this).addClass('selected');
 
         const pk = extension_settings[MODULE_NAME].selectedProvider;
         const ps = getProviderSettings(pk);
@@ -3816,61 +3818,33 @@ async function showSettingsModal() {
         }
     });
 
-    // Close modal model dropdown on outside click
-    $(document).off('click.cmModalModelPicker').on('click.cmModalModelPicker', function (e) {
-        if (!$(e.target).closest('#cm_modal_modelDropdownRow .charMemory_modelPicker').length) {
-            $('#cm_modal_modelDropdown').removeClass('open');
-            const selectedId = $('#cm_modal_providerModel').val();
-            if (selectedId) {
-                const model = currentModelList.find(m => m.id === selectedId);
-                if (model) $('#cm_modal_modelSearch').val(model.name);
-            } else {
-                $('#cm_modal_modelSearch').val('');
-            }
-        }
-    });
-
-    // Keyboard navigation for modal model search
-    $('#cm_modal_modelSearch').off('keydown').on('keydown', function (e) {
-        const $dropdown = $('#cm_modal_modelDropdown');
-        if (!$dropdown.hasClass('open')) {
-            if (e.key === 'ArrowDown' || e.key === 'Enter') {
-                renderModalModelDropdown($(this).val());
-                $dropdown.addClass('open');
-                e.preventDefault();
-            }
-            return;
-        }
-        const $options = $dropdown.find('.charMemory_modelOption');
-        const $active = $dropdown.find('.charMemory_modelOption.active');
-        let idx = $options.index($active);
-
-        if (e.key === 'ArrowDown') {
-            e.preventDefault();
-            idx = Math.min(idx + 1, $options.length - 1);
-            $options.removeClass('active');
-            $options.eq(idx).addClass('active');
-            $options.eq(idx)[0]?.scrollIntoView({ block: 'nearest' });
-        } else if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            idx = Math.max(idx - 1, 0);
-            $options.removeClass('active');
-            $options.eq(idx).addClass('active');
-            $options.eq(idx)[0]?.scrollIntoView({ block: 'nearest' });
-        } else if (e.key === 'Enter') {
-            e.preventDefault();
-            if ($active.length) $active.click();
-        } else if (e.key === 'Escape') {
-            $dropdown.removeClass('open');
-        }
+    // NanoGPT filter checkboxes — re-render list
+    $('#cm_modal_nanogptFilterSub, #cm_modal_nanogptFilterOS, #cm_modal_nanogptFilterRP, #cm_modal_nanogptFilterReasoning').off('change').on('change', function () {
+        const pk = extension_settings[MODULE_NAME].selectedProvider;
+        const ps = getProviderSettings(pk);
+        ps.nanogptFilterSubscription = $('#cm_modal_nanogptFilterSub').is(':checked');
+        ps.nanogptFilterOpenSource = $('#cm_modal_nanogptFilterOS').is(':checked');
+        ps.nanogptFilterRoleplay = $('#cm_modal_nanogptFilterRP').is(':checked');
+        ps.nanogptFilterReasoning = $('#cm_modal_nanogptFilterReasoning').is(':checked');
+        saveSettingsDebounced();
+        renderModalModelList($('#cm_modal_modelSearch').val(), cachedNanoGptModels || []);
+        // Sync sidebar filters
+        $('#charMemory_nanogptFilterSub').prop('checked', ps.nanogptFilterSubscription);
+        $('#charMemory_nanogptFilterOS').prop('checked', ps.nanogptFilterOpenSource);
+        $('#charMemory_nanogptFilterRP').prop('checked', ps.nanogptFilterRoleplay);
+        $('#charMemory_nanogptFilterReasoning').prop('checked', ps.nanogptFilterReasoning);
     });
 
     $('#cm_modal_refreshModels').off('click').on('click', function () {
-        populateProviderModels(extension_settings[MODULE_NAME].selectedProvider, true).then(() => {
-            const ps = getProviderSettings(extension_settings[MODULE_NAME].selectedProvider);
+        const pk = extension_settings[MODULE_NAME].selectedProvider;
+        populateProviderModels(pk, true).then(async () => {
+            const ps = getProviderSettings(pk);
             const match = currentModelList.find(m => m.id === ps.model);
             $('#cm_modal_providerModel').val(ps.model || '');
             $('#cm_modal_modelSearch').val(match ? match.name : ps.model || '').attr('placeholder', 'Search models...');
+            const rawModels = pk === 'nanogpt' ? (cachedNanoGptModels || []) : [];
+            $('#cm_modal_modelList').show();
+            renderModalModelList('', rawModels);
         });
     });
 
@@ -3962,8 +3936,8 @@ async function showSettingsModal() {
     });
 
     // Prompt view/edit buttons — open the Prompts modal
-    $('#cm_modal_viewExtractionPrompt, #cm_modal_promptsViewExtraction').off('click').on('click', () => showPromptsModal('extraction'));
-    $('#cm_modal_viewGroupPrompt, #cm_modal_promptsViewGroup').off('click').on('click', () => showPromptsModal('groupExtraction'));
+    $('#cm_modal_promptsViewExtraction').off('click').on('click', () => showPromptsModal('extraction'));
+    $('#cm_modal_promptsViewGroup').off('click').on('click', () => showPromptsModal('groupExtraction'));
     $('#cm_modal_promptsViewConsolidation').off('click').on('click', () => showPromptsModal('consolidation'));
     $('#cm_modal_promptsViewConversion').off('click').on('click', () => showPromptsModal('conversion'));
 
@@ -4428,42 +4402,71 @@ function syncSidebarPrompt(promptKey) {
 }
 
 /**
- * Render the model dropdown in the Settings modal.
- * Mirrors renderModelDropdown() but targets modal-specific elements.
+ * Render the always-visible model list in the Settings modal.
  * @param {string} filter Search filter string
+ * @param {object[]} [rawModels=[]] Raw NanoGPT model objects for badge rendering
  */
-function renderModalModelDropdown(filter) {
-    const $dropdown = $('#cm_modal_modelDropdown');
-    $dropdown.empty();
+function renderModalModelList(filter, rawModels = []) {
+    const $list = $('#cm_modal_modelList');
+    $list.empty();
 
     const lowerFilter = (filter || '').toLowerCase();
     const selectedId = $('#cm_modal_providerModel').val();
+    const providerKey = extension_settings[MODULE_NAME].selectedProvider;
+    const isNanoGpt = providerKey === 'nanogpt';
+    const ps = getProviderSettings(providerKey);
 
-    if (currentModelList.length === 0) {
-        $dropdown.append('<div class="charMemory_modelEmpty">No models \u2014 click Connect to fetch</div>');
+    // Build raw model lookup for badge data
+    const rawById = {};
+    if (isNanoGpt && rawModels.length > 0) {
+        for (const m of rawModels) rawById[m.id] = m;
+    }
+
+    // Apply NanoGPT filters if active
+    let models = currentModelList;
+    if (isNanoGpt && rawModels.length > 0) {
+        const filteredRaw = getFilteredNanoGptModels(rawModels, ps);
+        const filteredIds = new Set(filteredRaw.map(m => m.id));
+        models = currentModelList.filter(m => filteredIds.has(m.id));
+    }
+
+    if (models.length === 0) {
+        $list.append('<div class="charMemory_modelEmpty">No models \u2014 click Connect to fetch</div>');
         return;
     }
 
     let hasResults = false;
     let lastGroup = null;
 
-    for (const model of currentModelList) {
+    for (const model of models) {
         if (lowerFilter && !model.id.toLowerCase().includes(lowerFilter) && !model.name.toLowerCase().includes(lowerFilter)) {
             continue;
         }
         if (model.group && model.group !== lastGroup) {
-            $dropdown.append(`<div class="charMemory_modelGroup">${escapeHtml(model.group)}</div>`);
+            $list.append(`<div class="charMemory_modelGroup">${escapeHtml(model.group)}</div>`);
             lastGroup = model.group;
         }
+
+        let badgesHtml = '';
+        if (isNanoGpt) {
+            const raw = rawById[model.id];
+            if (raw) {
+                if (raw.subscription) badgesHtml += '<span class="charMemory_modelBadge charMemory_modelBadge--sub">sub</span>';
+                if (raw.isOpenSource) badgesHtml += '<span class="charMemory_modelBadge charMemory_modelBadge--open">open</span>';
+                if (raw.category === 'Roleplay/storytelling models') badgesHtml += '<span class="charMemory_modelBadge charMemory_modelBadge--rp">rp</span>';
+                if (raw.capabilities && raw.capabilities.includes('reasoning')) badgesHtml += '<span class="charMemory_modelBadge charMemory_modelBadge--reason">reason</span>';
+            }
+        }
+
         const selectedClass = model.id === selectedId ? ' selected' : '';
-        $dropdown.append(
-            `<div class="charMemory_modelOption${selectedClass}" data-model-id="${escapeAttr(model.id)}">${escapeHtml(model.name)}</div>`
+        $list.append(
+            `<div class="charMemory_modelOption${selectedClass}" data-model-id="${escapeAttr(model.id)}"><span class="charMemory_modelOptionName">${escapeHtml(model.name)}</span>${badgesHtml}</div>`
         );
         hasResults = true;
     }
 
     if (!hasResults) {
-        $dropdown.append('<div class="charMemory_modelEmpty">No matching models</div>');
+        $list.append('<div class="charMemory_modelEmpty">No matching models</div>');
     }
 }
 
@@ -4527,7 +4530,7 @@ function updateModalProviderUI() {
         $('#cm_modal_providerModel').val(savedModel);
         $('#cm_modal_modelSearch').val(savedModel || '').attr('placeholder', 'Click Connect to fetch models');
         currentModelList = [];
-        renderModalModelDropdown('');
+        $('#cm_modal_modelList').hide().empty();
     } else {
         $('#cm_modal_modelInput').val(providerSettings.model || '');
     }

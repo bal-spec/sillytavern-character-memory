@@ -1082,6 +1082,22 @@
     margin-bottom: 4px;
 }
 
+.charMemory_modalPromptEntry {
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--SmartThemeBorderColor, rgba(128, 128, 128, 0.1));
+}
+
+.charMemory_modalPromptEntry:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+}
+
+.charMemory_modalPromptEntry .charMemory_helperText {
+    display: block;
+    margin-top: 4px;
+}
+
 .charMemory_modalPromptRow {
     display: flex;
     align-items: center;
