@@ -4585,10 +4585,18 @@ async function showSetupWizard(startStep = 1) {
             </div>
             <div class="charMemory_modalFieldGroup" id="cm_wiz_modelRow" style="display:none;">
                 <label><small>Model</small></label>
-                <div class="charMemory_modelPicker" style="position:relative;">
-                    <input type="text" id="cm_wiz_modelSearch" class="text_pole" placeholder="Search models..." autocomplete="off" value="" />
+                <div id="cm_wiz_nanogptFilters" style="display:none;">
+                    <div class="charMemory_filterRow">
+                        <label class="checkbox_label"><input type="checkbox" id="cm_wiz_nanogptFilterSub" /> <small>Subscription</small></label>
+                        <label class="checkbox_label"><input type="checkbox" id="cm_wiz_nanogptFilterOS" /> <small>Open Source</small></label>
+                        <label class="checkbox_label"><input type="checkbox" id="cm_wiz_nanogptFilterRP" /> <small>Roleplay</small></label>
+                        <label class="checkbox_label"><input type="checkbox" id="cm_wiz_nanogptFilterReasoning" /> <small>Reasoning</small></label>
+                    </div>
+                </div>
+                <div class="charMemory_wizModelPicker">
+                    <input type="text" id="cm_wiz_modelSearch" class="charMemory_wizModelSearch" placeholder="Search models..." autocomplete="off" value="" />
                     <input type="hidden" id="cm_wiz_modelValue" value="" />
-                    <div id="cm_wiz_modelDropdown" class="charMemory_modelDropdown"></div>
+                    <div id="cm_wiz_modelList" class="charMemory_wizModelList"></div>
                 </div>
                 <small id="cm_wiz_modelStatus" class="charMemory_helperText" style="display:none;"></small>
             </div>
@@ -4649,6 +4657,7 @@ async function showSetupWizard(startStep = 1) {
     // --- Step navigation helpers ---
     let wizConnectionOk = false;
     let wizHealthResult = null;
+    let wizRawModels = [];  // raw NanoGPT model objects for badge rendering
 
     function showStep(step) {
         $wizard.find('.charMemory_wizardStep').removeClass('active');
@@ -4687,6 +4696,16 @@ async function showSetupWizard(startStep = 1) {
             $wizard.find('#cm_wiz_baseUrl')
                 .attr('placeholder', p.authStyle === 'none' ? 'http://127.0.0.1:1234/v1' : 'https://your-server.com/v1')
                 .val(ps.customBaseUrl || p.baseUrl || '');
+        }
+
+        // NanoGPT-specific filters
+        const isNanoGpt = pk === 'nanogpt';
+        $wizard.find('#cm_wiz_nanogptFilters').toggle(isNanoGpt);
+        if (isNanoGpt) {
+            $wizard.find('#cm_wiz_nanogptFilterSub').prop('checked', !!ps.nanogptFilterSubscription);
+            $wizard.find('#cm_wiz_nanogptFilterOS').prop('checked', !!ps.nanogptFilterOpenSource);
+            $wizard.find('#cm_wiz_nanogptFilterRP').prop('checked', !!ps.nanogptFilterRoleplay);
+            $wizard.find('#cm_wiz_nanogptFilterReasoning').prop('checked', !!ps.nanogptFilterReasoning);
         }
 
         // Reset connection state
@@ -4749,13 +4768,19 @@ async function showSetupWizard(startStep = 1) {
                     selectedModel = currentModelList[0].id;
                 }
 
+                // Cache raw NanoGPT model objects for badge rendering
+                if (pk === 'nanogpt') {
+                    wizRawModels = await fetchNanoGptModels();
+                } else {
+                    wizRawModels = [];
+                }
+
                 if (selectedModel) {
                     ps.model = selectedModel;
                     saveSettingsDebounced();
-                    const match = currentModelList.find(m => m.id === selectedModel);
                     $wizard.find('#cm_wiz_modelValue').val(selectedModel);
-                    $wizard.find('#cm_wiz_modelSearch').val(match ? match.name : selectedModel);
                     $wizard.find('#cm_wiz_modelRow').show();
+                    renderWizModelList('');
                 }
 
                 $status.text(`Connected \u2014 ${modelCount} model${modelCount !== 1 ? 's' : ''} available.`).css('color', '#27ae60').show();
@@ -4775,7 +4800,10 @@ async function showSetupWizard(startStep = 1) {
             const testModel = ps.model || p.defaultModel;
             if (!testModel) {
                 $status.text('Connected, but no model selected. Choose a model below.').css('color', '#e67e22').show();
-                if (hasModels) $wizard.find('#cm_wiz_modelRow').show();
+                if (hasModels) {
+                    $wizard.find('#cm_wiz_modelRow').show();
+                    renderWizModelList('');
+                }
                 return;
             }
 
@@ -4809,55 +4837,80 @@ async function showSetupWizard(startStep = 1) {
         }
     });
 
-    // Wizard model dropdown
-    function renderWizModelDropdown(filter) {
-        const $dropdown = $wizard.find('#cm_wiz_modelDropdown');
-        $dropdown.empty();
+    // Wizard model list (always-visible)
+    function renderWizModelList(filter) {
+        const $list = $wizard.find('#cm_wiz_modelList');
+        $list.empty();
 
         const lowerFilter = (filter || '').toLowerCase();
         const selectedId = $wizard.find('#cm_wiz_modelValue').val();
+        const pk = extension_settings[MODULE_NAME].selectedProvider;
+        const ps = getProviderSettings(pk);
+        const isNanoGpt = pk === 'nanogpt';
 
-        if (currentModelList.length === 0) {
-            $dropdown.append('<div class="charMemory_modelEmpty">No models loaded</div>');
+        // Build raw model lookup for badge data
+        const rawById = {};
+        if (isNanoGpt && wizRawModels.length > 0) {
+            for (const m of wizRawModels) rawById[m.id] = m;
+        }
+
+        // Apply NanoGPT filters if active
+        let models = currentModelList;
+        if (isNanoGpt && wizRawModels.length > 0) {
+            const filteredRaw = getFilteredNanoGptModels(wizRawModels, ps);
+            const filteredIds = new Set(filteredRaw.map(m => m.id));
+            models = currentModelList.filter(m => filteredIds.has(m.id));
+        }
+
+        if (models.length === 0) {
+            $list.append('<div class="charMemory_modelEmpty">No models loaded</div>');
             return;
         }
 
         let hasResults = false;
         let lastGroup = null;
-        for (const model of currentModelList) {
+        for (const model of models) {
             if (lowerFilter && !model.id.toLowerCase().includes(lowerFilter) && !model.name.toLowerCase().includes(lowerFilter)) continue;
             if (model.group && model.group !== lastGroup) {
-                $dropdown.append(`<div class="charMemory_modelGroup">${escapeHtml(model.group)}</div>`);
+                $list.append(`<div class="charMemory_modelGroup">${escapeHtml(model.group)}</div>`);
                 lastGroup = model.group;
             }
+
+            // Build inline badges for NanoGPT
+            let badgesHtml = '';
+            if (isNanoGpt) {
+                const raw = rawById[model.id];
+                if (raw) {
+                    if (raw.subscription) badgesHtml += '<span class="charMemory_modelBadge charMemory_modelBadge--sub">sub</span>';
+                    if (raw.isOpenSource) badgesHtml += '<span class="charMemory_modelBadge charMemory_modelBadge--open">open</span>';
+                    if (raw.category === 'Roleplay/storytelling models') badgesHtml += '<span class="charMemory_modelBadge charMemory_modelBadge--rp">rp</span>';
+                    if (raw.capabilities && raw.capabilities.includes('reasoning')) badgesHtml += '<span class="charMemory_modelBadge charMemory_modelBadge--reason">reason</span>';
+                }
+            }
+
             const selectedClass = model.id === selectedId ? ' selected' : '';
-            $dropdown.append(`<div class="charMemory_modelOption${selectedClass}" data-model-id="${escapeAttr(model.id)}">${escapeHtml(model.name)}</div>`);
+            $list.append(`<div class="charMemory_modelOption${selectedClass}" data-model-id="${escapeAttr(model.id)}"><span class="charMemory_modelOptionName">${escapeHtml(model.name)}</span>${badgesHtml}</div>`);
             hasResults = true;
         }
 
         if (!hasResults) {
-            $dropdown.append('<div class="charMemory_modelEmpty">No matching models</div>');
+            $list.append('<div class="charMemory_modelEmpty">No matching models</div>');
         }
     }
 
     $wizard.on('input', '#cm_wiz_modelSearch', function () {
-        renderWizModelDropdown($(this).val());
-        $wizard.find('#cm_wiz_modelDropdown').addClass('open');
+        renderWizModelList($(this).val());
     });
 
-    $wizard.on('focus', '#cm_wiz_modelSearch', function () {
-        renderWizModelDropdown($(this).val());
-        $wizard.find('#cm_wiz_modelDropdown').addClass('open');
-    });
-
-    $wizard.on('click', '#cm_wiz_modelDropdown .charMemory_modelOption', function () {
+    $wizard.on('click', '#cm_wiz_modelList .charMemory_modelOption', function () {
         const modelId = $(this).data('model-id');
         const model = currentModelList.find(m => m.id === modelId);
         if (!model) return;
 
         $wizard.find('#cm_wiz_modelValue').val(modelId);
         $wizard.find('#cm_wiz_modelSearch').val(model.name);
-        $wizard.find('#cm_wiz_modelDropdown').removeClass('open');
+        $wizard.find('#cm_wiz_modelList .charMemory_modelOption').removeClass('selected');
+        $(this).addClass('selected');
 
         const pk = extension_settings[MODULE_NAME].selectedProvider;
         const ps = getProviderSettings(pk);
@@ -4865,11 +4918,15 @@ async function showSetupWizard(startStep = 1) {
         saveSettingsDebounced();
     });
 
-    // Close dropdown on outside click
-    $(document).off('click.cmWizModelPicker').on('click.cmWizModelPicker', function (e) {
-        if (!$(e.target).closest('#cm_wiz_modelRow .charMemory_modelPicker').length) {
-            $wizard.find('#cm_wiz_modelDropdown').removeClass('open');
-        }
+    $wizard.on('change', '#cm_wiz_nanogptFilterSub, #cm_wiz_nanogptFilterOS, #cm_wiz_nanogptFilterRP, #cm_wiz_nanogptFilterReasoning', function () {
+        const pk = extension_settings[MODULE_NAME].selectedProvider;
+        const ps = getProviderSettings(pk);
+        ps.nanogptFilterSubscription = $wizard.find('#cm_wiz_nanogptFilterSub').is(':checked');
+        ps.nanogptFilterOpenSource = $wizard.find('#cm_wiz_nanogptFilterOS').is(':checked');
+        ps.nanogptFilterRoleplay = $wizard.find('#cm_wiz_nanogptFilterRP').is(':checked');
+        ps.nanogptFilterReasoning = $wizard.find('#cm_wiz_nanogptFilterReasoning').is(':checked');
+        saveSettingsDebounced();
+        renderWizModelList($wizard.find('#cm_wiz_modelSearch').val());
     });
 
     // --- Step 2: Vector Storage ---

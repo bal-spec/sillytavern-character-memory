@@ -1468,6 +1468,115 @@
     font-weight: 600;
 }
 
+/* Wizard always-visible model list */
+.charMemory_wizModelPicker {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.charMemory_wizModelSearch {
+    width: 100%;
+    padding: 6px 8px;
+    background: var(--SmartThemeBlurTintColor, rgba(0, 0, 0, 0.4));
+    border: 1px solid var(--SmartThemeBorderColor, #555);
+    border-radius: 4px;
+    color: inherit;
+    font-size: 0.9em;
+    box-sizing: border-box;
+    outline: none;
+}
+
+.charMemory_wizModelSearch:focus {
+    border-color: var(--SmartThemeQuoteColor, #888);
+}
+
+.charMemory_wizModelList {
+    max-height: 200px;
+    overflow-y: auto;
+    border: 1px solid var(--SmartThemeBorderColor, #555);
+    border-radius: 4px;
+    background: var(--SmartThemeBlurTintColor, rgba(0, 0, 0, 0.3));
+}
+
+.charMemory_wizModelList .charMemory_modelGroup {
+    padding: 4px 8px 2px;
+    font-size: 0.8em;
+    font-weight: 600;
+    opacity: 0.6;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.charMemory_wizModelList .charMemory_modelOption {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 10px;
+    cursor: pointer;
+    font-size: 0.875em;
+    line-height: 1.3;
+}
+
+.charMemory_wizModelList .charMemory_modelOption:hover {
+    background: var(--SmartThemeBlurTintColor, rgba(255, 255, 255, 0.1));
+}
+
+.charMemory_wizModelList .charMemory_modelOption.selected {
+    background: rgba(74, 170, 74, 0.12);
+    color: var(--SmartThemeQuoteColor, #aaa);
+}
+
+.charMemory_wizModelList .charMemory_modelEmpty {
+    padding: 10px;
+    text-align: center;
+    font-size: 0.875em;
+    opacity: 0.5;
+}
+
+.charMemory_modelOptionName {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* NanoGPT inline model badges */
+.charMemory_modelBadge {
+    display: inline-block;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 0.7em;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    flex-shrink: 0;
+    opacity: 0.85;
+}
+
+.charMemory_modelBadge--sub {
+    background: rgba(114, 137, 218, 0.2);
+    color: #7289da;
+    border: 1px solid rgba(114, 137, 218, 0.3);
+}
+
+.charMemory_modelBadge--open {
+    background: rgba(74, 170, 74, 0.15);
+    color: #4a4;
+    border: 1px solid rgba(74, 170, 74, 0.25);
+}
+
+.charMemory_modelBadge--rp {
+    background: rgba(232, 163, 61, 0.15);
+    color: #e8a33d;
+    border: 1px solid rgba(232, 163, 61, 0.25);
+}
+
+.charMemory_modelBadge--reason {
+    background: rgba(196, 68, 68, 0.15);
+    color: #c77;
+    border: 1px solid rgba(196, 68, 68, 0.25);
+}
+
 /* Nudge banner */
 .charMemory_nudgeBanner {
     display: flex;
