@@ -4211,7 +4211,7 @@ async function showPromptsModal(activePrompt = 'extraction') {
     const sections = Object.entries(PROMPT_CONFIG).map(([key, config]) => {
         const current = getPromptText(key);
         const customized = isPromptCustomized(key);
-        const badgeText = customized ? 'customized' : 'default';
+        const badgeText = customized ? `v${config.version} • Customized` : `v${config.version} • Default`;
         const strategyNote = key === 'consolidation'
             ? `<small class="charMemory_helperText" style="margin-bottom:8px;display:block;">Strategy: <b>${escapeHtml(CONSOLIDATION_PRESETS[s.consolidationStrategy || 'balanced']?.name || 'balanced')}</b></small>`
             : '';
@@ -4224,8 +4224,8 @@ async function showPromptsModal(activePrompt = 'extraction') {
             ${strategyNote}
             <textarea class="text_pole charMemory_promptEditor" data-prompt="${escapeAttr(key)}">${escapeHtml(current)}</textarea>
             <div class="charMemory_buttonRow" style="margin-top:8px;">
-                <input type="button" class="menu_button charMemory_promptSave" value="Save" />
                 <input type="button" class="menu_button charMemory_promptRestore" value="Restore Default" />
+                <input type="button" class="menu_button charMemory_promptSave" value="Save" />
             </div>
         </div>`;
     }).join('');
@@ -4267,7 +4267,8 @@ async function showPromptsModal(activePrompt = 'extraction') {
 
         // Update badge
         const customized = isPromptCustomized(targetKey);
-        $targetSection.find('.charMemory_promptBadge').text(customized ? 'customized' : 'default');
+        const targetConfig = PROMPT_CONFIG[targetKey];
+        $targetSection.find('.charMemory_promptBadge').text(customized ? `v${targetConfig.version} \u2022 Customized` : `v${targetConfig.version} \u2022 Default`);
     });
 
     // Save button
@@ -4280,7 +4281,8 @@ async function showPromptsModal(activePrompt = 'extraction') {
 
         // Update badge
         const customized = isPromptCustomized(key);
-        $section.find('.charMemory_promptBadge').text(customized ? 'customized' : 'default');
+        const config = PROMPT_CONFIG[key];
+        $section.find('.charMemory_promptBadge').text(customized ? `v${config.version} \u2022 Customized` : `v${config.version} \u2022 Default`);
 
         toastr.success('Prompt saved.');
     });
@@ -4304,7 +4306,8 @@ async function showPromptsModal(activePrompt = 'extraction') {
         syncSidebarPrompt(key);
 
         // Update badge
-        $section.find('.charMemory_promptBadge').text('default');
+        const config = PROMPT_CONFIG[key];
+        $section.find('.charMemory_promptBadge').text(`v${config.version} \u2022 Default`);
 
         toastr.success('Prompt restored to default.');
     });
