@@ -23,6 +23,7 @@ export function createMemoryEditor({ blocks }) {
         },
 
         deleteBullet(blockIndex, bulletIndex) {
+            if (!editorBlocks[blockIndex]) return;
             saveVersion();
             editorBlocks[blockIndex].bullets.splice(bulletIndex, 1);
             if (editorBlocks[blockIndex].bullets.length === 0) {
@@ -32,12 +33,14 @@ export function createMemoryEditor({ blocks }) {
         },
 
         deleteBlock(blockIndex) {
+            if (!editorBlocks[blockIndex]) return;
             saveVersion();
             editorBlocks.splice(blockIndex, 1);
             reindexEditingSet(editingSet, blockIndex);
         },
 
         addBullet(blockIndex) {
+            if (!editorBlocks[blockIndex]) return;
             saveVersion();
             editorBlocks[blockIndex].bullets.push('');
             editingSet.add(blockIndex);
@@ -54,10 +57,12 @@ export function createMemoryEditor({ blocks }) {
         },
 
         updateBullet(blockIndex, bulletIndex, text) {
+            if (!editorBlocks[blockIndex]) return;
             editorBlocks[blockIndex].bullets[bulletIndex] = text;
         },
 
         updateTheme(blockIndex, label) {
+            if (!editorBlocks[blockIndex]) return;
             editorBlocks[blockIndex].chat = label;
         },
 

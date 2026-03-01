@@ -781,16 +781,19 @@ async function previewConversion() {
 
     const refreshEditor = () => {
         const blocks = editor.getBlocks();
-        $('#charMemory_convEditorPane').html(renderConsolidatedCards(blocks, editor.getEditingSet()));
+        const editing = editor.getEditingSet();
+        $('#charMemory_convEditorPane').html(renderConsolidatedCards(blocks, editing));
         $('#charMemory_convAfterCount').text(countMemories(blocks));
         $('#charMemory_convBlockCount').text(blocks.length);
-        $('#charMemory_convAddBlock').toggleClass('charMemory_editorAddBlock--hidden', editor.getEditingSet().size === 0);
+        $('#charMemory_convAddBlock').toggleClass('charMemory_editorAddBlock--hidden', editing.size === 0);
     };
 
     // Build and show dialog
     const formatLabel = formatLabels[format] || format;
     const method = useLLM && format !== 'memory_tags' ? 'LLM' : 'Heuristic';
-    const dialogHtml = buildConversionDialog(sourceContent, formatLabel, method, editor.getBlocks(), editor.getEditingSet(), useLLM && format !== 'memory_tags');
+    const initBlocks = editor.getBlocks();
+    const initEditing = editor.getEditingSet();
+    const dialogHtml = buildConversionDialog(sourceContent, formatLabel, method, initBlocks, initEditing, useLLM && format !== 'memory_tags');
     const popup = callGenericPopup(dialogHtml, POPUP_TYPE.CONFIRM, '', { wide: true, allowVerticalScrolling: true });
 
     // === Editor event delegation (same card classes as consolidation, different namespaces) ===
@@ -3972,13 +3975,16 @@ async function consolidateMemories() {
     // Re-render the editor pane from editor state
     const refreshEditor = () => {
         const blocks = editor.getBlocks();
-        $('#charMemory_editorPane').html(renderConsolidatedCards(blocks, editor.getEditingSet()));
+        const editing = editor.getEditingSet();
+        $('#charMemory_editorPane').html(renderConsolidatedCards(blocks, editing));
         $('#charMemory_afterCount').text(countMemories(blocks));
-        $('#charMemory_editorAddBlock').toggleClass('charMemory_editorAddBlock--hidden', editor.getEditingSet().size === 0);
+        $('#charMemory_editorAddBlock').toggleClass('charMemory_editorAddBlock--hidden', editing.size === 0);
     };
 
     // Build and show the interactive dialog
-    const dialogHtml = buildConsolidationDialog(memories, beforeCount, editor.getBlocks(), editor.getEditingSet());
+    const initBlocks = editor.getBlocks();
+    const initEditing = editor.getEditingSet();
+    const dialogHtml = buildConsolidationDialog(memories, beforeCount, initBlocks, initEditing);
     const popup = callGenericPopup(dialogHtml, POPUP_TYPE.CONFIRM, '', { wide: true, allowVerticalScrolling: true });
 
     // Set up the strategy dropdown and prompt viewer to match current setting
@@ -4207,14 +4213,17 @@ async function showReformatPreview(originalBlocks, reformattedBlocks, charName, 
 
     const refreshEditor = () => {
         const blocks = editor.getBlocks();
-        $('#charMemory_reformatEditorPane').html(renderConsolidatedCards(blocks, editor.getEditingSet()));
+        const editing = editor.getEditingSet();
+        $('#charMemory_reformatEditorPane').html(renderConsolidatedCards(blocks, editing));
         $('#charMemory_reformatAfterCount').text(countMemories(blocks));
         $('#charMemory_reformatBlockCount').text(blocks.length);
-        $('#charMemory_reformatAddBlock').toggleClass('charMemory_editorAddBlock--hidden', editor.getEditingSet().size === 0);
+        $('#charMemory_reformatAddBlock').toggleClass('charMemory_editorAddBlock--hidden', editing.size === 0);
     };
 
     // Build and show dialog
-    const dialogHtml = buildReformatDialog(originalBlocks, originalCount, editor.getBlocks(), editor.getEditingSet());
+    const initBlocks = editor.getBlocks();
+    const initEditing = editor.getEditingSet();
+    const dialogHtml = buildReformatDialog(originalBlocks, originalCount, initBlocks, initEditing);
     const popup = callGenericPopup(dialogHtml, POPUP_TYPE.CONFIRM, '', { wide: true, allowVerticalScrolling: true });
 
     // === Editor event delegation (unique namespace to avoid conflicts) ===
