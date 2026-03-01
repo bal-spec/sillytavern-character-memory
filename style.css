@@ -1180,3 +1180,36 @@
     font-size: 0.85em;
     padding: 3px 10px;
 }
+
+/* ── Prompts Modal ── */
+.charMemory_promptsModal {
+    min-height: 500px;
+}
+
+.charMemory_promptHeader {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8px;
+}
+
+.charMemory_promptHeader h3 {
+    margin: 0;
+    font-size: 1em;
+}
+
+.charMemory_promptBadge {
+    font-size: 0.8em;
+    opacity: 0.6;
+    padding: 2px 8px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 10px;
+}
+
+.charMemory_promptEditor {
+    width: 100%;
+    min-height: 300px;
+    font-family: monospace;
+    font-size: 0.85em;
+    resize: vertical;
+}

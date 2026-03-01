@@ -448,6 +448,37 @@ const defaultSettings = {
     injectionDrawerOpen: false,
 };
 
+const PROMPT_CONFIG = {
+    extraction: {
+        title: 'Extraction Prompt (1:1)',
+        navLabel: 'Extract (1:1)',
+        settingsKey: 'extractionPrompt',
+        defaultValue: defaultExtractionPrompt,
+        version: '1.7.0',
+    },
+    groupExtraction: {
+        title: 'Extraction Prompt (Group)',
+        navLabel: 'Extract (Group)',
+        settingsKey: 'groupExtractionPrompt',
+        defaultValue: defaultGroupExtractionPrompt,
+        version: '1.7.0',
+    },
+    consolidation: {
+        title: 'Consolidation Prompt',
+        navLabel: 'Consolidation',
+        settingsKey: 'consolidationPrompt',
+        defaultValue: null, // depends on strategy — resolved at runtime
+        version: '1.7.0',
+    },
+    conversion: {
+        title: 'Conversion Prompt',
+        navLabel: 'Convert',
+        settingsKey: 'conversionPrompt',
+        defaultValue: defaultConversionPrompt,
+        version: '1.7.0',
+    },
+};
+
 /**
  * Get (or lazily initialize) provider-specific settings.
  * @param {string} providerKey Key from PROVIDER_PRESETS.
@@ -4008,92 +4039,11 @@ async function showSettingsModal() {
         $('#charMemory_mergeChunks').prop('checked', extension_settings[MODULE_NAME].mergeChunks);
     });
 
-    // Prompt view/edit buttons — each opens a textarea popup with its own restore handler
-    $('#cm_modal_viewExtractionPrompt, #cm_modal_promptsViewExtraction').off('click').on('click', async function () {
-        const current = extension_settings[MODULE_NAME].extractionPrompt || defaultExtractionPrompt;
-        const editorHtml = `<div style="text-align:left;">
-            <textarea id="cm_modal_promptEditor_extraction" class="text_pole" rows="14" style="width:100%;resize:vertical;min-height:200px;">${escapeHtml(current)}</textarea>
-            <div class="charMemory_buttonRow" style="margin-top:8px;">
-                <input type="button" id="cm_modal_promptRestoreExtraction" class="menu_button" value="Restore Default" />
-            </div>
-        </div>`;
-        $(document).off('click.cmRestoreExtraction').on('click.cmRestoreExtraction', '#cm_modal_promptRestoreExtraction', function () {
-            $('#cm_modal_promptEditor_extraction').val(defaultExtractionPrompt);
-        });
-        const result = await callGenericPopup(editorHtml, POPUP_TYPE.CONFIRM, 'Extraction Prompt (1:1 Chats)', { wide: true, allowVerticalScrolling: true });
-        if (result) {
-            extension_settings[MODULE_NAME].extractionPrompt = $('#cm_modal_promptEditor_extraction').val();
-            saveSettingsDebounced();
-            $('#charMemory_extractionPrompt').val(extension_settings[MODULE_NAME].extractionPrompt);
-        }
-        $(document).off('click.cmRestoreExtraction');
-    });
-
-    $('#cm_modal_viewGroupPrompt, #cm_modal_promptsViewGroup').off('click').on('click', async function () {
-        const current = extension_settings[MODULE_NAME].groupExtractionPrompt || defaultGroupExtractionPrompt;
-        const editorHtml = `<div style="text-align:left;">
-            <textarea id="cm_modal_promptEditor_group" class="text_pole" rows="14" style="width:100%;resize:vertical;min-height:200px;">${escapeHtml(current)}</textarea>
-            <div class="charMemory_buttonRow" style="margin-top:8px;">
-                <input type="button" id="cm_modal_promptRestoreGroup" class="menu_button" value="Restore Default" />
-            </div>
-        </div>`;
-        $(document).off('click.cmRestoreGroup').on('click.cmRestoreGroup', '#cm_modal_promptRestoreGroup', function () {
-            $('#cm_modal_promptEditor_group').val(defaultGroupExtractionPrompt);
-        });
-        const result = await callGenericPopup(editorHtml, POPUP_TYPE.CONFIRM, 'Extraction Prompt (Group Chats)', { wide: true, allowVerticalScrolling: true });
-        if (result) {
-            extension_settings[MODULE_NAME].groupExtractionPrompt = $('#cm_modal_promptEditor_group').val();
-            saveSettingsDebounced();
-            $('#charMemory_groupExtractionPrompt').val(extension_settings[MODULE_NAME].groupExtractionPrompt);
-        }
-        $(document).off('click.cmRestoreGroup');
-    });
-
-    $('#cm_modal_promptsViewConsolidation').off('click').on('click', async function () {
-        const strategy = extension_settings[MODULE_NAME].consolidationStrategy || 'balanced';
-        const overrides = extension_settings[MODULE_NAME].consolidationPrompts || {};
-        const current = overrides[strategy] || CONSOLIDATION_PRESETS[strategy]?.prompt || '';
-        const editorHtml = `<div style="text-align:left;">
-            <small>Strategy: <b>${escapeHtml(CONSOLIDATION_PRESETS[strategy]?.name || strategy)}</b></small>
-            <textarea id="cm_modal_promptEditor_consolidation" class="text_pole" rows="14" style="width:100%;resize:vertical;min-height:200px;margin-top:8px;">${escapeHtml(current)}</textarea>
-            <div class="charMemory_buttonRow" style="margin-top:8px;">
-                <input type="button" id="cm_modal_promptRestoreConsolidation" class="menu_button" value="Restore Default" />
-            </div>
-        </div>`;
-        $(document).off('click.cmRestoreConsolidation').on('click.cmRestoreConsolidation', '#cm_modal_promptRestoreConsolidation', function () {
-            $('#cm_modal_promptEditor_consolidation').val(CONSOLIDATION_PRESETS[strategy]?.prompt || '');
-        });
-        const result = await callGenericPopup(editorHtml, POPUP_TYPE.CONFIRM, 'Consolidation Prompt', { wide: true, allowVerticalScrolling: true });
-        if (result) {
-            if (!extension_settings[MODULE_NAME].consolidationPrompts) {
-                extension_settings[MODULE_NAME].consolidationPrompts = {};
-            }
-            extension_settings[MODULE_NAME].consolidationPrompts[strategy] = $('#cm_modal_promptEditor_consolidation').val();
-            saveSettingsDebounced();
-            updateConsolidationStrategyUI();
-        }
-        $(document).off('click.cmRestoreConsolidation');
-    });
-
-    $('#cm_modal_promptsViewConversion').off('click').on('click', async function () {
-        const current = extension_settings[MODULE_NAME].conversionPrompt || defaultConversionPrompt;
-        const editorHtml = `<div style="text-align:left;">
-            <textarea id="cm_modal_promptEditor_conversion" class="text_pole" rows="14" style="width:100%;resize:vertical;min-height:200px;">${escapeHtml(current)}</textarea>
-            <div class="charMemory_buttonRow" style="margin-top:8px;">
-                <input type="button" id="cm_modal_promptRestoreConversion" class="menu_button" value="Restore Default" />
-            </div>
-        </div>`;
-        $(document).off('click.cmRestoreConversion').on('click.cmRestoreConversion', '#cm_modal_promptRestoreConversion', function () {
-            $('#cm_modal_promptEditor_conversion').val(defaultConversionPrompt);
-        });
-        const result = await callGenericPopup(editorHtml, POPUP_TYPE.CONFIRM, 'Conversion Prompt', { wide: true, allowVerticalScrolling: true });
-        if (result) {
-            extension_settings[MODULE_NAME].conversionPrompt = $('#cm_modal_promptEditor_conversion').val();
-            saveSettingsDebounced();
-            $('#charMemory_convertPrompt').val(extension_settings[MODULE_NAME].conversionPrompt);
-        }
-        $(document).off('click.cmRestoreConversion');
-    });
+    // Prompt view/edit buttons — open the Prompts modal
+    $('#cm_modal_viewExtractionPrompt, #cm_modal_promptsViewExtraction').off('click').on('click', () => showPromptsModal('extraction'));
+    $('#cm_modal_viewGroupPrompt, #cm_modal_promptsViewGroup').off('click').on('click', () => showPromptsModal('groupExtraction'));
+    $('#cm_modal_promptsViewConsolidation').off('click').on('click', () => showPromptsModal('consolidation'));
+    $('#cm_modal_promptsViewConversion').off('click').on('click', () => showPromptsModal('conversion'));
 
     // === Storage handlers ===
     $('#cm_modal_perChat').off('change').on('change', function () {
@@ -4184,6 +4134,203 @@ async function showSettingsModal() {
         $(document).off('click.cmModalModelPicker');
         $(document).off('input.cmModalGroupMember');
     });
+}
+
+// ============ Prompts Modal ============
+
+/**
+ * Get the current prompt text for a given prompt key.
+ * Handles the consolidation prompt's per-strategy special case.
+ * @param {string} promptKey Key from PROMPT_CONFIG
+ * @returns {string}
+ */
+function getPromptText(promptKey) {
+    const s = extension_settings[MODULE_NAME];
+    if (promptKey === 'consolidation') {
+        const strategy = s.consolidationStrategy || 'balanced';
+        const overrides = s.consolidationPrompts || {};
+        return overrides[strategy] || CONSOLIDATION_PRESETS[strategy]?.prompt || '';
+    }
+    const config = PROMPT_CONFIG[promptKey];
+    return s[config.settingsKey] || config.defaultValue || '';
+}
+
+/**
+ * Get the default prompt text for a given prompt key.
+ * @param {string} promptKey Key from PROMPT_CONFIG
+ * @returns {string}
+ */
+function getDefaultPromptText(promptKey) {
+    if (promptKey === 'consolidation') {
+        const strategy = extension_settings[MODULE_NAME].consolidationStrategy || 'balanced';
+        return CONSOLIDATION_PRESETS[strategy]?.prompt || '';
+    }
+    return PROMPT_CONFIG[promptKey].defaultValue || '';
+}
+
+/**
+ * Save a prompt's text to extension_settings.
+ * Handles consolidation's per-strategy storage.
+ * @param {string} promptKey Key from PROMPT_CONFIG
+ * @param {string} text The prompt text to save
+ */
+function savePromptText(promptKey, text) {
+    const s = extension_settings[MODULE_NAME];
+    if (promptKey === 'consolidation') {
+        const strategy = s.consolidationStrategy || 'balanced';
+        if (!s.consolidationPrompts) s.consolidationPrompts = {};
+        s.consolidationPrompts[strategy] = text;
+    } else {
+        s[PROMPT_CONFIG[promptKey].settingsKey] = text;
+    }
+    saveSettingsDebounced();
+}
+
+/**
+ * Check whether the current prompt is customized (differs from default).
+ * @param {string} promptKey Key from PROMPT_CONFIG
+ * @returns {boolean}
+ */
+function isPromptCustomized(promptKey) {
+    return getPromptText(promptKey) !== getDefaultPromptText(promptKey);
+}
+
+/**
+ * Build and show the Prompts modal with left-nav layout.
+ * @param {string} activePrompt Which prompt to show initially: 'extraction', 'groupExtraction', 'consolidation', 'conversion'
+ */
+async function showPromptsModal(activePrompt = 'extraction') {
+    const s = extension_settings[MODULE_NAME];
+
+    // Build nav items
+    const navItems = Object.entries(PROMPT_CONFIG).map(([key, config]) =>
+        `<button class="charMemory_modalNavItem${key === activePrompt ? ' active' : ''}" data-prompt="${escapeAttr(key)}">${escapeHtml(config.navLabel)}</button>`
+    ).join('');
+
+    // Build content sections — one per prompt
+    const sections = Object.entries(PROMPT_CONFIG).map(([key, config]) => {
+        const current = getPromptText(key);
+        const customized = isPromptCustomized(key);
+        const badgeText = customized ? 'customized' : 'default';
+        const strategyNote = key === 'consolidation'
+            ? `<small class="charMemory_helperText" style="margin-bottom:8px;display:block;">Strategy: <b>${escapeHtml(CONSOLIDATION_PRESETS[s.consolidationStrategy || 'balanced']?.name || 'balanced')}</b></small>`
+            : '';
+
+        return `<div class="charMemory_modalSection${key === activePrompt ? ' active' : ''}" data-prompt="${escapeAttr(key)}">
+            <div class="charMemory_promptHeader">
+                <h3>${escapeHtml(config.title)}</h3>
+                <span class="charMemory_promptBadge">${badgeText}</span>
+            </div>
+            ${strategyNote}
+            <textarea class="text_pole charMemory_promptEditor" data-prompt="${escapeAttr(key)}">${escapeHtml(current)}</textarea>
+            <div class="charMemory_buttonRow" style="margin-top:8px;">
+                <input type="button" class="menu_button charMemory_promptSave" value="Save" />
+                <input type="button" class="menu_button charMemory_promptRestore" value="Restore Default" />
+            </div>
+        </div>`;
+    }).join('');
+
+    const html = `<div class="charMemory_modal charMemory_promptsModal">
+        <div class="charMemory_modalNav">${navItems}</div>
+        <div class="charMemory_modalContent">${sections}</div>
+    </div>`;
+
+    const popup = callGenericPopup(html, POPUP_TYPE.TEXT, '', { wide: true, allowVerticalScrolling: true });
+
+    // Scope all handlers to this modal instance
+    const $modal = $('.charMemory_promptsModal').last();
+
+    // Nav switching — save current textarea before switching
+    $modal.on('click', '.charMemory_modalNavItem', function () {
+        // Save current section's textarea before switching
+        const $currentSection = $modal.find('.charMemory_modalSection.active');
+        const $currentEditor = $currentSection.find('textarea');
+        if ($currentEditor.length) {
+            const currentKey = $currentEditor.data('prompt');
+            savePromptText(currentKey, $currentEditor.val());
+            syncSidebarPrompt(currentKey);
+        }
+
+        // Switch nav
+        const targetKey = $(this).data('prompt');
+        $modal.find('.charMemory_modalNavItem').removeClass('active');
+        $(this).addClass('active');
+
+        // Switch section
+        $modal.find('.charMemory_modalSection').removeClass('active');
+        const $targetSection = $modal.find(`.charMemory_modalSection[data-prompt="${targetKey}"]`);
+        $targetSection.addClass('active');
+
+        // Reload the prompt text (in case it was changed externally)
+        const freshText = getPromptText(targetKey);
+        $targetSection.find('textarea').val(freshText);
+
+        // Update badge
+        const customized = isPromptCustomized(targetKey);
+        $targetSection.find('.charMemory_promptBadge').text(customized ? 'customized' : 'default');
+    });
+
+    // Save button
+    $modal.on('click', '.charMemory_promptSave', function () {
+        const $section = $(this).closest('.charMemory_modalSection');
+        const $editor = $section.find('textarea');
+        const key = $editor.data('prompt');
+        savePromptText(key, $editor.val());
+        syncSidebarPrompt(key);
+
+        // Update badge
+        const customized = isPromptCustomized(key);
+        $section.find('.charMemory_promptBadge').text(customized ? 'customized' : 'default');
+
+        toastr.success('Prompt saved.');
+    });
+
+    // Restore Default button
+    $modal.on('click', '.charMemory_promptRestore', async function () {
+        const $section = $(this).closest('.charMemory_modalSection');
+        const $editor = $section.find('textarea');
+        const key = $editor.data('prompt');
+
+        const confirmed = await callGenericPopup(
+            'Restore this prompt to its default text? Your customizations will be lost.',
+            POPUP_TYPE.CONFIRM,
+            'Restore Default Prompt',
+        );
+        if (!confirmed) return;
+
+        const defaultText = getDefaultPromptText(key);
+        $editor.val(defaultText);
+        savePromptText(key, defaultText);
+        syncSidebarPrompt(key);
+
+        // Update badge
+        $section.find('.charMemory_promptBadge').text('default');
+
+        toastr.success('Prompt restored to default.');
+    });
+
+    await popup;
+}
+
+/**
+ * Sync a prompt change back to the sidebar controls (if they exist).
+ * @param {string} promptKey Key from PROMPT_CONFIG
+ */
+function syncSidebarPrompt(promptKey) {
+    switch (promptKey) {
+        case 'extraction':
+            $('#charMemory_extractionPrompt').val(extension_settings[MODULE_NAME].extractionPrompt);
+            break;
+        case 'groupExtraction':
+            $('#charMemory_groupExtractionPrompt').val(extension_settings[MODULE_NAME].groupExtractionPrompt);
+            break;
+        case 'consolidation':
+            updateConsolidationStrategyUI();
+            break;
+        case 'conversion':
+            $('#charMemory_convertPrompt').val(extension_settings[MODULE_NAME].conversionPrompt || defaultConversionPrompt);
+            break;
+    }
 }
 
 /**
