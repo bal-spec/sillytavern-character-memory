@@ -1033,6 +1033,7 @@ let lastDiagnostics = {
 };
 let diagnosticsHistory = [];
 let pendingDiagnosticsMessageIndex = null;
+let healthRecheckTimer = null; // delayed re-check after vectorization (race condition guard)
 
 /**
  * Toggle provider settings panel visibility.
@@ -3059,6 +3060,11 @@ function captureDiagnostics(messageIndex) {
     }
 
     updateHealthIndicator();
+
+    // Vector Storage may finish vectorizing the file shortly after the message renders.
+    // Schedule a follow-up health re-check to catch that (debounced to avoid hammering).
+    clearTimeout(healthRecheckTimer);
+    healthRecheckTimer = setTimeout(() => updateHealthIndicator(), 4000);
 
     // Auto-update injection drawer if open
     if ($('#charMemory_injectionDrawer').hasClass('open') && typeof messageIndex === 'number' && messageIndex >= 0) {
