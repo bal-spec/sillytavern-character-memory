@@ -1443,14 +1443,41 @@
 }
 
 .charMemory_wizardExplanation {
-    font-size: 0.9em;
+    font-size: 0.82em;
     line-height: 1.5;
     opacity: 0.85;
-    margin-bottom: 12px;
-    padding: 8px 10px;
+    margin-bottom: 10px;
+    padding: 6px 10px;
     background: var(--SmartThemeBlurTintColor, rgba(0, 0, 0, 0.05));
     border-radius: 6px;
     border-left: 3px solid var(--SmartThemeQuoteColor, #888);
+}
+
+.charMemory_wizConnectRow {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
+.charMemory_wizApiKeyGroup {
+    flex: 1;
+    min-width: 0;
+}
+
+.charMemory_wizApiKeyGroup label {
+    display: block;
+    margin-bottom: 4px;
+}
+
+.charMemory_wizApiKeyGroup .text_pole {
+    width: 100%;
+}
+
+.charMemory_wizConnectRow > .menu_button {
+    flex-shrink: 0;
+    white-space: nowrap;
+    align-self: flex-end;
 }
 
 .charMemory_wizardNav {

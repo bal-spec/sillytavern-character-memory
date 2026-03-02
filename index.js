@@ -4611,8 +4611,13 @@ async function showSetupWizard(startStep = 1) {
         </div>`;
 
     // Step 1: LLM Connection
+    const noChatWarnStyle = getCharacterName() ? 'display:none;' : '';
     const step1Html = `
         <div class="charMemory_wizardStep" data-step="1">
+            <div id="cm_wiz_noChatWarn" class="charMemory_wizardCallout charMemory_wizardCallout--warn" style="${noChatWarnStyle}">
+                <i class="fa-solid fa-triangle-exclamation fa-sm"></i>
+                <span><strong>Not in a chat.</strong> CharMemory needs an active character to extract memories. You can configure it now \u2014 just open a chat before clicking Extract Now.</span>
+            </div>
             <div class="charMemory_wizardExplanation">
                 <strong>CharMemory</strong> automatically extracts structured memories from your roleplay chats and stores them so your characters can recall past events.
                 It needs access to an LLM to read your messages and create memory summaries. This can be any OpenAI-compatible provider.
@@ -4622,18 +4627,18 @@ async function showSetupWizard(startStep = 1) {
                 <select id="cm_wiz_provider" class="text_pole">${providerOptions}</select>
                 <small id="cm_wiz_providerHint" class="charMemory_helperText"></small>
             </div>
-            <div class="charMemory_modalFieldGroup" id="cm_wiz_apiKeyRow" style="${preset.requiresApiKey ? '' : 'display:none;'}">
-                <label><small>API Key <a id="cm_wiz_helpLink" href="${escapeAttr(preset.helpUrl || '#')}" target="_blank" style="font-size:0.85em;${preset.helpUrl ? '' : 'display:none;'}">(get key)</a></small></label>
-                <input type="password" id="cm_wiz_apiKey" class="text_pole" placeholder="Enter API key" value="${escapeAttr(providerSettings.apiKey || '')}" />
-            </div>
             <div class="charMemory_modalFieldGroup" id="cm_wiz_baseUrlRow" style="${preset.allowCustomUrl ? '' : 'display:none;'}">
                 <label><small>Base URL</small></label>
                 <input type="text" id="cm_wiz_baseUrl" class="text_pole" placeholder="${preset.authStyle === 'none' ? 'http://127.0.0.1:1234/v1' : 'https://your-server.com/v1'}" value="${escapeAttr(providerSettings.customBaseUrl || preset.baseUrl || '')}" />
             </div>
-            <div class="charMemory_modalFieldGroup">
-                <input type="button" id="cm_wiz_connect" class="menu_button charMemory_fullWidth" value="Connect &amp; Test" />
-                <small id="cm_wiz_connectStatus" class="charMemory_helperText" style="display:none;"></small>
+            <div class="charMemory_wizConnectRow">
+                <div class="charMemory_wizApiKeyGroup" id="cm_wiz_apiKeyRow" style="${preset.requiresApiKey ? '' : 'display:none;'}">
+                    <label><small>API Key <a id="cm_wiz_helpLink" href="${escapeAttr(preset.helpUrl || '#')}" target="_blank" style="font-size:0.85em;${preset.helpUrl ? '' : 'display:none;'}">(get key)</a></small></label>
+                    <input type="password" id="cm_wiz_apiKey" class="text_pole" placeholder="Enter API key" value="${escapeAttr(providerSettings.apiKey || '')}" />
+                </div>
+                <input type="button" id="cm_wiz_connect" class="menu_button${preset.requiresApiKey ? '' : ' charMemory_fullWidth'}" value="Connect &amp; Test" />
             </div>
+            <small id="cm_wiz_connectStatus" class="charMemory_helperText" style="display:none;margin-bottom:6px;"></small>
             <div class="charMemory_modalFieldGroup" id="cm_wiz_modelRow" style="display:none;">
                 <label><small>Model</small></label>
                 <div id="cm_wiz_nanogptFilters" style="display:none;">
@@ -4792,6 +4797,9 @@ async function showSetupWizard(startStep = 1) {
             $wizard.find('#cm_wiz_nanogptFilterRP').prop('checked', !!ps.nanogptFilterRoleplay);
             $wizard.find('#cm_wiz_nanogptFilterReasoning').prop('checked', !!ps.nanogptFilterReasoning);
         }
+
+        // Connect button is full-width when no API key field is shown
+        $wizard.find('#cm_wiz_connect').toggleClass('charMemory_fullWidth', !p.requiresApiKey);
 
         // Provider-specific hint below the dropdown
         const providerHints = {
