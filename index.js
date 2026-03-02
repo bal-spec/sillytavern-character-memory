@@ -3669,8 +3669,7 @@ async function showSettingsModal() {
             <input type="button" id="cm_modal_resetBatchProgress" class="menu_button" value="Reset Batch Progress"
                 title="Clears batch extraction records for all of this character's chats. Use before re-running Batch Extract to start fresh. Does not affect regular (non-batch) extraction for non-active chats." />
             <small class="charMemory_helperText">
-                Resets the Batch tool's progress for all of ${escapeHtml(getCharacterName() || 'this character')}'s chats, so the Batch tool will re-process them from scratch.
-                Each chat's own extraction pointer is not affected — only the Batch tool's progress log is cleared.
+                The Batch tool remembers the last message it processed in each chat file so future runs only extract new messages. Reset this to make Batch treat all of ${escapeHtml(getCharacterName() || 'this character')}'s chats as unprocessed — for example, after changing the extraction prompt. Does not affect Extract Now or auto-extraction.
             </small>
             <input type="button" id="cm_modal_resetExtraction" class="menu_button charMemory_dangerBtn" value="Clear All Memories" title="Delete this character's memory file and reset extraction tracking — cannot be undone" />
             <small class="charMemory_helperText">Deletes this character's memory file (contains memories from all their chats) and resets extraction tracking. Cannot be undone.</small>
@@ -4017,7 +4016,7 @@ async function showSettingsModal() {
     $('#cm_modal_resetBatchProgress').off('click').on('click', async function () {
         const charName = getCharacterName() || 'this character';
         const confirmed = await callGenericPopup(
-            `The Batch tool's progress for all of <strong>${escapeHtml(charName)}</strong>'s chats will be cleared. The Batch tool will re-process all chats. Each chat's own extraction pointer is not changed.`,
+            `The Batch tool's record of which messages it has already processed will be cleared for all of <strong>${escapeHtml(charName)}</strong>'s chats. The next Batch run will re-read every message from the start, which may create duplicate memories unless you clear existing memories first. Extract Now and auto-extraction are not affected.`,
             POPUP_TYPE.CONFIRM, 'Reset Batch Progress',
         );
         if (!confirmed) return;
@@ -5439,8 +5438,7 @@ async function showTroubleshooter(initialSection = 'health') {
                 <div class="charMemory_tsResetSection">
                     <button class="menu_button" id="cm_ts_resetBatchProgress">Reset Batch Progress</button>
                     <small class="charMemory_helperText">
-                        Resets the Batch tool's progress for all of ${escapeHtml(charName || 'this character')}'s chats, so the Batch tool will re-process them from scratch.
-                        Each chat's own extraction pointer is not affected — only the Batch tool's progress log is cleared.
+                        The Batch tool remembers the last message it processed in each chat file so future runs only extract new messages. Reset this to make Batch treat all of ${escapeHtml(charName || 'this character')}'s chats as unprocessed — for example, after changing the extraction prompt. Does not affect Extract Now or auto-extraction.
                     </small>
                 </div>
                 <div class="charMemory_tsResetSection">
@@ -5784,7 +5782,7 @@ async function showTroubleshooter(initialSection = 'health') {
     $('#cm_ts_resetBatchProgress').off('click').on('click', async function () {
         const charName = getCharacterName() || 'this character';
         const confirmed = await callGenericPopup(
-            `The Batch tool's progress for all of <strong>${escapeHtml(charName)}</strong>'s chats will be cleared. The Batch tool will re-process all chats. Each chat's own extraction pointer is not changed.`,
+            `The Batch tool's record of which messages it has already processed will be cleared for all of <strong>${escapeHtml(charName)}</strong>'s chats. The next Batch run will re-read every message from the start, which may create duplicate memories unless you clear existing memories first. Extract Now and auto-extraction are not affected.`,
             POPUP_TYPE.CONFIRM, 'Reset Batch Progress',
         );
         if (!confirmed) return;

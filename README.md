@@ -373,11 +373,13 @@ If batch extraction of a long chat produces too few memories, try:
 
 ### Resetting Extraction State
 
-Two reset options are available in Settings:
+Three reset options are available in Settings → Reset / Clear:
 
-**Reset Extraction State** resets the extraction tracking for the current character — both the active chat and all batch extraction state. After resetting, the extension treats all messages as unprocessed. This is useful when you want to re-extract from the beginning, perhaps after changing the extraction prompt or switching to a better model. It does **not** delete any memories. In group chats, this resets tracking for all group members.
+**Reset This Chat** resets the extraction pointer for the currently active chat. Next time you run "Extract Now", it will re-read all messages in that chat from the first message. This does not affect other chats or the Batch tool's records. In group chats, all members share one extraction pointer, so this resets all of them at once.
 
-**Clear All Memories** deletes the memory file and resets all extraction tracking. In default mode (not per-chat), the memory file contains memories from **all** of that character's chats, so this clears everything. This cannot be undone. In group chats, this deletes memory files for all group members.
+**Reset Batch Progress** clears the Batch tool's record of which messages it has already processed across all of this character's chat files. The Batch tool tracks this separately from regular extraction because non-active chat files can't be opened directly — it stores a `lastExtractedIndex` per chat file in `extension_settings`. Resetting this makes the Batch tool treat all chats as fully unprocessed on the next run. **Important:** if you reset batch progress without also clearing memories, the next Batch run will re-extract everything from scratch and may create duplicate memories. Use this when you want to re-run batch extraction from the beginning — for example after changing the extraction prompt. Does not affect Extract Now or auto-extraction.
+
+**Clear All Memories** deletes the character's memory file and resets all extraction tracking. The memory file contains memories from all of that character's chats (there is one shared file per character by default). This cannot be undone.
 
 ### Consolidation
 
