@@ -1551,48 +1551,12 @@ function updateStatusDisplay() {
     // Stats bar: cooldown timer
     updateCooldownDisplay();
     startCooldownTimer();
-    updateChatTypeVisibility();
-    updateGroupMembersList();
-    updateDashboardFileInfo();
 
     // Show resolved filename for 1:1 chats
     if (!isGroupChat()) {
         const charName = getCharacterName();
         $('#charMemory_resolvedFileName').text(charName ? getMemoryFileName() : '—');
     }
-}
-
-/**
- * Update the dashboard file info section with current memory file name and size.
- */
-function updateDashboardFileInfo() {
-    const targets = getMemoryTargets();
-    const $fileName = $('#charMemory_dashFileName');
-    const $fileMeta = $('#charMemory_dashFileMeta');
-
-    if (targets.length === 0) {
-        $fileName.text('No character');
-        $fileMeta.text('');
-        return;
-    }
-
-    const primary = targets[0];
-    $fileName.text(primary.fileName).attr('title', primary.fileName);
-
-    // Async load file size and chunk count
-    $fileMeta.text('loading...');
-    readMemoriesForCharacter(primary.avatar, primary.fileName).then(content => {
-        if (!content) {
-            $fileMeta.text('empty');
-            return;
-        }
-        const sizeKB = (new Blob([content]).size / 1024).toFixed(1);
-        const blocks = parseMemories(content);
-        const bulletCount = countMemories(blocks);
-        $fileMeta.text(`${sizeKB} KB \u00b7 ${blocks.length} chunk${blocks.length !== 1 ? 's' : ''} \u00b7 ${bulletCount} bullet${bulletCount !== 1 ? 's' : ''}`);
-    }).catch(() => {
-        $fileMeta.text('--');
-    });
 }
 
 /**
@@ -1633,45 +1597,6 @@ function updateDashboardDiagSummary() {
     }).catch(() => {
         $summary.html('<div class="charMemory_diagEmpty">Health check failed.</div>');
     });
-}
-
-/**
- * Show/hide the 1:1 and Group Chat settings sections based on current chat type.
- */
-function updateChatTypeVisibility() {
-    const group = isGroupChat();
-    $('#charMemory_section1v1').toggle(!group);
-    $('#charMemory_sectionGroup').toggle(group);
-}
-
-/**
- * Populate the group members filename list in settings UI.
- * Shows each group member with their resolved memory filename (editable).
- */
-function updateGroupMembersList() {
-    const $container = $('#charMemory_groupMembersList');
-    if (!$container.length) return;
-
-    const targets = getMemoryTargets();
-    if (targets.length <= 1) {
-        $container.html('<small class="charMemory_helperText">Open a group chat to see members.</small>');
-        return;
-    }
-
-    const rows = targets.map(target => {
-        const override = extension_settings[MODULE_NAME]?.characterFileNames?.[target.avatar] || '';
-        return `<div class="charMemory_groupMemberRow">
-            <span class="charMemory_groupMemberName">${escapeHtml(target.name)}</span>
-            <input type="text" class="text_pole charMemory_groupMemberFile"
-                   data-avatar="${escapeHtml(target.avatar)}"
-                   data-charname="${escapeHtml(target.name)}"
-                   value="${escapeHtml(override)}"
-                   placeholder="${escapeHtml(target.fileName)}"
-                   title="Current file: ${escapeHtml(target.fileName)}" />
-        </div>`;
-    }).join('');
-
-    $container.html(rows);
 }
 
 function updateCooldownDisplay() {
@@ -3877,11 +3802,6 @@ async function showSettingsModal() {
         ps.nanogptFilterReasoning = $('#cm_modal_nanogptFilterReasoning').is(':checked');
         saveSettingsDebounced();
         renderModalModelList($('#cm_modal_modelSearch').val(), cachedNanoGptModels || []);
-        // Sync sidebar filters
-        $('#charMemory_nanogptFilterSub').prop('checked', ps.nanogptFilterSubscription);
-        $('#charMemory_nanogptFilterOS').prop('checked', ps.nanogptFilterOpenSource);
-        $('#charMemory_nanogptFilterRP').prop('checked', ps.nanogptFilterRoleplay);
-        $('#charMemory_nanogptFilterReasoning').prop('checked', ps.nanogptFilterReasoning);
     });
 
     $('#cm_modal_refreshModels').off('click').on('click', function () {
@@ -3901,39 +3821,17 @@ async function showSettingsModal() {
         const ps = getProviderSettings(extension_settings[MODULE_NAME].selectedProvider);
         ps.model = String($(this).val());
         saveSettingsDebounced();
-        // Sync sidebar
-        $('#charMemory_providerModelInput').val(ps.model);
     });
 
     $('#cm_modal_systemPrompt').off('input').on('input', function () {
         const ps = getProviderSettings(extension_settings[MODULE_NAME].selectedProvider);
         ps.systemPrompt = String($(this).val());
         saveSettingsDebounced();
-        // Sync sidebar
-        $('#charMemory_providerSystemPrompt').val(ps.systemPrompt);
     });
 
     $('#cm_modal_testModel').off('click').on('click', async function () {
         await testProviderConnection();
     });
-
-    // NanoGPT filters
-    const nanoFilterHandler = function (filterKey) {
-        return function () {
-            const ps = getProviderSettings('nanogpt');
-            ps[filterKey] = !!$(this).prop('checked');
-            saveSettingsDebounced();
-            populateProviderModels('nanogpt', true).then(() => {
-                const match = currentModelList.find(m => m.id === ps.model);
-                $('#cm_modal_providerModel').val(ps.model || '');
-                $('#cm_modal_modelSearch').val(match ? match.name : ps.model || '');
-            });
-        };
-    };
-    $('#cm_modal_nanogptFilterSub').off('change').on('change', nanoFilterHandler('nanogptFilterSubscription'));
-    $('#cm_modal_nanogptFilterOS').off('change').on('change', nanoFilterHandler('nanogptFilterOpenSource'));
-    $('#cm_modal_nanogptFilterRP').off('change').on('change', nanoFilterHandler('nanogptFilterRoleplay'));
-    $('#cm_modal_nanogptFilterReasoning').off('change').on('change', nanoFilterHandler('nanogptFilterReasoning'));
 
     // Run Setup Wizard link — close settings and open wizard
     $('#cm_modal_runWizard').off('click').on('click', function () {
@@ -5294,7 +5192,7 @@ async function showSetupWizard(startStep = 1) {
 
     $wizard.on('click', '#cm_wiz_convertNow', function () {
         $wizard.find('#cm_wiz_existingMemories').hide();
-        showReformatPreview();
+        reformatMemories();
     });
 
     $wizard.on('click', '#cm_wiz_convertSkip', function () {
@@ -5752,7 +5650,7 @@ async function showTroubleshooter(initialSection = 'health') {
         );
         if (!confirmed) return;
         try {
-            const avatar = target?.avatar;
+            const avatar = $row.data('avatar') || target?.avatar;
             if (!avatar) return;
             await deleteFileFromServer(url, true);
             ensureCharacterAttachments(avatar);
@@ -6939,7 +6837,7 @@ async function reformatMemories() {
     logActivity(`Reformat started for ${target.name}: ${beforeCount} memories in ${originalBlocks.length} blocks`);
 
     // Show busy state
-    const $btn = $('#charMemory_convertPreview');
+    const $btn = $('#charMemory_formatBtn');
     $btn.val('Reformatting\u2026').prop('disabled', true);
 
     let result;
@@ -6955,7 +6853,7 @@ async function reformatMemories() {
         return;
     } finally {
         inApiCall = false;
-        $btn.val('Preview').prop('disabled', false);
+        $btn.val('Reformat').prop('disabled', false);
     }
 
     for (const w of result.warnings) {
@@ -6982,7 +6880,6 @@ async function reformatMemories() {
     // Save reformatted memories
     try {
         await writeMemoriesForCharacter(serializeMemories(editedBlocks), target.avatar, target.fileName);
-        $('#charMemory_undoReformat').prop('disabled', false);
     } catch (err) {
         console.error(LOG_PREFIX, 'Reformat save failed:', err);
         toastr.error('Failed to save reformatted memories.', 'CharMemory');
@@ -7012,7 +6909,6 @@ async function undoReformat() {
 
     await writeMemoriesForCharacter(reformatBackup.content, reformatBackup.avatar, reformatBackup.fileName);
     reformatBackup = null;
-    $('#charMemory_undoReformat').prop('disabled', true);
     toastr.info('Reformat undone — original memories restored.', 'CharMemory');
     logActivity('Reformat undone');
     updateStatusDisplay();
@@ -7060,302 +6956,9 @@ function registerSlashCommands() {
  * model search/picker with keyboard navigation, provider settings fields,
  * and NanoGPT filter checkboxes.
  */
-function setupConnectionControls() {
-    $('#charMemory_source').off('change').on('change', function () {
-        const val = String($(this).val());
-        extension_settings[MODULE_NAME].source = val;
-        saveSettingsDebounced();
-        toggleProviderSettings(val);
-    });
-
-    $('#charMemory_providerSelect').off('change').on('change', function () {
-        extension_settings[MODULE_NAME].selectedProvider = String($(this).val());
-        saveSettingsDebounced();
-        $('#cm_modal_testStatus').hide().text('');
-        $('#charMemory_providerConnectStatus').hide().text('');
-        updateProviderUI();
-    });
-
-    $('#charMemory_providerApiKey').off('input').on('input', function () {
-        const providerKey = extension_settings[MODULE_NAME].selectedProvider;
-        const providerSettings = getProviderSettings(providerKey);
-        providerSettings.apiKey = String($(this).val());
-        saveSettingsDebounced();
-    });
-
-    $('#charMemory_providerConnect').off('click').on('click', async function () {
-        const providerKey = extension_settings[MODULE_NAME].selectedProvider;
-        const preset = PROVIDER_PRESETS[providerKey];
-        const providerSettings = getProviderSettings(providerKey);
-        const $btn = $(this);
-        const $status = $('#charMemory_providerConnectStatus');
-
-        if (preset?.requiresApiKey && !providerSettings.apiKey) {
-            $status.text('Enter an API key first.').css('color', '#e74c3c').show();
-            return;
-        }
-
-        $btn.prop('disabled', true).val('Connecting...');
-        $status.text('Fetching models...').css('color', '').show();
-
-        try {
-            await populateProviderModels(providerKey, true);
-            const modelCount = currentModelList.length;
-            if (modelCount > 0) {
-                $status.text(`Connected — ${modelCount} model${modelCount !== 1 ? 's' : ''} available.`).css('color', '#27ae60').show();
-            } else {
-                $status.text('Connected, but no models returned.').css('color', '#e67e22').show();
-            }
-        } catch (err) {
-            $status.text(`Connection failed: ${err.message}`).css('color', '#e74c3c').show();
-        } finally {
-            $btn.prop('disabled', false).val('Connect');
-        }
-    });
-
-    // Model search input — filter dropdown on typing
-    $('#charMemory_modelSearch').off('input').on('input', function () {
-        const filter = $(this).val();
-        renderModelDropdown(filter);
-        $('#charMemory_modelDropdown').addClass('open');
-    });
-
-    // Model search input — open dropdown on focus
-    $('#charMemory_modelSearch').off('focus').on('focus', function () {
-        renderModelDropdown($(this).val());
-        $('#charMemory_modelDropdown').addClass('open');
-    });
-
-    // Model dropdown — select a model on click
-    $('#charMemory_modelDropdown').off('click').on('click', '.charMemory_modelOption', function () {
-        const modelId = $(this).data('model-id');
-        const model = currentModelList.find(m => m.id === modelId);
-        if (!model) return;
-
-        $('#charMemory_providerModel').val(modelId);
-        $('#charMemory_modelSearch').val(model.name);
-        $('#charMemory_modelDropdown').removeClass('open');
-
-        const providerKey = extension_settings[MODULE_NAME].selectedProvider;
-        const providerSettings = getProviderSettings(providerKey);
-        providerSettings.model = modelId;
-        saveSettingsDebounced();
-
-        if (providerKey === 'nanogpt' && cachedNanoGptModels) {
-            updateProviderModelInfo(cachedNanoGptModels, modelId);
-        }
-    });
-
-    // Close dropdown when clicking outside
-    $(document).off('click.charMemoryModelPicker').on('click.charMemoryModelPicker', function (e) {
-        if (!$(e.target).closest('.charMemory_modelPicker').length) {
-            $('#charMemory_modelDropdown').removeClass('open');
-            // Restore display to current selection if search was abandoned
-            const selectedId = $('#charMemory_providerModel').val();
-            if (selectedId) {
-                const model = currentModelList.find(m => m.id === selectedId);
-                if (model) $('#charMemory_modelSearch').val(model.name);
-            } else {
-                $('#charMemory_modelSearch').val('');
-            }
-        }
-    });
-
-    // Keyboard navigation in model dropdown
-    $('#charMemory_modelSearch').off('keydown').on('keydown', function (e) {
-        const $dropdown = $('#charMemory_modelDropdown');
-        if (!$dropdown.hasClass('open')) {
-            if (e.key === 'ArrowDown' || e.key === 'Enter') {
-                renderModelDropdown($(this).val());
-                $dropdown.addClass('open');
-                e.preventDefault();
-            }
-            return;
-        }
-
-        const $options = $dropdown.find('.charMemory_modelOption');
-        const $active = $dropdown.find('.charMemory_modelOption.active');
-        let idx = $options.index($active);
-
-        if (e.key === 'ArrowDown') {
-            e.preventDefault();
-            idx = Math.min(idx + 1, $options.length - 1);
-            $options.removeClass('active');
-            $options.eq(idx).addClass('active');
-            $options.eq(idx)[0]?.scrollIntoView({ block: 'nearest' });
-        } else if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            idx = Math.max(idx - 1, 0);
-            $options.removeClass('active');
-            $options.eq(idx).addClass('active');
-            $options.eq(idx)[0]?.scrollIntoView({ block: 'nearest' });
-        } else if (e.key === 'Enter') {
-            e.preventDefault();
-            if ($active.length) {
-                $active.click();
-            }
-        } else if (e.key === 'Escape') {
-            $dropdown.removeClass('open');
-        }
-    });
-
-    $('#charMemory_providerModelInput').off('input').on('input', function () {
-        const providerSettings = getProviderSettings(extension_settings[MODULE_NAME].selectedProvider);
-        providerSettings.model = String($(this).val());
-        saveSettingsDebounced();
-    });
-
-    $('#charMemory_providerRefreshModels').off('click').on('click', function () {
-        populateProviderModels(extension_settings[MODULE_NAME].selectedProvider, true);
-    });
-
-    $('#charMemory_providerBaseUrl').off('input').on('input', function () {
-        const providerSettings = getProviderSettings(extension_settings[MODULE_NAME].selectedProvider);
-        providerSettings.customBaseUrl = String($(this).val());
-        saveSettingsDebounced();
-    });
-
-    $('#charMemory_providerSystemPrompt').off('input').on('input', function () {
-        const providerSettings = getProviderSettings(extension_settings[MODULE_NAME].selectedProvider);
-        providerSettings.systemPrompt = String($(this).val());
-        saveSettingsDebounced();
-    });
-
-    $('#charMemory_providerApiKeyReveal').off('click').on('click', function () {
-        const $input = $('#charMemory_providerApiKey');
-        const $icon = $(this).find('i');
-        const $btn = $(this);
-        clearTimeout($btn.data('revealTimer'));
-        if ($input.attr('type') === 'password') {
-            $input.attr('type', 'text');
-            $icon.removeClass('fa-eye').addClass('fa-eye-slash');
-            $btn.data('revealTimer', setTimeout(() => {
-                $input.attr('type', 'password');
-                $icon.removeClass('fa-eye-slash').addClass('fa-eye');
-            }, 10000));
-        } else {
-            $input.attr('type', 'password');
-            $icon.removeClass('fa-eye-slash').addClass('fa-eye');
-        }
-    });
-
-    // Note: sidebar provider test button was removed in v2.0; test is now in the Settings Modal
-
-    $('#charMemory_nanogptFilterSub').off('change').on('change', function () {
-        const providerSettings = getProviderSettings('nanogpt');
-        providerSettings.nanogptFilterSubscription = !!$(this).prop('checked');
-        saveSettingsDebounced();
-        populateProviderModels('nanogpt', true);
-    });
-
-    $('#charMemory_nanogptFilterOS').off('change').on('change', function () {
-        const providerSettings = getProviderSettings('nanogpt');
-        providerSettings.nanogptFilterOpenSource = !!$(this).prop('checked');
-        saveSettingsDebounced();
-        populateProviderModels('nanogpt', true);
-    });
-
-    $('#charMemory_nanogptFilterRP').off('change').on('change', function () {
-        const providerSettings = getProviderSettings('nanogpt');
-        providerSettings.nanogptFilterRoleplay = !!$(this).prop('checked');
-        saveSettingsDebounced();
-        populateProviderModels('nanogpt', true);
-    });
-
-    $('#charMemory_nanogptFilterReasoning').off('change').on('change', function () {
-        const providerSettings = getProviderSettings('nanogpt');
-        providerSettings.nanogptFilterReasoning = !!$(this).prop('checked');
-        saveSettingsDebounced();
-        populateProviderModels('nanogpt', true);
-    });
-}
-
-/**
- * Wire event handlers for extraction settings and prompt controls.
- * Covers: enabled toggle, interval/maxMessages/cooldown/responseLength sliders,
- * extraction and group extraction prompts with restore buttons,
- * group member file overrides, and merge-chunks toggle.
- */
-function setupExtractionControls() {
-    $('#charMemory_autoExtractPill').off('click').on('click', function () {
-        extension_settings[MODULE_NAME].enabled = !extension_settings[MODULE_NAME].enabled;
-        $(this).toggleClass('active', !!extension_settings[MODULE_NAME].enabled);
-        saveSettingsDebounced();
-    });
-
-    $('#charMemory_interval').off('input').on('input', function () {
-        const val = Number($(this).val());
-        extension_settings[MODULE_NAME].interval = val;
-        $('#charMemory_intervalCounter').val(val);
-        saveSettingsDebounced();
-        updateStatusDisplay();
-    });
-
-    $('#charMemory_maxMessages').off('input').on('input', function () {
-        const val = Number($(this).val());
-        extension_settings[MODULE_NAME].maxMessagesPerExtraction = val;
-        $('#charMemory_maxMessagesCounter').val(val);
-        saveSettingsDebounced();
-    });
-
-    $('#charMemory_minCooldown').off('input').on('input', function () {
-        const val = Number($(this).val());
-        extension_settings[MODULE_NAME].minCooldownMinutes = val;
-        $('#charMemory_minCooldownCounter').val(val);
-        saveSettingsDebounced();
-    });
-
-    $('#charMemory_responseLength').off('input').on('input', function () {
-        const val = Number($(this).val());
-        extension_settings[MODULE_NAME].responseLength = val;
-        $('#charMemory_responseLengthCounter').val(val);
-        saveSettingsDebounced();
-    });
-
-    $('#charMemory_extractionPrompt').off('input').on('input', function () {
-        extension_settings[MODULE_NAME].extractionPrompt = String($(this).val());
-        saveSettingsDebounced();
-    });
-
-    $('#charMemory_restorePrompt').off('click').on('click', function () {
-        extension_settings[MODULE_NAME].extractionPrompt = defaultExtractionPrompt;
-        $('#charMemory_extractionPrompt').val(defaultExtractionPrompt);
-        saveSettingsDebounced();
-        toastr.info('Extraction prompt restored to default.', 'CharMemory');
-    });
-
-    $('#charMemory_groupExtractionPrompt').off('input').on('input', function () {
-        extension_settings[MODULE_NAME].groupExtractionPrompt = String($(this).val());
-        saveSettingsDebounced();
-    });
-
-    $('#charMemory_restoreGroupPrompt').off('click').on('click', function () {
-        extension_settings[MODULE_NAME].groupExtractionPrompt = defaultGroupExtractionPrompt;
-        $('#charMemory_groupExtractionPrompt').val(defaultGroupExtractionPrompt);
-        saveSettingsDebounced();
-        toastr.info('Group extraction prompt restored to default.', 'CharMemory');
-    });
-
-    // Group member filename overrides (event delegation for dynamic inputs)
-    $(document).on('input', '.charMemory_groupMemberFile', function () {
-        const avatar = $(this).data('avatar');
-        const value = String($(this).val()).trim();
-        if (!extension_settings[MODULE_NAME].characterFileNames) {
-            extension_settings[MODULE_NAME].characterFileNames = {};
-        }
-        if (value) {
-            extension_settings[MODULE_NAME].characterFileNames[avatar] = value;
-        } else {
-            delete extension_settings[MODULE_NAME].characterFileNames[avatar];
-        }
-        saveSettingsDebounced();
-    });
-
-    $('#charMemory_mergeChunks').off('change').on('change', function () {
-        extension_settings[MODULE_NAME].mergeChunks = !!$(this).prop('checked');
-        saveSettingsDebounced();
-    });
-}
+// setupConnectionControls() removed in v2.0 — all sidebar provider panel elements
+// (#charMemory_source, #charMemory_providerSelect, etc.) were removed from settings.html.
+// Connection and provider settings are now managed exclusively in the Settings Modal.
 
 /**
  * Wire event handlers for extraction, memory manager, and dashboard tool launchers.
@@ -7366,6 +6969,12 @@ function setupExtractionControls() {
 function setupToolControls() {
     $('#charMemory_extractNow').off('click').on('click', function () {
         extractMemories({ force: true });
+    });
+
+    $('#charMemory_autoExtractPill').off('click').on('click', function () {
+        extension_settings[MODULE_NAME].enabled = !extension_settings[MODULE_NAME].enabled;
+        $(this).toggleClass('active', !!extension_settings[MODULE_NAME].enabled);
+        saveSettingsDebounced();
     });
 
     $('#charMemory_manageMemories').off('click').on('click', () => showMemoryManager());
@@ -7383,42 +6992,9 @@ function setupToolControls() {
     $(document).off('change', '.charMemory_batchChatCheck').on('change', '.charMemory_batchChatCheck', updateBatchButtons);
 }
 
-/**
- * Wire event handlers for file name, per-chat, and chunk format settings.
- * Covers: memory file name input, per-chat toggle, chunk boundary dropdown,
- * custom separator input, and chunk metadata checkbox.
- */
-function setupStorageControls() {
-    $('#charMemory_fileName').off('input').on('input', function () {
-        const val = String($(this).val()).trim();
-        extension_settings[MODULE_NAME].fileName = val;
-        saveSettingsDebounced();
-    });
-
-    $('#charMemory_perChat').off('change').on('change', function () {
-        extension_settings[MODULE_NAME].perChat = !!$(this).prop('checked');
-        saveSettingsDebounced();
-    });
-
-    // Chunk boundary format controls
-    $('#charMemory_chunkBoundary').off('change').on('change', async function () {
-        const val = $(this).val();
-        extension_settings[MODULE_NAME].chunkBoundary = val;
-        saveSettingsDebounced();
-        toggleChunkBoundaryUI(val);
-        await offerReformat();
-    });
-
-    $('#charMemory_customSeparator').off('input').on('input', function () {
-        extension_settings[MODULE_NAME].customSeparator = $(this).val();
-        saveSettingsDebounced();
-    });
-
-    $('#charMemory_chunkMetadata').off('change').on('change', function () {
-        extension_settings[MODULE_NAME].chunkMetadata = $(this).prop('checked');
-        saveSettingsDebounced();
-    });
-}
+// setupStorageControls() removed in v2.0 — all sidebar storage panel elements
+// (#charMemory_fileName, #charMemory_perChat, etc.) were removed from settings.html.
+// Storage settings are now managed exclusively in the Settings Modal.
 
 /**
  * Wire event handlers for health indicator click.
@@ -7519,10 +7095,7 @@ async function clearAllMemories() {
 }
 
 function setupListeners() {
-    setupConnectionControls();
-    setupExtractionControls();
     setupToolControls();
-    setupStorageControls();
     setupLogControls();
 
     // Gear icon → Settings modal
