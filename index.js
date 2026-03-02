@@ -2417,7 +2417,9 @@ function clearModelCache(providerKey) {
 async function testProviderConnection() {
     const providerKey = extension_settings[MODULE_NAME].selectedProvider;
     const preset = PROVIDER_PRESETS[providerKey];
-    const $status = $('#charMemory_providerTestStatus');
+    // Target the Settings Modal elements (sidebar provider panel was removed in v2.0)
+    const $status = $('#cm_modal_testStatus');
+    const $btn = $('#cm_modal_testModel');
 
     if (!preset) {
         $status.text('Unknown provider selected.').css('color', '#e74c3c').show();
@@ -2430,7 +2432,6 @@ async function testProviderConnection() {
         return;
     }
 
-    const $btn = $('#charMemory_providerTest');
     $btn.prop('disabled', true).val('Testing...');
     $status.text('Testing model...').css('color', '').show();
 
@@ -3883,10 +3884,6 @@ async function showSettingsModal() {
 
     $('#cm_modal_testModel').off('click').on('click', async function () {
         await testProviderConnection();
-        // Also show status in modal
-        const sidebarStatus = $('#charMemory_providerTestStatus').text();
-        const sidebarColor = $('#charMemory_providerTestStatus').css('color');
-        $('#cm_modal_testStatus').text(sidebarStatus).css('color', sidebarColor).show();
     });
 
     // NanoGPT filters
@@ -4905,7 +4902,12 @@ async function showSetupWizard(startStep = 1) {
             wizConnectionOk = true;
             $wizard.find('#cm_wiz_next1').prop('disabled', false);
         } catch (err) {
-            $status.text(`\u2718 ${err.message || 'Connection failed'}`).css('color', '#e74c3c').show();
+            let errMsg = err.message || 'Connection failed';
+            // NVIDIA-specific: model list includes models that need terms accepted on build.nvidia.com
+            if (pk === 'nvidia' && errMsg.includes('Not Found')) {
+                errMsg += ' — Select a different model, or accept its terms on build.nvidia.com first.';
+            }
+            $status.text(`\u2718 ${errMsg}`).css('color', '#e74c3c').show();
             wizConnectionOk = false;
             $wizard.find('#cm_wiz_next1').prop('disabled', true);
         } finally {
@@ -7028,7 +7030,7 @@ function setupConnectionControls() {
     $('#charMemory_providerSelect').off('change').on('change', function () {
         extension_settings[MODULE_NAME].selectedProvider = String($(this).val());
         saveSettingsDebounced();
-        $('#charMemory_providerTestStatus').hide().text('');
+        $('#cm_modal_testStatus').hide().text('');
         $('#charMemory_providerConnectStatus').hide().text('');
         updateProviderUI();
     });
@@ -7196,7 +7198,7 @@ function setupConnectionControls() {
         }
     });
 
-    $('#charMemory_providerTest').off('click').on('click', () => testProviderConnection());
+    // Note: sidebar provider test button was removed in v2.0; test is now in the Settings Modal
 
     $('#charMemory_nanogptFilterSub').off('change').on('change', function () {
         const providerSettings = getProviderSettings('nanogpt');
