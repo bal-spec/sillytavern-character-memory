@@ -1359,6 +1359,38 @@
 
 .charMemory_tsResetSection .menu_button {
     margin-bottom: 4px;
+    width: 100%;
+}
+
+.charMemory_reportPre {
+    background: var(--SmartThemeBlurTintColor, rgba(0,0,0,0.2));
+    border: 1px solid var(--SmartThemeBorderColor, #555);
+    border-radius: 4px;
+    padding: 10px;
+    max-height: 280px;
+    overflow-y: auto;
+    font-size: 0.78em;
+    white-space: pre-wrap;
+    word-break: break-all;
+    margin-top: 10px;
+    user-select: text;
+    font-family: monospace;
+}
+
+.charMemory_reportActions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 8px;
+    flex-wrap: wrap;
+}
+
+.charMemory_reportFilename {
+    flex: 1;
+    min-width: 120px;
+    font-size: 0.85em !important;
+    padding: 3px 8px !important;
+    height: auto !important;
 }
 
 /* ===== Setup Wizard ===== */
@@ -1517,6 +1549,15 @@
     color: #4a4;
     margin-top: 2px;
     flex-shrink: 0;
+}
+
+.charMemory_wizardCallout--warn {
+    background: rgba(220, 140, 40, 0.08);
+    border-color: rgba(220, 140, 40, 0.3);
+}
+
+.charMemory_wizardCallout--warn i {
+    color: #dc8c28;
 }
 
 .charMemory_wizardExistingMemSection {

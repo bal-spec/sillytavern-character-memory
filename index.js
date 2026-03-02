@@ -4703,9 +4703,10 @@ async function showSetupWizard(startStep = 1) {
     const step3Html = `
         <div class="charMemory_wizardStep" data-step="3">
             <div id="cm_wiz_summary" class="charMemory_wizardSummary"></div>
+            <div id="cm_wiz_nextSteps"></div>
             <div class="charMemory_wizardCallout">
                 <i class="fa-solid fa-circle-info fa-sm"></i>
-                <span>Open the <strong>Injection Sidebar</strong> (<i class="fa-solid fa-syringe fa-sm"></i>) from the dashboard to see which memories are being used in your character's prompt in real time.</span>
+                <span>Once you have memories, open the <strong>Injection Sidebar</strong> (<i class="fa-solid fa-syringe fa-sm"></i>) to see which ones are being injected into the prompt in real time.</span>
             </div>
             <div id="cm_wiz_existingMemories" style="display:none;">
                 <div class="charMemory_wizardExistingMemSection">
@@ -5161,6 +5162,25 @@ async function showSetupWizard(startStep = 1) {
         } else {
             $existingSection.hide();
         }
+
+        // Contextual next-steps guidance
+        const wizCharName = getCharacterName();
+        const $nextSteps = $wizard.find('#cm_wiz_nextSteps');
+        if (wizCharName) {
+            $nextSteps.html(`
+                <div class="charMemory_wizardCallout">
+                    <i class="fa-solid fa-check-circle fa-sm"></i>
+                    <span>You're in a chat with <strong>${escapeHtml(wizCharName)}</strong>. After closing, click <strong>Extract Now</strong> in the CharMemory panel to create your first memories.</span>
+                </div>
+            `);
+        } else {
+            $nextSteps.html(`
+                <div class="charMemory_wizardCallout charMemory_wizardCallout--warn">
+                    <i class="fa-solid fa-triangle-exclamation fa-sm"></i>
+                    <span><strong>Open a chat first.</strong> CharMemory needs an active character to extract from. Start a chat with a character, then click <strong>Extract Now</strong> in the panel.</span>
+                </div>
+            `);
+        }
     }
 
     // --- Navigation handlers ---
@@ -5189,6 +5209,19 @@ async function showSetupWizard(startStep = 1) {
         if ($dialog.length) {
             $dialog.find('.popup-button-ok, .popup-button-close').first().trigger('click');
         }
+        // Open the CharMemory sidebar panel and orient the user
+        setTimeout(() => {
+            const $content = $('.charMemory_settings .inline-drawer-content');
+            if ($content.length && !$content.is(':visible')) {
+                $('.charMemory_settings .inline-drawer-toggle').trigger('click');
+            }
+            const doneCharName = getCharacterName();
+            if (!doneCharName) {
+                toastr.info('Open a chat with a character, then click <b>Extract Now</b> to start building memories.', 'CharMemory', { timeOut: 7000, escapeHtml: false });
+            } else {
+                toastr.success(`Click <b>Extract Now</b> in the panel to extract your first memories for ${escapeHtml(doneCharName)}.`, 'CharMemory', { timeOut: 7000, escapeHtml: false });
+            }
+        }, 400);
     });
 
     // Cleanup when popup closes
@@ -5368,11 +5401,14 @@ async function showTroubleshooter(initialSection = 'health') {
             </div>
             <div class="charMemory_modalSection${navActive('report')}" data-section="report">
                 <h4 class="charMemory_modalSectionTitle">Diagnostic Report</h4>
-                <small class="charMemory_helperText">Copy a full diagnostic report to your clipboard for sharing with support or debugging.</small>
-                <div style="margin-top:10px;">
-                    <button class="menu_button" id="cm_ts_copyReport"><i class="fa-solid fa-clipboard fa-sm"></i> Copy diagnostic report</button>
-                    <small id="cm_ts_reportStatus" class="charMemory_helperText" style="display:none;"></small>
+                <small class="charMemory_helperText">Full snapshot of settings, health checks, and memory state for debugging.</small>
+                <pre id="cm_ts_reportContent" class="charMemory_reportPre">Generating\u2026</pre>
+                <div class="charMemory_reportActions">
+                    <button class="menu_button" id="cm_ts_copyReport"><i class="fa-solid fa-clipboard fa-sm"></i> Copy</button>
+                    <input type="text" id="cm_ts_reportFilename" class="text_pole charMemory_reportFilename" value="charMemory-diagnostic.txt" placeholder="filename.txt" />
+                    <button class="menu_button" id="cm_ts_saveReport"><i class="fa-solid fa-download fa-sm"></i> Save</button>
                 </div>
+                <small id="cm_ts_reportStatus" class="charMemory_helperText" style="display:none;margin-top:4px;"></small>
             </div>
             <div class="charMemory_modalSection${navActive('reset')}" data-section="reset">
                 <h4 class="charMemory_modalSectionTitle">Reset / Clear</h4>
@@ -5678,18 +5714,37 @@ async function showTroubleshooter(initialSection = 'health') {
         $(this).val('');
     });
 
+    // Diagnostic Report: populate pre box on open
+    buildDiagnosticReport().then(report => {
+        $('#cm_ts_reportContent').text(report);
+    }).catch(err => {
+        $('#cm_ts_reportContent').text('Failed to generate report: ' + err.message);
+    });
+
     // Diagnostic Report: copy to clipboard
     $('#cm_ts_copyReport').off('click').on('click', async function () {
         try {
-            const report = await buildDiagnosticReport();
-            await navigator.clipboard.writeText(report);
+            await navigator.clipboard.writeText($('#cm_ts_reportContent').text());
             const $status = $('#cm_ts_reportStatus');
-            $status.text('Copied to clipboard!').show();
+            $status.text('Copied!').show();
             setTimeout(() => $status.fadeOut(300), 2000);
         } catch (err) {
             console.error(LOG_PREFIX, 'Failed to copy report:', err);
             toastr.error('Could not copy report to clipboard.', 'CharMemory');
         }
+    });
+
+    // Diagnostic Report: save to file
+    $('#cm_ts_saveReport').off('click').on('click', function () {
+        const report = $('#cm_ts_reportContent').text();
+        const filename = ($('#cm_ts_reportFilename').val() || '').trim() || 'charMemory-diagnostic.txt';
+        const blob = new Blob([report], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
     });
 
     // Re-run Setup Wizard
