@@ -5542,6 +5542,7 @@ async function showTroubleshooter(initialSection = 'health') {
                 $('#cm_ts_fileEditorPane').html(renderConsolidatedCards(currentBlocks, editing, tsFindPattern));
                 $('#cm_ts_fileEditorCount').text(`${countMemories(currentBlocks)} memories in ${currentBlocks.length} blocks`);
                 $('#cm_ts_fileEditorAddBlock').toggleClass('charMemory_editorAddBlock--hidden', editing.size === 0);
+                $('#cm_ts_fileUndoBtn').prop('disabled', !tsEditor.canUndo());
             };
 
             const editorHtml = `<div class="charMemory_tsFileEditor">
@@ -5553,6 +5554,7 @@ async function showTroubleshooter(initialSection = 'health') {
                 <div class="charMemory_consolidationContent" id="cm_ts_fileEditorPane">${renderConsolidatedCards(blocks, emptyEditingSet)}</div>
                 <div class="charMemory_tsFileEditorFooter">
                     <button class="charMemory_editorAddBlock menu_button charMemory_editorAddBlock--hidden" id="cm_ts_fileEditorAddBlock"><i class="fa-solid fa-plus fa-xs"></i> Add Block</button>
+                    <button class="menu_button" id="cm_ts_fileUndoBtn" disabled><i class="fa-solid fa-rotate-left fa-xs"></i> Undo</button>
                     <button class="menu_button" id="cm_ts_fileSaveBtn"><i class="fa-solid fa-floppy-disk fa-xs"></i> Save changes</button>
                 </div>
             </div>`;
@@ -5599,6 +5601,10 @@ async function showTroubleshooter(initialSection = 'health') {
                 $('#cm_ts_fileEditorPane .charMemory_editorCard:last .charMemory_editorBulletInput:last').focus();
             });
 
+            $(document).off('click.charMemoryTsEditorUndo').on('click.charMemoryTsEditorUndo', '#cm_ts_fileUndoBtn', function () {
+                if (tsEditor.undo()) refreshTsEditor();
+            });
+
             // Save button — explicit save (popup stays open on error, closes on success)
             $(document).off('click.charMemoryTsEditorSave').on('click.charMemoryTsEditorSave', '#cm_ts_fileSaveBtn', async function () {
                 if (!avatar) return;
@@ -5621,7 +5627,7 @@ async function showTroubleshooter(initialSection = 'health') {
             // Popup dismissed (OK or Escape) — just clean up event handlers
             savePopup.then(() => {
                 cleanupTsFR();
-                $(document).off('click.charMemoryTsEditorToggle click.charMemoryTsEditorDelBullet click.charMemoryTsEditorDelBlock click.charMemoryTsEditorAddBullet click.charMemoryTsEditorAddBlock click.charMemoryTsEditorSave');
+                $(document).off('click.charMemoryTsEditorToggle click.charMemoryTsEditorDelBullet click.charMemoryTsEditorDelBlock click.charMemoryTsEditorAddBullet click.charMemoryTsEditorAddBlock click.charMemoryTsEditorUndo click.charMemoryTsEditorSave');
                 $(document).off('input.charMemoryTsEditorBullet input.charMemoryTsEditorTheme');
             });
         } catch (err) {
