@@ -68,6 +68,7 @@ CharMemory stores memories as plain files in the character's Data Bank. Tools li
 | [Retrieval & Prompts](docs/retrieval-and-prompts.md) | Vector Storage setup, tuning, and prompt design for better recall |
 | [Providers](docs/providers.md) | API keys, model recommendations, free options |
 | [Troubleshooting](docs/troubleshooting.md) | Health checks, diagnostics, reset tools |
+| [Architecture](docs/architecture.md) | Technical overview for developers and contributors |
 
 ## About the examples
 
