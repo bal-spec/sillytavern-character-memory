@@ -53,6 +53,10 @@ https://github.com/bal-spec/sillytavern-character-memory
 
 → **[Getting Started](docs/getting-started.md)** has a step-by-step walkthrough of the wizard and your first extraction.
 
+## Before you start
+
+CharMemory stores memories as plain files in the character's Data Bank. Tools like **Consolidate**, **Replace All**, and **Clear All Memories** modify or delete these files and cannot always be undone. **Back up your Data Bank files** before making bulk changes — use SillyTavern's built-in [backup tools](https://docs.sillytavern.app/usage/user-settings/) or download individual files from the Data Bank.
+
 ## Documentation
 
 | | |
