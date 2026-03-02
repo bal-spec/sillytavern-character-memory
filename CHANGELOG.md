@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.1.1
+
+### Bug Fixes
+
+- **KoboldCPP vectorization check false negative**: The health check reported files as "not vectorized" when using KoboldCPP as the vectorization backend. KoboldCPP doesn't store its model name in Vector Storage settings — it's discovered dynamically from the API. The check now queries the KoboldCPP embed endpoint to discover the correct model name before looking up vector data.
+
 ## 2.1.0
 
 ### New Features
