@@ -51,7 +51,7 @@ import {
 import { createMemoryEditor } from './editor.js';
 
 const MODULE_NAME = 'charMemory';
-const MODULE_VERSION = '2.0.1';
+const MODULE_VERSION = '2.1.0';
 const DEFAULT_FILE_NAME = 'char-memories.md';
 const LOG_PREFIX = '[CharMemory]';
 
@@ -471,6 +471,7 @@ const defaultSettings = {
     chunkMetadata: false,
     conversionPrompt: '',
     injectionDrawerOpen: false,
+    tabletMode: 'auto',
 };
 
 const PROMPT_CONFIG = {
@@ -1500,6 +1501,18 @@ if (!window._charMemoryVisibilityBound) {
             updateHealthIndicator();
         }
     });
+}
+
+/**
+ * Whether tablet mode is currently active.
+ * 'auto' detects touch capability at runtime; 'on'/'off' are explicit overrides.
+ * @returns {boolean}
+ */
+function isTabletMode() {
+    const mode = extension_settings[MODULE_NAME].tabletMode || 'auto';
+    if (mode === 'on') return true;
+    if (mode === 'off') return false;
+    return 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 }
 
 function ensureMetadata() {
@@ -3606,7 +3619,23 @@ async function showSettingsModal() {
     `;
 
     // Advanced section HTML
+    const tabletModeVal = s.tabletMode || 'auto';
+    const tabletOptions = [
+        { val: 'auto', label: 'Auto (detect touch)' },
+        { val: 'on', label: 'Always on' },
+        { val: 'off', label: 'Off' },
+    ].map(o => `<option value="${o.val}" ${tabletModeVal === o.val ? 'selected' : ''}>${o.label}</option>`).join('');
+
     const advancedHtml = `
+        <h4 class="charMemory_modalSectionTitle">Display</h4>
+        <div class="charMemory_statusRow">
+            <label for="cm_modal_tabletMode">
+                <small>Tablet / Touch Mode</small>
+            </label>
+            <select id="cm_modal_tabletMode" class="text_pole">${tabletOptions}</select>
+            <small class="charMemory_helperText">Opens the dashboard as a floating centered panel instead of expanding in the narrow sidebar. "Auto" detects touch devices.</small>
+        </div>
+        <hr class="charMemory_separator" />
         <h4 class="charMemory_modalSectionTitle">Memory File Format</h4>
         <div class="charMemory_statusRow">
             <label for="cm_modal_chunkBoundary">
@@ -3914,6 +3943,16 @@ async function showSettingsModal() {
     });
 
     // === Advanced handlers ===
+    $('#cm_modal_tabletMode').off('change').on('change', function () {
+        const val = $(this).val();
+        extension_settings[MODULE_NAME].tabletMode = val;
+        saveSettingsDebounced();
+        // If switched to 'off' while tablet panel is open, close it and restore sidebar
+        if (val === 'off' && isTabletPanelOpen()) {
+            toggleTabletPanel(false);
+        }
+    });
+
     $('#cm_modal_chunkBoundary').off('change').on('change', async function () {
         const val = $(this).val();
         extension_settings[MODULE_NAME].chunkBoundary = val;
@@ -5220,11 +5259,15 @@ async function showSetupWizard(startStep = 1) {
         if ($dialog.length) {
             $dialog.find('.popup-button-ok, .popup-button-close').first().trigger('click');
         }
-        // Open the CharMemory sidebar panel and orient the user
+        // Open the CharMemory panel and orient the user
         setTimeout(() => {
-            const $content = $('.charMemory_settings .inline-drawer-content');
-            if ($content.length && !$content.is(':visible')) {
-                $('.charMemory_settings .inline-drawer-toggle').trigger('click');
+            if (isTabletMode()) {
+                toggleTabletPanel(true);
+            } else {
+                const $content = $('.charMemory_settings .inline-drawer-content');
+                if ($content.length && !$content.is(':visible')) {
+                    $('.charMemory_settings .inline-drawer-toggle').trigger('click');
+                }
             }
             const doneCharName = getCharacterName();
             if (!doneCharName) {
@@ -7228,19 +7271,29 @@ function setupLogControls() {
         showTroubleshooter('health');
     });
 
-    // Refresh status + health when the CharMemory panel is opened.
-    // ST's inline-drawer toggles the content on header click — we detect the
-    // transition to open by checking visibility after a minimal delay.
-    $('.charMemory_settings .inline-drawer-toggle')
-        .off('click.charMemoryPanelOpen')
-        .on('click.charMemoryPanelOpen', function () {
+    // Intercept inline-drawer toggle for tablet mode.
+    // In tablet mode: prevent ST's native sidebar expansion, open floating panel instead.
+    // In normal mode: refresh status/health when the drawer opens (existing behavior).
+    // Uses capturing phase to fire before ST's own inline-drawer handler.
+    const drawerToggle = document.querySelector('.charMemory_settings .inline-drawer-toggle');
+    if (drawerToggle && !drawerToggle._charMemoryTabletBound) {
+        drawerToggle._charMemoryTabletBound = true;
+        drawerToggle.addEventListener('click', function (e) {
+            if (isTabletMode()) {
+                e.stopPropagation();
+                e.preventDefault();
+                toggleTabletPanel();
+                return;
+            }
+            // Normal mode: let ST handle the toggle, then refresh if opened
             setTimeout(() => {
                 if ($('.charMemory_settings .inline-drawer-content').is(':visible')) {
                     updateStatusDisplay();
                     updateHealthIndicator();
                 }
             }, 50);
-        });
+        }, true); // capturing phase
+    }
 }
 
 /**
@@ -7593,6 +7646,61 @@ function toggleLogDrawer(forceState) {
     }
 
     $drawer.toggleClass('open', shouldOpen);
+}
+
+/**
+ * Whether the tablet panel is currently open.
+ * @returns {boolean}
+ */
+function isTabletPanelOpen() {
+    return $('#charMemory_tabletPanel').hasClass('open');
+}
+
+/**
+ * Toggle the tablet floating panel open/closed.
+ * When opening: relocates sidebar header icons and content into the panel.
+ * When closing: moves everything back to the sidebar.
+ * Event handlers survive because they are bound to the element IDs, not parent containers.
+ * @param {boolean} [forceState] If provided, force open (true) or closed (false).
+ */
+function toggleTabletPanel(forceState) {
+    const $panel = $('#charMemory_tabletPanel');
+    const isOpen = $panel.hasClass('open');
+    const shouldOpen = forceState !== undefined ? forceState : !isOpen;
+
+    if (shouldOpen === isOpen) return;
+
+    if (shouldOpen) {
+        // Move header icons from sidebar to panel header
+        const $icons = $('.charMemory_settings .inline-drawer-header .charMemory_headerGear');
+        $icons.detach().appendTo('#charMemory_tabletHeaderIcons');
+
+        // Move all inline-drawer-content children to the panel body
+        const $content = $('.charMemory_settings .inline-drawer-content');
+        $content.children().detach().appendTo('#charMemory_tabletBody');
+
+        // Ensure the sidebar drawer is collapsed
+        if ($content.is(':visible')) {
+            $content.hide();
+            $('.charMemory_settings .inline-drawer-icon').removeClass('up').addClass('down');
+        }
+
+        $panel.addClass('open');
+
+        // Refresh stats in the relocated elements
+        updateStatusDisplay();
+        updateHealthIndicator();
+    } else {
+        // Move children back to sidebar
+        const $sidebarContent = $('.charMemory_settings .inline-drawer-content');
+        $('#charMemory_tabletBody').children().detach().appendTo($sidebarContent);
+
+        // Move header icons back — insert before the chevron icon
+        const $chevron = $('.charMemory_settings .inline-drawer-header .inline-drawer-icon');
+        $('#charMemory_tabletHeaderIcons .charMemory_headerGear').detach().insertBefore($chevron);
+
+        $panel.removeClass('open');
+    }
 }
 
 /**
@@ -8011,6 +8119,20 @@ jQuery(async function () {
         </div>
     `);
 
+    // Tablet mode floating panel — appended to body, hidden by default
+    $('body').append(`
+        <div id="charMemory_tabletPanel" class="charMemory_tabletPanel">
+            <div class="charMemory_tabletHeader">
+                <b>CharMemory</b>
+                <div id="charMemory_tabletHeaderIcons" class="charMemory_tabletHeaderIcons"></div>
+                <div class="charMemory_drawerClose" id="charMemory_tabletClose" title="Close">
+                    <i class="fa-solid fa-xmark"></i>
+                </div>
+            </div>
+            <div id="charMemory_tabletBody" class="charMemory_tabletBody"></div>
+        </div>
+    `);
+
     loadSettings();
     setupListeners();
     registerSlashCommands();
@@ -8088,6 +8210,32 @@ jQuery(async function () {
         logDrawerEl.addEventListener('touchend', (e) => {
             const deltaX = e.changedTouches[0].clientX - logTouchStartX;
             if (deltaX > 60) toggleLogDrawer(false);
+        }, { passive: true });
+    }
+
+    // Tablet panel controls
+    $('#charMemory_tabletClose').on('click', () => toggleTabletPanel(false));
+
+    // Tap outside panel to dismiss (non-modal: doesn't block underlying tap)
+    $(document).off('click.tabletPanelClose').on('click.tabletPanelClose', function (e) {
+        if (!isTabletPanelOpen()) return;
+        // Don't close if an ST popup/modal is currently visible (their backdrop is outside the panel)
+        if ($('.popup:visible').length) return;
+        if (!$(e.target).closest('#charMemory_tabletPanel').length) {
+            toggleTabletPanel(false);
+        }
+    });
+
+    // Swipe down to dismiss tablet panel (touch devices)
+    const tabletPanelEl = document.getElementById('charMemory_tabletPanel');
+    if (tabletPanelEl) {
+        let tabletTouchStartY = 0;
+        tabletPanelEl.addEventListener('touchstart', (e) => {
+            tabletTouchStartY = e.touches[0].clientY;
+        }, { passive: true });
+        tabletPanelEl.addEventListener('touchend', (e) => {
+            const deltaY = e.changedTouches[0].clientY - tabletTouchStartY;
+            if (deltaY > 80) toggleTabletPanel(false);
         }, { passive: true });
     }
 

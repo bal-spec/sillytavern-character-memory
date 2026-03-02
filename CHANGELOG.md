@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.1.0
+
+### New Features
+
+- **Tablet / Touch Mode**: On touch devices (iPad, tablets), the dashboard now opens as a centered floating panel instead of expanding in the narrow sidebar. All buttons are enlarged to 44px touch targets per Apple HIG. The panel is non-modal — tap outside or swipe down to dismiss, and tools like Settings and Troubleshooter open on top. Controlled via Settings > Advanced > Tablet/Touch Mode (Auto / Always on / Off). Auto-detects touch capability by default.
+
 ## 2.0.1
 
 ### Improvements
