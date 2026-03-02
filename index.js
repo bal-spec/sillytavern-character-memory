@@ -5411,7 +5411,7 @@ async function showTroubleshooter(initialSection = 'health') {
         ensureCharacterAttachments(t.avatar);
         const attachments = extension_settings.character_attachments[t.avatar] || [];
         if (attachments.length === 0) {
-            return '<div class="charMemory_diagEmpty" style="margin:4px 0 8px;">No files.</div>';
+            return '<div class="charMemory_diagEmpty" style="margin:4px 0 8px;">No Data Bank files yet — run <b>Extract Now</b> to create memories.</div>';
         }
         let html = '<div class="charMemory_tsFileList">';
         for (const att of attachments) {
@@ -5609,10 +5609,13 @@ async function showTroubleshooter(initialSection = 'health') {
                     <span id="cm_ts_fileEditorCount" class="charMemory_dimText">${countMemories(blocks)} memories in ${blocks.length} blocks</span>
                 </div>
                 <div class="charMemory_consolidationContent" id="cm_ts_fileEditorPane">${renderConsolidatedCards(blocks, emptyEditingSet)}</div>
-                <button class="charMemory_editorAddBlock menu_button charMemory_editorAddBlock--hidden" id="cm_ts_fileEditorAddBlock"><i class="fa-solid fa-plus fa-xs"></i> Add Block</button>
+                <div class="charMemory_tsFileEditorFooter">
+                    <button class="charMemory_editorAddBlock menu_button charMemory_editorAddBlock--hidden" id="cm_ts_fileEditorAddBlock"><i class="fa-solid fa-plus fa-xs"></i> Add Block</button>
+                    <button class="menu_button" id="cm_ts_fileSaveBtn"><i class="fa-solid fa-floppy-disk fa-xs"></i> Save changes</button>
+                </div>
             </div>`;
 
-            const savePopup = callGenericPopup(editorHtml, POPUP_TYPE.CONFIRM, escapeHtml(name || 'Edit file'), { wide: true, allowVerticalScrolling: true });
+            const savePopup = callGenericPopup(editorHtml, POPUP_TYPE.TEXT, escapeHtml(name || 'View / Edit file'), { wide: true, allowVerticalScrolling: true });
 
             // Editor event delegation (ts-namespaced to avoid conflicts)
             $(document).off('click.charMemoryTsEditorToggle').on('click.charMemoryTsEditorToggle', '#cm_ts_fileEditorPane .charMemory_editorToggleEdit', function () {
@@ -5651,22 +5654,29 @@ async function showTroubleshooter(initialSection = 'health') {
                 $('#cm_ts_fileEditorPane .charMemory_editorCard:last .charMemory_editorBulletInput:last').focus();
             });
 
-            // On confirm (OK), save changes back to file
-            savePopup.then(async (confirmed) => {
-                $(document).off('click.charMemoryTsEditorToggle click.charMemoryTsEditorDelBullet click.charMemoryTsEditorDelBlock click.charMemoryTsEditorAddBullet click.charMemoryTsEditorAddBlock');
-                $(document).off('input.charMemoryTsEditorBullet input.charMemoryTsEditorTheme');
-
-                if (!confirmed || !avatar) return;
+            // Save button — explicit save (popup stays open on error, closes on success)
+            $(document).off('click.charMemoryTsEditorSave').on('click.charMemoryTsEditorSave', '#cm_ts_fileSaveBtn', async function () {
+                if (!avatar) return;
+                const $btn = $(this).prop('disabled', true).html('<i class="fa-solid fa-spinner fa-spin fa-xs"></i> Saving…');
                 try {
                     const updatedBlocks = tsEditor.getBlocks();
                     const updatedContent = serializeMemories(updatedBlocks);
                     await writeMemoriesForCharacter(updatedContent, avatar, name);
                     toastr.success(`Saved ${countMemories(updatedBlocks)} memories to ${name}.`, 'CharMemory');
                     updateStatusDisplay();
+                    // Close the popup after a successful save
+                    $('.dialogue_popup_ok').trigger('click');
                 } catch (err) {
                     console.error(LOG_PREFIX, 'Failed to save edited file:', err);
                     toastr.error('Could not save changes.', 'CharMemory');
+                    $btn.prop('disabled', false).html('<i class="fa-solid fa-floppy-disk fa-xs"></i> Save changes');
                 }
+            });
+
+            // Popup dismissed (OK or Escape) — just clean up event handlers
+            savePopup.then(() => {
+                $(document).off('click.charMemoryTsEditorToggle click.charMemoryTsEditorDelBullet click.charMemoryTsEditorDelBlock click.charMemoryTsEditorAddBullet click.charMemoryTsEditorAddBlock click.charMemoryTsEditorSave');
+                $(document).off('input.charMemoryTsEditorBullet input.charMemoryTsEditorTheme');
             });
         } catch (err) {
             console.error(LOG_PREFIX, 'Failed to read file:', err);

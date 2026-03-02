@@ -1364,6 +1364,14 @@
     border-bottom: 1px solid var(--SmartThemeBorderColor, rgba(128, 128, 128, 0.2));
 }
 
+.charMemory_tsFileEditorFooter {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-top: 6px;
+    border-top: 1px solid var(--SmartThemeBorderColor, rgba(128, 128, 128, 0.2));
+}
+
 .charMemory_tsFileActions .menu_button {
     padding: 3px 7px;
     font-size: 0.85em;
