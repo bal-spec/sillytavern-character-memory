@@ -8,6 +8,7 @@
 
 .charMemory_buttonRow {
     display: flex;
+    flex-wrap: wrap;
     gap: 8px;
     margin: 8px 0;
 }
@@ -1284,6 +1285,20 @@
 
 .charMemory_tsFileList {
     margin: 8px 0;
+}
+
+/* Group chat member sections in Data Bank browser */
+.charMemory_tsMemberSection {
+    margin-bottom: 12px;
+}
+
+.charMemory_tsMemberLabel {
+    font-size: 0.82em;
+    font-weight: bold;
+    opacity: 0.75;
+    padding: 3px 0;
+    margin-bottom: 2px;
+    border-bottom: 1px solid var(--SmartThemeBorderColor, rgba(128,128,128,0.25));
 }
 
 .charMemory_tsFileRow {

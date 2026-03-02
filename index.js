@@ -5357,24 +5357,18 @@ async function showTroubleshooter(initialSection = 'health') {
     }
 
     // Build Data Bank browser HTML
-    let dataBankHtml = '';
-    if (!charName || !target) {
-        dataBankHtml = '<div class="charMemory_diagEmpty">No character selected.</div>';
-    } else {
-        const avatar = target.avatar;
-        ensureCharacterAttachments(avatar);
-        const attachments = extension_settings.character_attachments[avatar] || [];
-        const memoryFileName = getMemoryFileName();
-
+    // Supports group chats — renders a labeled section per member.
+    const buildMemberFileList = (t) => {
+        ensureCharacterAttachments(t.avatar);
+        const attachments = extension_settings.character_attachments[t.avatar] || [];
         if (attachments.length === 0) {
-            dataBankHtml = '<div class="charMemory_diagEmpty">No files in this character\'s Data Bank.</div>';
-        } else {
-            dataBankHtml = '<div class="charMemory_tsFileList">';
-            for (const att of attachments) {
-                const isMemFile = att.name === memoryFileName;
-                const badge = isMemFile ? '<span class="charMemory_tsBadge">CharMemory</span>' : '';
-                const sizeText = att.size ? `<span class="charMemory_tsFileSize">${(att.size / 1024).toFixed(1)} KB</span>` : '';
-                dataBankHtml += `<div class="charMemory_tsFileRow" data-url="${escapeAttr(att.url)}" data-name="${escapeAttr(att.name || '')}" data-avatar="${escapeAttr(avatar)}">
+            return '<div class="charMemory_diagEmpty" style="margin:4px 0 8px;">No files.</div>';
+        }
+        let html = '<div class="charMemory_tsFileList">';
+        for (const att of attachments) {
+            const badge = att.name === t.fileName ? '<span class="charMemory_tsBadge">CharMemory</span>' : '';
+            const sizeText = att.size ? `<span class="charMemory_tsFileSize">${(att.size / 1024).toFixed(1)} KB</span>` : '';
+            html += `<div class="charMemory_tsFileRow" data-url="${escapeAttr(att.url)}" data-name="${escapeAttr(att.name || '')}" data-avatar="${escapeAttr(t.avatar)}">
                     <div class="charMemory_tsFileName">
                         <i class="fa-solid fa-file-lines fa-sm"></i>
                         <span>${escapeHtml(att.name || att.url)}</span>
@@ -5388,14 +5382,32 @@ async function showTroubleshooter(initialSection = 'health') {
                         <button class="menu_button charMemory_tsConvertBtn" title="Convert file format"><i class="fa-solid fa-arrows-rotate fa-sm"></i></button>
                     </div>
                 </div>`;
-            }
-            dataBankHtml += '</div>';
         }
-        dataBankHtml += `<div class="charMemory_tsImportRow">
+        html += '</div>';
+        return html;
+    };
+
+    let dataBankHtml = '';
+    let dataBankSubtitle = 'No character selected';
+    if (!charName || !target) {
+        dataBankHtml = '<div class="charMemory_diagEmpty">No character selected.</div>';
+    } else if (targets.length > 1) {
+        // Group chat: labeled section per member
+        dataBankSubtitle = `Group Data Bank \u2014 ${targets.length} characters`;
+        for (const t of targets) {
+            dataBankHtml += `<div class="charMemory_tsMemberSection">
+                <div class="charMemory_tsMemberLabel">${escapeHtml(t.name)}</div>
+                ${buildMemberFileList(t)}
+            </div>`;
+        }
+    } else {
+        dataBankSubtitle = `${escapeHtml(charName)}'s Data Bank files`;
+        dataBankHtml = buildMemberFileList(target);
+    }
+    dataBankHtml += `<div class="charMemory_tsImportRow">
             <input type="file" id="cm_ts_fileImport" style="display:none;" accept=".md,.txt,.json" />
             <button class="menu_button" id="cm_ts_importBtn"><i class="fa-solid fa-upload fa-sm"></i> Import file</button>
         </div>`;
-    }
 
     // Build full modal
     const navActive = (s) => s === initialSection ? ' active' : '';
@@ -5416,7 +5428,7 @@ async function showTroubleshooter(initialSection = 'health') {
             </div>
             <div class="charMemory_modalSection${navActive('databank')}" data-section="databank">
                 <h4 class="charMemory_modalSectionTitle">Data Bank Browser</h4>
-                <small class="charMemory_helperText">${charName ? escapeHtml(charName) + '\'s Data Bank files' : 'No character selected'}</small>
+                <small class="charMemory_helperText">${dataBankSubtitle}</small>
                 <div id="cm_ts_dataBankList">${dataBankHtml}</div>
             </div>
             <div class="charMemory_modalSection${navActive('report')}" data-section="report">
