@@ -13,6 +13,7 @@
 - **Tablet panel off-screen on mobile**: SillyTavern sets `perspective` on `<html>`, which changes the containing block for `position: fixed` elements. The panel's `top: 50%` resolved to 0px on mobile. Fixed by using viewport units (`50vh`/`50vw`) instead of percentages.
 - **Tablet panel hidden behind sidebar**: The panel's z-index (1002) was below SillyTavern's extensions drawer (3005). Raised to 5000.
 - **Injection viewer and log drawer hidden on mobile**: Both drawers had z-index below the sidebar and were too narrow at phone widths (40vw = 157px on a 393px screen). Phone mode overrides fix both issues.
+- **Nudge banner "Fix now" → "View"**: The warning banner button now says "View" since it opens the Troubleshooter for inspection — it doesn't auto-fix anything.
 
 ## 2.0.1
 

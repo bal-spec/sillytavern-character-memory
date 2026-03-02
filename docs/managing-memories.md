@@ -137,7 +137,7 @@ Each chat's extraction state is tracked independently. Re-running batch extracti
 
 **Reformat** restructures your existing memory file to the current topic-tagged format for better vector retrieval. Use it when:
 
-- You have older memories without topic tags (`[Names — description]` as the first bullet)
+- You have older memories without topic tags, or topic tags that don't include the character's name (e.g., `[Alex — description]` instead of `[Flux, Alex — description]`)
 - You've imported memories from another source and want them normalized
 - The Setup Wizard offered to convert existing memories and you skipped it
 

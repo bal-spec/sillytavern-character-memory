@@ -12,10 +12,10 @@ The health dot runs up to 7 checks depending on what data is available. Checks 1
 |-------|-------------------|--------|
 | **Files enabled** | "Enable for files" is on in Vector Storage | RED if off |
 | **Memory file exists** | A memory file is in the character's Data Bank | RED if missing |
-| **File vectorized** | Memory file has been indexed (chunk count > 0) | RED if 0 chunks |
+| **File vectorized** | Memory file has been indexed (chunk count > 0) | YELLOW if 0 chunks (resolves on next generation) |
 | **Chunk overlap** | Data Bank overlap setting in Vector Storage | YELLOW if 0% |
 | **Chunk size** | Data Bank chunk size in Vector Storage | YELLOW if outside recommended range |
-| **Memories injected** | Memory bullets appeared in the last generation | RED if file exists and vectorized but 0 injected |
+| **Memories injected** | Memory bullets appeared in the last generation | YELLOW if 0 injected (may be normal — score threshold filtering) |
 | **Duplicate detection** | Same bullet appears more than once in injected content | YELLOW if duplicates found |
 
 ### Fixing each issue
@@ -26,11 +26,11 @@ Open Extensions → Vector Storage → under File vectorization settings, check 
 **RED — Memory file not found**
 Run an extraction first. The memory file is created on first successful extraction — Extract Now or wait for auto-extraction to fire.
 
-**RED — File not vectorized**
-The file exists but hasn't been indexed. Try generating a message (Vector Storage indexes on generation), or check that your vectorization source is configured and responding. If you recently purged vectors, just generate a message to trigger re-indexing.
+**YELLOW — File not yet vectorized**
+The file exists but hasn't been indexed yet. This is normal when a memory file was just created — Vector Storage indexes on the next generation. Just send a message and generate a response. If the check stays yellow after generating, check that your vectorization source is configured and responding. If you recently purged vectors, generate a message to trigger re-indexing.
 
-**RED — Memories not injected**
-File exists and is vectorized, but 0 memories injected. Most likely cause: score threshold is too high. Try lowering it to 0.2 in Vector Storage → Data Bank files row. Also check that **Retrieve chunks** isn't set to 0.
+**YELLOW — No memories injected**
+File exists and is vectorized, but 0 memories appeared in the last generation. This can be normal — it means no memories scored above the relevance threshold for the current conversation topic. If you expect memories to be injected, try lowering the score threshold to 0.2 in Vector Storage → Data Bank files row. Also check that **Retrieve chunks** isn't set to 0.
 
 **YELLOW — Chunk overlap is 0%**
 With 0% overlap, a memory block landing on a chunk boundary gets split — neither half retrieves cleanly, and you may see duplicate partial bullets in injected content. 0% is a valid starting point (especially with small, topic-tagged blocks), but if you notice split blocks in the Injection Viewer, increase overlap to 10–15% in Vector Storage → Data Bank files. [Purge and re-vectorize](retrieval-and-prompts.md#purge-and-re-vectorize) after changing.
@@ -107,6 +107,8 @@ Click the **wrench icon** → **Diagnostic Report** → copy the output.
 ---
 
 ## Reset tools
+
+> **Before using Clear All Memories**, make a backup. Use SillyTavern's [backup tools](https://docs.sillytavern.app/usage/user-settings/) to snapshot your data directory, or download the memory file from the Data Bank.
 
 See [Managing Memories → Reset and Clear](managing-memories.md#reset-and-clear) for what each reset option does and when to use it. The short version:
 

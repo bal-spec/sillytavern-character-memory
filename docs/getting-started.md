@@ -77,6 +77,14 @@ Click **Get Started** to close the wizard and return to the dashboard.
 
 ---
 
+## Back up your data
+
+SillyTavern has built-in backup tools that snapshot your entire data directory — characters, chats, settings, and Data Bank files (where memories live). Before making big changes like consolidating, clearing memories, or switching setups, it's worth having a recent backup.
+
+See SillyTavern's [User Settings documentation](https://docs.sillytavern.app/usage/user-settings/) for how to create and manage backups.
+
+---
+
 ## Your first extraction
 
 After setup, chat normally. The **stats bar** at the top of the CharMemory panel tracks your progress:

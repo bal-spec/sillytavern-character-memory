@@ -51,7 +51,7 @@ The viewer header includes a colored health dot that mirrors the one in the stat
 | **Red** | Problems detected — memories may not be injecting correctly |
 | **Gray** | No generation captured yet for this message |
 
-Hover over the dot for a quick summary. On touch devices, tap the **Diagnostics** link in the viewer toolbar to see the full health check results inline without leaving the chat.
+Hover over the dot for a quick summary. Tap the **Diagnostics** link in the viewer toolbar to see the full health check results inline without leaving the chat. On tablets and phones (or when Display Mode is set to Tablet/Phone in Settings > Advanced), the viewer opens as a wide drawer above the sidebar for easier reading.
 
 For details on what each check looks for and how to fix issues, see [Troubleshooting → Health Checks](troubleshooting.md#health-checks).
 

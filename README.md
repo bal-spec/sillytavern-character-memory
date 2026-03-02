@@ -33,6 +33,7 @@ CharMemory does not touch your lorebooks so if those contain information about t
 - **Full memory control** — browse, edit, or delete individual memories. Consolidate duplicates with preview and undo. Batch-extract from all chats at once.
 - **Highly configurable extraction prompts** — separate prompts for 1:1 and group chats and memory file consolidation and conversion.
 - **Guided setup** — the Setup Wizard tests your LLM connection, checks Vector Storage, and handles existing memory file conversion in about 2 minutes.
+- **Tablet & phone support** *(new in 2.1.0 — testing appreciated!)* — on touch devices, the dashboard opens as a floating panel with touch-friendly controls. Phone layout widens drawers for small screens. If auto-detection doesn't match your device, override it in Settings > Advanced > Display Mode. Please [report issues](https://github.com/bal-spec/sillytavern-character-memory/issues) with how it behaves on your device.
 - **Plain files** — memories are stored as readable, editable markdown in the character's Data Bank. No database, no lock-in.
 
 ## What you need
