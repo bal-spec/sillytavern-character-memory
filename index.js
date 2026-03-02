@@ -407,7 +407,7 @@ const PROVIDER_PRESETS = {
         name: 'NVIDIA',
         baseUrl: 'https://integrate.api.nvidia.com/v1',
         authStyle: 'bearer',
-        modelsEndpoint: 'none',
+        modelsEndpoint: 'standard',
         requiresApiKey: true,
         extraHeaders: {},
         defaultModel: 'meta/llama-3.3-70b-instruct',
@@ -3112,7 +3112,10 @@ async function computeHealthScore() {
     const vecSettings = extension_settings.vectors;
 
     // Check 1: Vector Storage enabled for files
-    const filesEnabled = vecSettings?.enabled_files;
+    // Also verify VS extension is actually loaded — extension_settings.vectors persists
+    // even when the VS extension is disabled, so we need both checks.
+    const vsExtLoaded = !!document.querySelector('#vectors_enabled_files');
+    const filesEnabled = vsExtLoaded && !!vecSettings?.enabled_files;
     checks.push({
         id: 'vec_files_enabled',
         level: filesEnabled ? 'green' : 'red',
@@ -5036,11 +5039,14 @@ async function showSetupWizard(startStep = 1) {
         $wizard.find('#cm_wiz_interval').val(extension_settings[MODULE_NAME].interval || 20);
 
         // Three-tier VS detection: read settings directly (no file checks — new user may have no memory file)
+        // Check DOM for VS extension UI — extension_settings.vectors persists when VS is disabled,
+        // so we need to confirm the extension is actually loaded before trusting its settings.
         const vecSettings = extension_settings.vectors;
         const $vsStatus = $wizard.find('#cm_wiz_vsStatus');
         const $vsAdvisory = $wizard.find('#cm_wiz_vsAdvisory');
 
-        const filesEnabled = !!vecSettings?.enabled_files;
+        const vsExtLoaded = !!document.querySelector('#vectors_enabled_files');
+        const filesEnabled = vsExtLoaded && !!vecSettings?.enabled_files;
 
         if (!filesEnabled) {
             // Tier 1: VS not enabled at all
@@ -5119,8 +5125,10 @@ async function showSetupWizard(startStep = 1) {
         const interval = extension_settings[MODULE_NAME].interval || 20;
 
         // VS summary from extension_settings.vectors
+        // Check DOM for VS extension UI to avoid false-positive when VS is disabled.
         const vecSettings = extension_settings.vectors;
-        const filesEnabled = !!vecSettings?.enabled_files;
+        const vsExtLoaded = !!document.querySelector('#vectors_enabled_files');
+        const filesEnabled = vsExtLoaded && !!vecSettings?.enabled_files;
         let vsSummaryHtml;
         if (!filesEnabled) {
             vsSummaryHtml = `<span style="color:#c44;">\u26A0 Not enabled</span>`;
