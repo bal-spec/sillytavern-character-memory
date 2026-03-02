@@ -1460,7 +1460,7 @@ function loadSettings() {
     checkPromptVersions();
 
     // Bind dashboard UI elements to settings
-    $('#charMemory_enabled').prop('checked', extension_settings[MODULE_NAME].enabled);
+    $('#charMemory_autoExtractPill').toggleClass('active', !!extension_settings[MODULE_NAME].enabled);
 
     updateStatusDisplay();
     updateHealthIndicator();
@@ -5515,7 +5515,7 @@ async function showTroubleshooter(initialSection = 'health') {
                 const displayContent = content.length > 10000
                     ? content.substring(0, 10000) + '\n\n... (truncated, ' + content.length + ' chars total)'
                     : content;
-                const viewHtml = `<div style="max-height:60vh;overflow:auto;">
+                const viewHtml = `<div style="max-height:60vh;overflow:auto;text-align:left;">
                     <pre style="white-space:pre-wrap;word-break:break-word;font-size:0.85em;">${escapeHtml(displayContent)}</pre>
                 </div>`;
                 callGenericPopup(viewHtml, POPUP_TYPE.TEXT, escapeHtml(name || 'File contents'), { wide: true, allowVerticalScrolling: true });
@@ -7167,8 +7167,9 @@ function setupConnectionControls() {
  * group member file overrides, and merge-chunks toggle.
  */
 function setupExtractionControls() {
-    $('#charMemory_enabled').off('change').on('change', function () {
-        extension_settings[MODULE_NAME].enabled = !!$(this).prop('checked');
+    $('#charMemory_autoExtractPill').off('click').on('click', function () {
+        extension_settings[MODULE_NAME].enabled = !extension_settings[MODULE_NAME].enabled;
+        $(this).toggleClass('active', !!extension_settings[MODULE_NAME].enabled);
         saveSettingsDebounced();
     });
 

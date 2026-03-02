@@ -1375,6 +1375,33 @@
     margin-top: 10px;
     user-select: text;
     font-family: monospace;
+    text-align: left;
+}
+
+.charMemory_tsFileEditor {
+    text-align: left;
+}
+
+.charMemory_autoPill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px 3px 8px;
+    border: 1px solid var(--SmartThemeBorderColor, #555);
+    border-radius: 12px;
+    font-size: 0.8em;
+    cursor: pointer;
+    background: var(--SmartThemeBlurTintColor, rgba(0,0,0,0.2));
+    color: inherit;
+    white-space: nowrap;
+    transition: border-color 0.15s, background 0.15s, color 0.15s;
+    flex-shrink: 0;
+}
+
+.charMemory_autoPill.active {
+    border-color: #4a4;
+    background: rgba(74, 170, 74, 0.12);
+    color: #4a4;
 }
 
 .charMemory_reportActions {

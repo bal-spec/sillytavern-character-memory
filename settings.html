@@ -50,27 +50,16 @@
                 </div>
             </div>
 
-            <!-- File Section -->
+            <!-- Primary Controls -->
             <div class="charMemory_dashSection">
-                <div class="charMemory_fileInfo">
-                    <span id="charMemory_dashFileName" class="charMemory_dashFileNameText">memories.md</span>
-                    <span id="charMemory_dashFileMeta" class="charMemory_dimText">-- KB</span>
-                </div>
-                <div class="charMemory_buttonRow">
+                <input type="button" id="charMemory_extractNow" class="menu_button charMemory_fullWidth" value="Extract Now" title="Extract memories from unprocessed messages. If all messages have been processed, use 'Reset Extraction State' first to re-read from the beginning." />
+                <div class="charMemory_buttonRow" style="margin-top:4px;">
                     <input type="button" id="charMemory_manageMemories" class="menu_button" value="View / Edit" title="Browse, edit, and delete individual stored memories" />
                     <input type="button" id="charMemory_filesPopover" class="menu_button" value="Files" title="View Data Bank files for this character" />
+                    <button id="charMemory_autoExtractPill" class="charMemory_autoPill" title="Toggle automatic extraction — when on, memories are extracted automatically after a set number of new messages">
+                        <i class="fa-solid fa-arrows-rotate fa-xs"></i> Auto
+                    </button>
                 </div>
-            </div>
-
-            <!-- Extraction Controls -->
-            <div class="charMemory_dashSection">
-                <div class="charMemory_sectionHeader">
-                    <label class="checkbox_label" for="charMemory_enabled" title="When enabled, memories are extracted automatically after a set number of new messages">
-                        <input type="checkbox" id="charMemory_enabled" />
-                        <span>Automatic extraction</span>
-                    </label>
-                </div>
-                <input type="button" id="charMemory_extractNow" class="menu_button charMemory_fullWidth" value="Extract Now" title="Extract memories from unprocessed messages. If all messages have been processed, use 'Reset Extraction State' first to re-read from the beginning." />
             </div>
 
             <!-- Tool Launchers -->
