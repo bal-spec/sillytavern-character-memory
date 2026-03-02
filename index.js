@@ -3661,19 +3661,19 @@ async function showSettingsModal() {
         <h4 class="charMemory_modalSectionTitle">Reset</h4>
         <div class="charMemory_statusRow">
             <input type="button" id="cm_modal_resetThisChat" class="menu_button" value="Reset This Chat"
-                title="Reset extraction tracking for the current chat only. Next 'Extract Now' will re-read all messages from the beginning. In group chats, all characters share one extraction pointer — all are reset together." />
+                title="Resets the extraction pointer for the active chat — next 'Extract Now' re-reads from the first message. In group chats all characters share one pointer, so all are reset together." />
             <small class="charMemory_helperText">
-                Resets the current chat's extraction pointer — next "Extract Now" re-reads from the beginning.
+                Resets the extraction pointer for the active chat. Next "Extract Now" will re-read all messages in this chat from the first.
                 ${isGroupChat() ? '<br><i class="fa-solid fa-people-group fa-xs"></i> <em>Group chat:</em> all members share one extraction pointer, so this resets all of them at once.' : ''}
             </small>
             <input type="button" id="cm_modal_resetBatchProgress" class="menu_button" value="Reset Batch Progress"
                 title="Clears batch extraction records for all of this character's chats. Use before re-running Batch Extract to start fresh. Does not affect regular (non-batch) extraction for non-active chats." />
             <small class="charMemory_helperText">
-                Clears Batch Extract progress for all of ${escapeHtml(getCharacterName() || 'this character')}'s chats.
-                Regular extraction pointers for non-active chats are unaffected — only batch records are cleared.
+                Resets the Batch tool's progress for all of ${escapeHtml(getCharacterName() || 'this character')}'s chats, so the Batch tool will re-process them from scratch.
+                Each chat's own extraction pointer is not affected — only the Batch tool's progress log is cleared.
             </small>
             <input type="button" id="cm_modal_resetExtraction" class="menu_button charMemory_dangerBtn" value="Clear All Memories" title="Delete this character's memory file and reset extraction tracking — cannot be undone" />
-            <small class="charMemory_helperText">Deletes the memory file for this character and resets extraction tracking. In default mode, this affects all of this character's chats. Cannot be undone.</small>
+            <small class="charMemory_helperText">Deletes this character's memory file (contains memories from all their chats) and resets extraction tracking. Cannot be undone.</small>
         </div>
     `;
 
@@ -4007,7 +4007,7 @@ async function showSettingsModal() {
             ? `<br><small>This is a group chat — all members share one extraction pointer and will all be reset together.</small>`
             : '';
         const confirmed = await callGenericPopup(
-            `The current chat's extraction pointer for <strong>${escapeHtml(charName)}</strong> will be reset. Next "Extract Now" will re-read all messages from the beginning.${scopeNote}`,
+            `The extraction pointer for the active chat will be reset for <strong>${escapeHtml(charName)}</strong>. Next "Extract Now" will re-read all messages in this chat from the first.${scopeNote}`,
             POPUP_TYPE.CONFIRM, 'Reset This Chat',
         );
         if (!confirmed) return;
@@ -4017,7 +4017,7 @@ async function showSettingsModal() {
     $('#cm_modal_resetBatchProgress').off('click').on('click', async function () {
         const charName = getCharacterName() || 'this character';
         const confirmed = await callGenericPopup(
-            `Batch extraction progress for all of <strong>${escapeHtml(charName)}</strong>'s chats will be cleared. The Batch tool will treat all chats as unprocessed. Regular extraction pointers for non-active chats are not affected.`,
+            `The Batch tool's progress for all of <strong>${escapeHtml(charName)}</strong>'s chats will be cleared. The Batch tool will re-process all chats. Each chat's own extraction pointer is not changed.`,
             POPUP_TYPE.CONFIRM, 'Reset Batch Progress',
         );
         if (!confirmed) return;
@@ -4029,7 +4029,7 @@ async function showSettingsModal() {
         const sLocal = extension_settings[MODULE_NAME];
         const scopeNote = sLocal.perChat
             ? `This will delete memories for the current chat only.`
-            : `In default mode, this includes memories from <em>all</em> of ${escapeHtml(charName)}'s chats.`;
+            : `This includes memories from all of ${escapeHtml(charName)}'s chats.`;
         const confirmed = await callGenericPopup(
             `<strong>${escapeHtml(charName)}'s</strong> memory file will be deleted and extraction tracking will be reset. This cannot be undone.<br><br>${scopeNote}`,
             POPUP_TYPE.CONFIRM, 'Clear All Memories',
@@ -5330,7 +5330,7 @@ async function showTroubleshooter(initialSection = 'health') {
     const fixHints = {
         vec_files_enabled: 'Enable "Files" in the Vector Storage extension settings.',
         memory_file_exists: 'Use "Extract Now" on the dashboard to create this character\'s memory file.',
-        file_vectorized: 'Vector Storage vectorizes Data Bank files automatically when a chat loads. Try reloading the page or switching to a different chat and back. If the file is missing, use Extract Now first.',
+        file_vectorized: 'Send a message in the chat to trigger automatic vectorization, or open Extensions \u2192 Vector Storage \u2192 Files tab to vectorize the file manually.',
         chunk_overlap: 'Set overlap to 10-25% in Vector Storage settings.',
         chunk_size: 'Set chunk size to 800-1000 chars in Vector Storage settings.',
     };
@@ -5432,20 +5432,20 @@ async function showTroubleshooter(initialSection = 'health') {
                 <div class="charMemory_tsResetSection">
                     <button class="menu_button" id="cm_ts_resetThisChat">Reset This Chat</button>
                     <small class="charMemory_helperText">
-                        Resets the current chat's extraction pointer — next "Extract Now" re-reads from the beginning.
+                        Resets the extraction pointer for the active chat. Next "Extract Now" will re-read all messages in this chat from the first.
                         ${isGroupChat() ? '<br><i class="fa-solid fa-people-group fa-xs"></i> <em>Group chat:</em> all members share one extraction pointer, so this resets all of them at once.' : ''}
                     </small>
                 </div>
                 <div class="charMemory_tsResetSection">
                     <button class="menu_button" id="cm_ts_resetBatchProgress">Reset Batch Progress</button>
                     <small class="charMemory_helperText">
-                        Clears Batch Extract progress for all of ${escapeHtml(charName || 'this character')}'s chats.
-                        Regular extraction pointers for non-active chats are unaffected — only batch records are cleared.
+                        Resets the Batch tool's progress for all of ${escapeHtml(charName || 'this character')}'s chats, so the Batch tool will re-process them from scratch.
+                        Each chat's own extraction pointer is not affected — only the Batch tool's progress log is cleared.
                     </small>
                 </div>
                 <div class="charMemory_tsResetSection">
                     <button class="menu_button charMemory_dangerBtn" id="cm_ts_clearMemories">Clear All Memories</button>
-                    <small class="charMemory_helperText">Deletes the memory file for this character and resets extraction tracking. In default mode, this affects all of this character's chats. Cannot be undone.</small>
+                    <small class="charMemory_helperText">Deletes this character's memory file (contains memories from all their chats) and resets extraction tracking. Cannot be undone.</small>
                 </div>
             </div>
         </div>
@@ -5774,7 +5774,7 @@ async function showTroubleshooter(initialSection = 'health') {
             ? `<br><small>This is a group chat — all members share one extraction pointer and will all be reset together.</small>`
             : '';
         const confirmed = await callGenericPopup(
-            `The current chat's extraction pointer for <strong>${escapeHtml(charName)}</strong> will be reset. Next "Extract Now" will re-read all messages from the beginning.${scopeNote}`,
+            `The extraction pointer for the active chat will be reset for <strong>${escapeHtml(charName)}</strong>. Next "Extract Now" will re-read all messages in this chat from the first.${scopeNote}`,
             POPUP_TYPE.CONFIRM, 'Reset This Chat',
         );
         if (!confirmed) return;
@@ -5784,7 +5784,7 @@ async function showTroubleshooter(initialSection = 'health') {
     $('#cm_ts_resetBatchProgress').off('click').on('click', async function () {
         const charName = getCharacterName() || 'this character';
         const confirmed = await callGenericPopup(
-            `Batch extraction progress for all of <strong>${escapeHtml(charName)}</strong>'s chats will be cleared. The Batch tool will treat all chats as unprocessed. Regular extraction pointers for non-active chats are not affected.`,
+            `The Batch tool's progress for all of <strong>${escapeHtml(charName)}</strong>'s chats will be cleared. The Batch tool will re-process all chats. Each chat's own extraction pointer is not changed.`,
             POPUP_TYPE.CONFIRM, 'Reset Batch Progress',
         );
         if (!confirmed) return;
@@ -5795,7 +5795,7 @@ async function showTroubleshooter(initialSection = 'health') {
         const s = extension_settings[MODULE_NAME];
         const scopeNote = s.perChat
             ? `This will delete memories for the current chat only.`
-            : `In default mode, this includes memories from <em>all</em> of ${escapeHtml(charName)}'s chats.`;
+            : `This includes memories from all of ${escapeHtml(charName)}'s chats.`;
         const confirmed = await callGenericPopup(
             `<strong>${escapeHtml(charName)}'s</strong> memory file will be deleted and extraction tracking will be reset. This cannot be undone.<br><br>${scopeNote}`,
             POPUP_TYPE.CONFIRM, 'Clear All Memories',
