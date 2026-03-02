@@ -997,6 +997,14 @@
     transform: translateX(0);
 }
 
+/* ── Phone mode: widen drawers and raise above ST sidebar (z-index 3005) ── */
+/* Applied via body class from JS (auto-detected or user-selected in Settings > Advanced > Display Mode) */
+body.charMemory-phone-mode .charMemory_injectionDrawer,
+body.charMemory-phone-mode .charMemory_logDrawer {
+    max-width: 85vw;
+    z-index: 4000;
+}
+
 .charMemory_logDrawer .charMemory_drawerBody {
     font-family: monospace;
     font-size: 0.85em;

@@ -471,7 +471,7 @@ const defaultSettings = {
     chunkMetadata: false,
     conversionPrompt: '',
     injectionDrawerOpen: false,
-    tabletMode: 'auto',
+    displayMode: 'auto',
 };
 
 const PROMPT_CONFIG = {
@@ -1504,15 +1504,38 @@ if (!window._charMemoryVisibilityBound) {
 }
 
 /**
- * Whether tablet mode is currently active.
- * 'auto' detects touch capability at runtime; 'on'/'off' are explicit overrides.
+ * Resolve the effective display mode from the user setting.
+ * 'auto' detects: touch + narrow viewport → phone, touch → tablet, else desktop.
+ * @returns {'desktop'|'tablet'|'phone'}
+ */
+function getEffectiveDisplayMode() {
+    const setting = extension_settings[MODULE_NAME].displayMode
+        || extension_settings[MODULE_NAME].tabletMode // legacy migration
+        || 'auto';
+    if (setting === 'desktop' || setting === 'off') return 'desktop';
+    if (setting === 'tablet' || setting === 'on') return 'tablet';
+    if (setting === 'phone') return 'phone';
+    // 'auto' — detect at runtime
+    const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+    if (!hasTouch) return 'desktop';
+    return window.innerWidth <= 600 ? 'phone' : 'tablet';
+}
+
+/**
+ * Whether the floating tablet panel should be used (tablet or phone mode).
  * @returns {boolean}
  */
 function isTabletMode() {
-    const mode = extension_settings[MODULE_NAME].tabletMode || 'auto';
-    if (mode === 'on') return true;
-    if (mode === 'off') return false;
-    return 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+    const mode = getEffectiveDisplayMode();
+    return mode === 'tablet' || mode === 'phone';
+}
+
+/**
+ * Apply/remove the body class for phone-mode CSS overrides.
+ * Called on init, setting change, and viewport resize.
+ */
+function applyDisplayModeClass() {
+    document.body.classList.toggle('charMemory-phone-mode', getEffectiveDisplayMode() === 'phone');
 }
 
 function ensureMetadata() {
@@ -3619,21 +3642,24 @@ async function showSettingsModal() {
     `;
 
     // Advanced section HTML
-    const tabletModeVal = s.tabletMode || 'auto';
-    const tabletOptions = [
-        { val: 'auto', label: 'Auto (detect touch)' },
-        { val: 'on', label: 'Always on' },
-        { val: 'off', label: 'Off' },
-    ].map(o => `<option value="${o.val}" ${tabletModeVal === o.val ? 'selected' : ''}>${o.label}</option>`).join('');
+    const displayModeVal = s.displayMode || s.tabletMode || 'auto';
+    // Normalize legacy values for the dropdown
+    const normalizedMode = { on: 'tablet', off: 'desktop' }[displayModeVal] || displayModeVal;
+    const displayModeOptions = [
+        { val: 'auto', label: 'Auto (detect)' },
+        { val: 'desktop', label: 'Desktop (sidebar)' },
+        { val: 'tablet', label: 'Tablet (floating panel)' },
+        { val: 'phone', label: 'Phone (panel + wide drawers)' },
+    ].map(o => `<option value="${o.val}" ${normalizedMode === o.val ? 'selected' : ''}>${o.label}</option>`).join('');
 
     const advancedHtml = `
         <h4 class="charMemory_modalSectionTitle">Display</h4>
         <div class="charMemory_statusRow">
-            <label for="cm_modal_tabletMode">
-                <small>Tablet / Touch Mode</small>
+            <label for="cm_modal_displayMode">
+                <small>Display Mode</small>
             </label>
-            <select id="cm_modal_tabletMode" class="text_pole">${tabletOptions}</select>
-            <small class="charMemory_helperText">Opens the dashboard as a floating centered panel instead of expanding in the narrow sidebar. "Auto" detects touch devices.</small>
+            <select id="cm_modal_displayMode" class="text_pole">${displayModeOptions}</select>
+            <small class="charMemory_helperText">Controls dashboard layout. "Auto" detects your device. Desktop uses the sidebar; Tablet uses a floating panel; Phone adds wider drawers on top.</small>
         </div>
         <hr class="charMemory_separator" />
         <h4 class="charMemory_modalSectionTitle">Memory File Format</h4>
@@ -3943,12 +3969,14 @@ async function showSettingsModal() {
     });
 
     // === Advanced handlers ===
-    $('#cm_modal_tabletMode').off('change').on('change', function () {
+    $('#cm_modal_displayMode').off('change').on('change', function () {
         const val = $(this).val();
-        extension_settings[MODULE_NAME].tabletMode = val;
+        extension_settings[MODULE_NAME].displayMode = val;
+        delete extension_settings[MODULE_NAME].tabletMode; // clean up legacy key
         saveSettingsDebounced();
-        // If switched to 'off' while tablet panel is open, close it and restore sidebar
-        if (val === 'off' && isTabletPanelOpen()) {
+        applyDisplayModeClass();
+        // If switched to desktop while tablet panel is open, close it and restore sidebar
+        if (!isTabletMode() && isTabletPanelOpen()) {
             toggleTabletPanel(false);
         }
     });
@@ -8310,6 +8338,10 @@ jQuery(async function () {
     if (extension_settings[MODULE_NAME].injectionDrawerOpen) {
         toggleInjectionDrawer(true);
     }
+
+    // Apply display mode body class (for phone-mode CSS overrides)
+    applyDisplayModeClass();
+    window.addEventListener('resize', applyDisplayModeClass);
 
     console.log(LOG_PREFIX, 'Extension loaded');
 });
