@@ -7005,6 +7005,19 @@ function setupLogControls() {
         showTroubleshooter('health');
     });
 
+    // Refresh status + health when the CharMemory panel is opened.
+    // ST's inline-drawer toggles the content on header click — we detect the
+    // transition to open by checking visibility after a minimal delay.
+    $('.charMemory_settings .inline-drawer-toggle')
+        .off('click.charMemoryPanelOpen')
+        .on('click.charMemoryPanelOpen', function () {
+            setTimeout(() => {
+                if ($('.charMemory_settings .inline-drawer-content').is(':visible')) {
+                    updateStatusDisplay();
+                    updateHealthIndicator();
+                }
+            }, 50);
+        });
 }
 
 /**
