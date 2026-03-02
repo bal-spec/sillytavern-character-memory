@@ -4636,7 +4636,10 @@ async function showSetupWizard(startStep = 1) {
             <div class="charMemory_wizConnectRow">
                 <div class="charMemory_wizApiKeyGroup" id="cm_wiz_apiKeyRow" style="${preset.requiresApiKey ? '' : 'display:none;'}">
                     <label><small>API Key <a id="cm_wiz_helpLink" href="${escapeAttr(preset.helpUrl || '#')}" target="_blank" style="font-size:0.85em;${preset.helpUrl ? '' : 'display:none;'}">(get key)</a></small></label>
-                    <input type="password" id="cm_wiz_apiKey" class="text_pole" placeholder="Enter API key" value="${escapeAttr(providerSettings.apiKey || '')}" />
+                    <div style="display:flex;gap:5px;align-items:center;">
+                        <input type="password" id="cm_wiz_apiKey" class="text_pole" placeholder="Enter API key" value="${escapeAttr(providerSettings.apiKey || '')}" style="flex:1;" />
+                        <button type="button" id="cm_wiz_apiKeyReveal" class="menu_button" title="Show/hide API key" style="padding:3px 8px;flex-shrink:0;"><i class="fa-solid fa-eye fa-sm"></i></button>
+                    </div>
                 </div>
                 <input type="button" id="cm_wiz_connect" class="menu_button${preset.requiresApiKey ? '' : ' charMemory_fullWidth'}" value="Connect &amp; Test" />
             </div>
@@ -4832,12 +4835,83 @@ async function showSetupWizard(startStep = 1) {
         saveSettingsDebounced();
     });
 
+    $wizard.on('click', '#cm_wiz_apiKeyReveal', function () {
+        const $input = $wizard.find('#cm_wiz_apiKey');
+        const $icon = $(this).find('i');
+        const $btn = $(this);
+        clearTimeout($btn.data('revealTimer'));
+        if ($input.attr('type') === 'password') {
+            $input.attr('type', 'text');
+            $icon.removeClass('fa-eye').addClass('fa-eye-slash');
+            $btn.data('revealTimer', setTimeout(() => {
+                $input.attr('type', 'password');
+                $icon.removeClass('fa-eye-slash').addClass('fa-eye');
+            }, 10000));
+        } else {
+            $input.attr('type', 'password');
+            $icon.removeClass('fa-eye-slash').addClass('fa-eye');
+        }
+    });
+
     $wizard.on('input', '#cm_wiz_baseUrl', function () {
         const pk = extension_settings[MODULE_NAME].selectedProvider;
         const ps = getProviderSettings(pk);
         ps.customBaseUrl = String($(this).val());
         saveSettingsDebounced();
     });
+
+    // Run just the LLM response test with the currently selected model.
+    // Called by the Connect & Test button (after model fetch) and by the model
+    // list click handler when a previous test failed.
+    async function doConnectionTest() {
+        const pk = extension_settings[MODULE_NAME].selectedProvider;
+        const p = PROVIDER_PRESETS[pk];
+        const ps = getProviderSettings(pk);
+        const $status = $wizard.find('#cm_wiz_connectStatus');
+        const $connectBtn = $wizard.find('#cm_wiz_connect');
+
+        const testModel = ps.model || p.defaultModel;
+        if (!testModel) {
+            const hasModels = p.modelsEndpoint === 'standard' || p.modelsEndpoint === 'custom';
+            $status.text('Select a model first.').css('color', '#e67e22').show();
+            if (hasModels) $wizard.find('#cm_wiz_modelRow').show();
+            return;
+        }
+
+        $connectBtn.prop('disabled', true);
+        $status.text('Testing model response...').css('color', '').show();
+        try {
+            const baseUrl = resolveBaseUrl(p, ps);
+            const testMessages = [{ role: 'user', content: 'Respond with exactly: CHARMMEMORY_TEST_OK' }];
+            const t0 = performance.now();
+            let response;
+            if (p.isAnthropic) {
+                response = await generateAnthropicResponse(baseUrl, ps.apiKey, testModel, testMessages, 20, p);
+            } else {
+                response = await generateOpenAICompatibleResponse(baseUrl, ps.apiKey, testModel, testMessages, 20, p);
+            }
+            const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
+            const reply = (response || '').trim();
+            const passed = reply.includes('CHARMMEMORY_TEST_OK');
+
+            const modelShort = testModel.length > 30 ? testModel.slice(0, 30) + '\u2026' : testModel;
+            const displayLabel = (p.modelsEndpoint === 'none') ? p.name : modelShort;
+            if (passed) {
+                $status.text(`\u2714 ${displayLabel} responded correctly (${elapsed}s)`).css('color', '#2ecc71').show();
+            } else {
+                $status.html(`\u2714 ${escapeHtml(displayLabel)} connected (${elapsed}s). It may still work for extraction.`).css('color', '#27ae60').show();
+            }
+
+            wizConnectionOk = true;
+            $wizard.find('#cm_wiz_next1').prop('disabled', false);
+        } catch (err) {
+            $status.text(`\u2718 ${err.message || 'Connection failed'}`).css('color', '#e74c3c').show();
+            wizConnectionOk = false;
+            $wizard.find('#cm_wiz_next1').prop('disabled', true);
+        } finally {
+            $connectBtn.prop('disabled', false);
+        }
+    }
 
     $wizard.on('click', '#cm_wiz_connect', async function () {
         const pk = extension_settings[MODULE_NAME].selectedProvider;
@@ -4887,7 +4961,7 @@ async function showSetupWizard(startStep = 1) {
 
                 $status.text(`Connected \u2014 ${modelCount} model${modelCount !== 1 ? 's' : ''} available.`).css('color', '#27ae60').show();
             } else {
-                // No models endpoint (e.g. Pollinations, Anthropic) — use defaultModel
+                // No models endpoint (e.g. Pollinations) — use defaultModel
                 const model = ps.model || p.defaultModel || '';
                 if (model) {
                     ps.model = model;
@@ -4895,50 +4969,17 @@ async function showSetupWizard(startStep = 1) {
                 }
                 $status.text('Provider configured.').css('color', '#27ae60').show();
             }
-
-            // Test the connection
-            $status.text('Testing model response...').css('color', '').show();
-            const baseUrl = resolveBaseUrl(p, ps);
-            const testModel = ps.model || p.defaultModel;
-            if (!testModel) {
-                $status.text('Connected, but no model selected. Choose a model below.').css('color', '#e67e22').show();
-                if (hasModels) {
-                    $wizard.find('#cm_wiz_modelRow').show();
-                    renderWizModelList('');
-                }
-                return;
-            }
-
-            const testMessages = [{ role: 'user', content: 'Respond with exactly: CHARMMEMORY_TEST_OK' }];
-            const t0 = performance.now();
-            let response;
-            if (p.isAnthropic) {
-                response = await generateAnthropicResponse(baseUrl, ps.apiKey, testModel, testMessages, 20, p);
-            } else {
-                response = await generateOpenAICompatibleResponse(baseUrl, ps.apiKey, testModel, testMessages, 20, p);
-            }
-            const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
-            const reply = (response || '').trim();
-            const passed = reply.includes('CHARMMEMORY_TEST_OK');
-
-            const modelShort = testModel.length > 30 ? testModel.slice(0, 30) + '\u2026' : testModel;
-            // For providers without a model list (e.g. Pollinations), show provider name not the internal model ID
-            const displayLabel = (p.modelsEndpoint === 'none') ? p.name : modelShort;
-            if (passed) {
-                $status.text(`\u2714 ${displayLabel} responded correctly (${elapsed}s)`).css('color', '#2ecc71').show();
-            } else {
-                $status.html(`\u2714 ${escapeHtml(displayLabel)} connected (${elapsed}s). It may still work for extraction.`).css('color', '#27ae60').show();
-            }
-
-            wizConnectionOk = true;
-            $wizard.find('#cm_wiz_next1').prop('disabled', false);
         } catch (err) {
             $status.text(`\u2718 ${err.message || 'Connection failed'}`).css('color', '#e74c3c').show();
             wizConnectionOk = false;
             $wizard.find('#cm_wiz_next1').prop('disabled', true);
-        } finally {
             $btn.prop('disabled', false).val('Connect & Test');
+            return;
         }
+
+        // Restore button, then run the test (model fetch succeeded)
+        $btn.prop('disabled', false).val('Connect & Test');
+        await doConnectionTest();
     });
 
     // Wizard model list (always-visible)
@@ -5020,6 +5061,12 @@ async function showSetupWizard(startStep = 1) {
         const ps = getProviderSettings(pk);
         ps.model = modelId;
         saveSettingsDebounced();
+
+        // If the previous test failed (e.g. wrong model auto-selected), re-test
+        // with the one the user just explicitly chose.
+        if (!wizConnectionOk) {
+            doConnectionTest();
+        }
     });
 
     $wizard.on('change', '#cm_wiz_nanogptFilterSub, #cm_wiz_nanogptFilterOS, #cm_wiz_nanogptFilterRP, #cm_wiz_nanogptFilterReasoning', function () {
