@@ -5395,13 +5395,15 @@ async function showTroubleshooter(initialSection = 'health') {
         // Group chat: labeled section per member
         dataBankSubtitle = `Group Data Bank \u2014 ${targets.length} characters`;
         for (const t of targets) {
+            const avatarImg = `<img class="charMemory_groupAvatar" src="/thumbnail?type=avatar&file=${encodeURIComponent(t.avatar)}" alt="" onerror="this.style.display='none'" />`;
             dataBankHtml += `<div class="charMemory_tsMemberSection">
-                <div class="charMemory_tsMemberLabel">${escapeHtml(t.name)}</div>
+                <div class="charMemory_tsMemberLabel">${avatarImg}${escapeHtml(t.name)}</div>
                 ${buildMemberFileList(t)}
             </div>`;
         }
     } else {
-        dataBankSubtitle = `${escapeHtml(charName)}'s Data Bank files`;
+        const avatarImg = `<img class="charMemory_groupAvatar" src="/thumbnail?type=avatar&file=${encodeURIComponent(target.avatar)}" alt="" onerror="this.style.display='none'" style="vertical-align:middle;" />`;
+        dataBankSubtitle = `${avatarImg} ${escapeHtml(charName)}'s Data Bank files`;
         dataBankHtml = buildMemberFileList(target);
     }
     dataBankHtml += `<div class="charMemory_tsImportRow">

@@ -1293,6 +1293,9 @@
 }
 
 .charMemory_tsMemberLabel {
+    display: flex;
+    align-items: center;
+    gap: 6px;
     font-size: 0.82em;
     font-weight: bold;
     opacity: 0.75;
