@@ -1469,8 +1469,27 @@ function loadSettings() {
 
     // Periodic health re-check — catches manual vectorization, VS setting changes,
     // and any other state changes not covered by event listeners.
+    startHealthPoll();
+}
+
+function startHealthPoll() {
     clearInterval(healthPollInterval);
     healthPollInterval = setInterval(() => updateHealthIndicator(), 60_000);
+}
+
+// Pause the poll when the page is hidden (background tab / screen locked),
+// resume and immediately re-check when it becomes visible again.
+// Registered once at module load — safe to call multiple times via loadSettings.
+if (!window._charMemoryVisibilityBound) {
+    window._charMemoryVisibilityBound = true;
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            clearInterval(healthPollInterval);
+        } else {
+            startHealthPoll();
+            updateHealthIndicator();
+        }
+    });
 }
 
 function ensureMetadata() {
