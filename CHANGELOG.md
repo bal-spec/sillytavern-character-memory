@@ -4,7 +4,15 @@
 
 ### New Features
 
-- **Tablet / Touch Mode**: On touch devices (iPad, tablets), the dashboard now opens as a centered floating panel instead of expanding in the narrow sidebar. All buttons are enlarged to 44px touch targets per Apple HIG. The panel is non-modal — tap outside or swipe down to dismiss, and tools like Settings and Troubleshooter open on top. Controlled via Settings > Advanced > Tablet/Touch Mode (Auto / Always on / Off). Auto-detects touch capability by default.
+- **Tablet / Touch Mode**: On touch devices (iPad, tablets), the dashboard now opens as a centered floating panel instead of expanding in the narrow sidebar. All buttons are enlarged to 44px touch targets per Apple HIG. The panel is non-modal — tap outside or swipe down to dismiss, and tools like Settings and Troubleshooter open on top.
+- **Display Mode setting**: The old Tablet/Touch Mode toggle (Auto/On/Off) is replaced with a unified Display Mode selector in Settings > Advanced. Four options: Auto (detect your device), Desktop (sidebar), Tablet (floating panel), Phone (panel + wider drawers). Forced overrides work regardless of actual viewport — useful when auto-detection gets it wrong.
+- **Phone layout**: On narrow viewports (≤600px), the injection viewer and activity log drawers are widened to 85vw and raised above the SillyTavern sidebar (z-index 4000). Auto-detected in Auto mode, or force via the Phone display mode.
+
+### Bug Fixes
+
+- **Tablet panel off-screen on mobile**: SillyTavern sets `perspective` on `<html>`, which changes the containing block for `position: fixed` elements. The panel's `top: 50%` resolved to 0px on mobile. Fixed by using viewport units (`50vh`/`50vw`) instead of percentages.
+- **Tablet panel hidden behind sidebar**: The panel's z-index (1002) was below SillyTavern's extensions drawer (3005). Raised to 5000.
+- **Injection viewer and log drawer hidden on mobile**: Both drawers had z-index below the sidebar and were too narrow at phone widths (40vw = 157px on a 393px screen). Phone mode overrides fix both issues.
 
 ## 2.0.1
 
