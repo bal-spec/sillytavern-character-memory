@@ -3420,7 +3420,7 @@ async function showSettingsModal() {
         .sort(([ka, a], [kb, b]) => {
             if (ka === 'custom') return 1;
             if (kb === 'custom') return -1;
-            return a.name.localeCompare(b.name);
+            return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
         })
         .map(([key, p]) => `<option value="${escapeHtml(key)}" ${key === providerKey ? 'selected' : ''}>${escapeHtml(p.name)}</option>`)
         .join('');
@@ -4593,7 +4593,7 @@ async function showSetupWizard(startStep = 1) {
         .sort(([ka, a], [kb, b]) => {
             if (ka === 'custom') return 1;
             if (kb === 'custom') return -1;
-            return a.name.localeCompare(b.name);
+            return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
         })
         .map(([key, p]) => {
             const label = key === 'pollinations' ? `${p.name} \u2014 free, no API key` : p.name;
@@ -4759,6 +4759,7 @@ async function showSetupWizard(startStep = 1) {
         });
 
         // Run step-specific init
+        if (step === 1) updateWizProviderUI();
         if (step === 2) initStep2();
         if (step === 3) initStep3();
     }
@@ -5317,7 +5318,7 @@ async function showTroubleshooter(initialSection = 'health') {
     const fixHints = {
         vec_files_enabled: 'Enable "Files" in the Vector Storage extension settings.',
         memory_file_exists: 'Use "Extract Now" on the dashboard to create this character\'s memory file.',
-        file_vectorized: 'Open the Data Bank (Troubleshooter → Data Bank), then click the vectorize button on the memory file. Or send a message — Vector Storage vectorizes files automatically when a chat is loaded.',
+        file_vectorized: 'Vector Storage vectorizes Data Bank files automatically when a chat loads. Try reloading the page or switching to a different chat and back. If the file is missing, use Extract Now first.',
         chunk_overlap: 'Set overlap to 10-25% in Vector Storage settings.',
         chunk_size: 'Set chunk size to 800-1000 chars in Vector Storage settings.',
     };

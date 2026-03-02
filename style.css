@@ -1609,7 +1609,7 @@
 }
 
 .charMemory_wizModelList {
-    max-height: 200px;
+    max-height: 130px;
     overflow-y: auto;
     border: 1px solid var(--SmartThemeBorderColor, #555);
     border-radius: 4px;
