@@ -1895,3 +1895,49 @@
 .charMemory_verification li {
     margin-bottom: 6px;
 }
+
+/* ─── Find & Replace bar ─────────────────────────────────────────────── */
+
+.charMemory_findReplaceBar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--SmartThemeBorderColor, rgba(128,128,128,0.2));
+    flex-wrap: wrap;
+}
+
+.charMemory_findReplaceBar .text_pole {
+    max-width: 200px;
+    min-width: 100px;
+    flex: 1 1 auto;
+    padding: 4px 8px;
+    font-size: 0.9em;
+}
+
+.charMemory_frCaseBtn {
+    min-width: 28px;
+    font-size: 0.8em;
+    font-weight: bold;
+    opacity: 0.5;
+}
+
+.charMemory_frCaseBtn--active {
+    opacity: 1;
+    background: var(--SmartThemeQuoteColor, rgba(255,255,0,0.15));
+}
+
+.charMemory_frMatchCount {
+    font-size: 0.8em;
+    opacity: 0.6;
+    white-space: nowrap;
+}
+
+/* Highlight matches */
+.charMemory_card mark,
+.charMemory_manager mark {
+    background: var(--SmartThemeQuoteColor, rgba(255,255,0,0.35));
+    color: inherit;
+    padding: 0 1px;
+    border-radius: 2px;
+}

@@ -44,6 +44,9 @@ import {
     substitutePromptTemplate,
     truncateText,
     getTimestamp,
+    countMatchesInBlocks,
+    replaceInBlocks,
+    cloneMemoryBlocks,
 } from './lib.js';
 import { createMemoryEditor } from './editor.js';
 
@@ -708,6 +711,7 @@ function buildConversionDialog(sourceContent, formatLabel, method, convertedBloc
             <input type="button" id="charMemory_undoConvRerun" class="menu_button" value="Undo" title="Revert to previous version" disabled />
             <span id="charMemory_convRerunSpinner" style="display:none;">Working...</span>
         </div>
+        ${buildFindReplaceBar('charMemory_convFR')}
         <div class="charMemory_consolidationPanes">
             <div class="charMemory_consolidationPane">
                 <h4>Original File</h4>
@@ -831,11 +835,13 @@ async function previewConversion() {
     let destType = 'auto';
     let destCustomName = '';
     let dialogClosed = false; // cancellation flag for in-flight re-run callbacks
+    let convFindPattern = null;
 
-    const refreshEditor = () => {
+    const refreshEditor = (highlightPattern) => {
+        if (highlightPattern !== undefined) convFindPattern = highlightPattern;
         const blocks = editor.getBlocks();
         const editing = editor.getEditingSet();
-        $('#charMemory_convEditorPane').html(renderConsolidatedCards(blocks, editing));
+        $('#charMemory_convEditorPane').html(renderConsolidatedCards(blocks, editing, convFindPattern));
         $('#charMemory_convAfterCount').text(countMemories(blocks));
         $('#charMemory_convBlockCount').text(blocks.length);
         $('#charMemory_convAddBlock').toggleClass('charMemory_editorAddBlock--hidden', editing.size === 0);
@@ -848,6 +854,9 @@ async function previewConversion() {
     const initEditing = editor.getEditingSet();
     const dialogHtml = buildConversionDialog(sourceContent, formatLabel, method, initBlocks, initEditing, useLLM && format !== 'memory_tags');
     const popup = callGenericPopup(dialogHtml, POPUP_TYPE.CONFIRM, '', { wide: true, allowVerticalScrolling: true });
+
+    // === Find/Replace bar ===
+    const cleanupConvFR = wireFindReplaceEvents(editor, refreshEditor, 'charMemory_convFR', '.charMemoryConvFR');
 
     // === Editor event delegation (same card classes as consolidation, different namespaces) ===
 
@@ -961,6 +970,7 @@ async function previewConversion() {
     dialogClosed = true;
 
     // Clean up all event delegation
+    cleanupConvFR();
     $(document).off('click.charMemoryConvToggle');
     $(document).off('input.charMemoryConvBullet');
     $(document).off('input.charMemoryConvTheme');
@@ -5523,11 +5533,13 @@ async function showTroubleshooter(initialSection = 'health') {
             // Memory file — open in editor
             const tsEditor = createMemoryEditor({ blocks });
             const emptyEditingSet = tsEditor.getEditingSet();
+            let tsFindPattern = null;
 
-            const refreshTsEditor = () => {
+            const refreshTsEditor = (highlightPattern) => {
+                if (highlightPattern !== undefined) tsFindPattern = highlightPattern;
                 const currentBlocks = tsEditor.getBlocks();
                 const editing = tsEditor.getEditingSet();
-                $('#cm_ts_fileEditorPane').html(renderConsolidatedCards(currentBlocks, editing));
+                $('#cm_ts_fileEditorPane').html(renderConsolidatedCards(currentBlocks, editing, tsFindPattern));
                 $('#cm_ts_fileEditorCount').text(`${countMemories(currentBlocks)} memories in ${currentBlocks.length} blocks`);
                 $('#cm_ts_fileEditorAddBlock').toggleClass('charMemory_editorAddBlock--hidden', editing.size === 0);
             };
@@ -5537,6 +5549,7 @@ async function showTroubleshooter(initialSection = 'health') {
                     <span class="charMemory_dimText">${escapeHtml(name)}</span>
                     <span id="cm_ts_fileEditorCount" class="charMemory_dimText">${countMemories(blocks)} memories in ${blocks.length} blocks</span>
                 </div>
+                ${buildFindReplaceBar('cm_ts_fileFR')}
                 <div class="charMemory_consolidationContent" id="cm_ts_fileEditorPane">${renderConsolidatedCards(blocks, emptyEditingSet)}</div>
                 <div class="charMemory_tsFileEditorFooter">
                     <button class="charMemory_editorAddBlock menu_button charMemory_editorAddBlock--hidden" id="cm_ts_fileEditorAddBlock"><i class="fa-solid fa-plus fa-xs"></i> Add Block</button>
@@ -5545,6 +5558,9 @@ async function showTroubleshooter(initialSection = 'health') {
             </div>`;
 
             const savePopup = callGenericPopup(editorHtml, POPUP_TYPE.TEXT, escapeHtml(name || 'View / Edit file'), { wide: true, allowVerticalScrolling: true });
+
+            // Find/Replace bar
+            const cleanupTsFR = wireFindReplaceEvents(tsEditor, refreshTsEditor, 'cm_ts_fileFR', '.charMemoryTsFR');
 
             // Editor event delegation (ts-namespaced to avoid conflicts)
             $(document).off('click.charMemoryTsEditorToggle').on('click.charMemoryTsEditorToggle', '#cm_ts_fileEditorPane .charMemory_editorToggleEdit', function () {
@@ -5604,6 +5620,7 @@ async function showTroubleshooter(initialSection = 'health') {
 
             // Popup dismissed (OK or Escape) — just clean up event handlers
             savePopup.then(() => {
+                cleanupTsFR();
                 $(document).off('click.charMemoryTsEditorToggle click.charMemoryTsEditorDelBullet click.charMemoryTsEditorDelBlock click.charMemoryTsEditorAddBullet click.charMemoryTsEditorAddBlock click.charMemoryTsEditorSave');
                 $(document).off('input.charMemoryTsEditorBullet input.charMemoryTsEditorTheme');
             });
@@ -5934,6 +5951,7 @@ async function showMemoryManager() {
     }
 
     let html = '<div class="charMemory_manager">';
+    html += buildFindReplaceBar('charMemory_mmFR');
     for (const target of targetData) {
         if (target.blocks.length === 0) continue;
 
@@ -6006,10 +6024,96 @@ async function showMemoryManager() {
         await deleteBlock(blockIdx, avatar, fileName);
     });
 
+    // === Memory Manager Find/Replace (standalone — no createMemoryEditor) ===
+    let mmCaseSensitive = false;
+
+    function mmGetPattern() {
+        const find = $('#charMemory_mmFR_findInput').val();
+        if (!find) return null;
+        const escaped = find.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return new RegExp(escaped, mmCaseSensitive ? 'g' : 'gi');
+    }
+
+    function mmUpdateHighlights() {
+        const pattern = mmGetPattern();
+        $('.charMemory_manager .charMemory_bulletText').each(function () {
+            const $el = $(this);
+            const raw = $el.data('raw') || $el.text().replace(/^- /, '');
+            $el.data('raw', raw);
+            $el.html('- ' + highlightText(raw, pattern));
+        });
+    }
+
+    function mmUpdateCount() {
+        const find = $('#charMemory_mmFR_findInput').val();
+        let count = 0;
+        for (const t of targetData) {
+            count += countMatchesInBlocks(t.blocks, find, mmCaseSensitive);
+        }
+        const $count = $('#charMemory_mmFR_matchCount');
+        $count.text(count > 0 ? `${count} match${count === 1 ? '' : 'es'}` : (find ? 'No matches' : ''));
+        $('#charMemory_mmFR_replaceAllBtn').prop('disabled', count === 0);
+    }
+
+    $(document).on('input.charMemoryMmFR', '#charMemory_mmFR_findInput', function () {
+        mmUpdateCount();
+        mmUpdateHighlights();
+    });
+
+    $(document).on('click.charMemoryMmFR', '#charMemory_mmFR_caseSensitive', function () {
+        mmCaseSensitive = !mmCaseSensitive;
+        $(this).toggleClass('charMemory_frCaseBtn--active', mmCaseSensitive);
+        mmUpdateCount();
+        mmUpdateHighlights();
+    });
+
+    $(document).on('click.charMemoryMmFR', '#charMemory_mmFR_replaceAllBtn', async function () {
+        const find = $('#charMemory_mmFR_findInput').val();
+        const replace = $('#charMemory_mmFR_replaceInput').val();
+        if (!find) return;
+
+        let totalReplacements = 0;
+        for (const t of targetData) {
+            const count = replaceInBlocks(t.blocks, find, replace, mmCaseSensitive);
+            if (count > 0) {
+                totalReplacements += count;
+                await writeMemoriesForCharacter(serializeMemories(t.blocks), t.avatar, t.fileName);
+            }
+        }
+
+        if (totalReplacements > 0) {
+            // Re-render all bullet text elements with updated data
+            $('.charMemory_manager .charMemory_bulletText').each(function () {
+                $(this).removeData('raw');
+            });
+            // Rebuild card content from updated targetData
+            for (const t of targetData) {
+                const $scope = isMultiTarget
+                    ? $(`.charMemory_groupSection[data-avatar="${t.avatar}"]`)
+                    : $('.charMemory_manager');
+                for (let bi = t.blocks.length - 1; bi >= 0; bi--) {
+                    const b = t.blocks[bi];
+                    const $card = $scope.find(`.charMemory_card[data-block="${bi}"][data-avatar="${t.avatar}"]`);
+                    $card.find('.charMemory_bulletRow').each(function (bui) {
+                        if (bui < b.bullets.length) {
+                            $(this).find('.charMemory_bulletText').text('- ' + b.bullets[bui]).removeData('raw');
+                        }
+                    });
+                }
+            }
+            mmUpdateCount();
+            mmUpdateHighlights();
+            toastr.success(`Replaced ${totalReplacements} occurrence${totalReplacements === 1 ? '' : 's'}.`, 'CharMemory');
+            updateStatusDisplay();
+        }
+    });
+
     popup.finally(() => {
         $(document).off('click.charMemoryManager');
         $(document).off('click.charMemoryDelete');
         $(document).off('click.charMemoryDeleteBlock');
+        $(document).off('input.charMemoryMmFR');
+        $(document).off('click.charMemoryMmFR');
     });
 }
 
@@ -6134,9 +6238,104 @@ async function deleteBlock(blockIndex, avatar, fileName) {
     reindexManager();
 }
 
+// ============ Find & Replace ============
+
+/**
+ * Build HTML for a compact find/replace bar. Reusable across all editor surfaces.
+ * @param {string} idPrefix - Unique prefix for element IDs to avoid conflicts.
+ * @returns {string} HTML string
+ */
+function buildFindReplaceBar(idPrefix) {
+    return `<div class="charMemory_findReplaceBar">
+        <input type="text" id="${idPrefix}_findInput" class="text_pole" placeholder="Find..." />
+        <input type="text" id="${idPrefix}_replaceInput" class="text_pole" placeholder="Replace with..." />
+        <button id="${idPrefix}_caseSensitive" class="menu_button menu_button_icon charMemory_frCaseBtn" title="Case sensitive">Aa</button>
+        <button id="${idPrefix}_replaceAllBtn" class="menu_button" disabled>Replace All</button>
+        <span id="${idPrefix}_matchCount" class="charMemory_frMatchCount"></span>
+    </div>`;
+}
+
+/**
+ * Wire find/replace bar events to a createMemoryEditor instance.
+ * @param {object} editor - Editor API from createMemoryEditor()
+ * @param {function} refreshFn - Called after replace to re-render cards. Receives (highlightPattern).
+ * @param {string} idPrefix - Same prefix used in buildFindReplaceBar()
+ * @param {string} namespace - jQuery event namespace for cleanup (e.g. '.charMemoryConsolFR')
+ * @returns {function} Cleanup function that removes all event handlers.
+ */
+function wireFindReplaceEvents(editor, refreshFn, idPrefix, namespace) {
+    let caseSensitive = false;
+
+    function getPattern() {
+        const find = $(`#${idPrefix}_findInput`).val();
+        if (!find) return null;
+        const escaped = find.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const flags = caseSensitive ? 'g' : 'gi';
+        return new RegExp(escaped, flags);
+    }
+
+    function updateCount() {
+        const find = $(`#${idPrefix}_findInput`).val();
+        const count = editor.countMatches(find, caseSensitive);
+        const $count = $(`#${idPrefix}_matchCount`);
+        $count.text(count > 0 ? `${count} match${count === 1 ? '' : 'es'}` : (find ? 'No matches' : ''));
+        $(`#${idPrefix}_replaceAllBtn`).prop('disabled', count === 0);
+    }
+
+    $(document).on(`input${namespace}`, `#${idPrefix}_findInput`, function () {
+        updateCount();
+        refreshFn(getPattern());
+    });
+
+    $(document).on(`click${namespace}`, `#${idPrefix}_caseSensitive`, function () {
+        caseSensitive = !caseSensitive;
+        $(this).toggleClass('charMemory_frCaseBtn--active', caseSensitive);
+        updateCount();
+        refreshFn(getPattern());
+    });
+
+    $(document).on(`click${namespace}`, `#${idPrefix}_replaceAllBtn`, function () {
+        const find = $(`#${idPrefix}_findInput`).val();
+        const replace = $(`#${idPrefix}_replaceInput`).val();
+        if (!find) return;
+        const result = editor.findAndReplaceAll(find, replace, caseSensitive);
+        refreshFn(null);
+        updateCount();
+        toastr.success(`Replaced ${result.replacements} occurrence${result.replacements === 1 ? '' : 's'}.`, 'CharMemory');
+    });
+
+    return function cleanup() {
+        $(document).off(`input${namespace}`);
+        $(document).off(`click${namespace}`);
+    };
+}
+
 // ============ Consolidation ============
 
-function renderConsolidatedCards(blocks, editingSet) {
+/**
+ * Apply <mark> highlighting to raw text, escaping HTML safely per-segment.
+ * Matches against raw text first, then escapes each segment individually.
+ * This prevents mark tags from splitting HTML entities like &amp;.
+ * @param {string} rawText Unescaped raw text
+ * @param {RegExp|null} pattern Highlight pattern (global flag required)
+ * @returns {string} HTML-safe string with mark wrapping around matches
+ */
+function highlightText(rawText, pattern) {
+    if (!pattern) return escapeHtml(rawText);
+    pattern.lastIndex = 0;
+    let result = '';
+    let lastIndex = 0;
+    let m;
+    while ((m = pattern.exec(rawText)) !== null) {
+        result += escapeHtml(rawText.slice(lastIndex, m.index));
+        result += '<mark>' + escapeHtml(m[0]) + '</mark>';
+        lastIndex = m.index + m[0].length;
+    }
+    result += escapeHtml(rawText.slice(lastIndex));
+    return result;
+}
+
+function renderConsolidatedCards(blocks, editingSet, highlightPattern = null) {
     return blocks.map((b, bi) => {
         const isEditing = editingSet.has(bi);
         const themeLabel = `${bi + 1}. ${b.chat}`;
@@ -6161,10 +6360,11 @@ function renderConsolidatedCards(blocks, editingSet) {
                 <button class="charMemory_editorAddBullet menu_button" data-block="${bi}"><i class="fa-solid fa-plus fa-xs"></i> Add memory</button>
             </div>`;
         } else {
-            const bullets = b.bullets.map(bullet => `<li>${escapeHtml(bullet)}</li>`).join('');
+            const bullets = b.bullets.map(bullet => `<li>${highlightText(bullet, highlightPattern)}</li>`).join('');
+            const headerHtml = highlightText(themeLabel, highlightPattern);
             return `<div class="charMemory_card charMemory_editorCard" data-block="${bi}">
                 <div class="charMemory_cardHeader">
-                    <strong>${escapeHtml(themeLabel)}</strong>
+                    <strong>${headerHtml}</strong>
                     <span class="charMemory_cardActions">
                         <button class="charMemory_editorToggleEdit menu_button menu_button_icon" data-block="${bi}" title="Edit block"><i class="fa-solid fa-pencil"></i></button>
                     </span>
@@ -6210,6 +6410,7 @@ function buildConsolidationDialog(beforeBlocks, beforeCount, consolidatedBlocks,
             <input type="button" id="charMemory_undoRerun" class="menu_button" value="Undo" title="Revert to previous consolidated version" disabled />
             <span id="charMemory_rerunSpinner" style="display:none;">Working...</span>
         </div>
+        ${buildFindReplaceBar('charMemory_consolFR')}
         <div class="charMemory_consolidationPanes">
             <div class="charMemory_consolidationPane">
                 <h4>Original Memories</h4>
@@ -6243,7 +6444,7 @@ const CONSOLIDATION_PRESETS = {
         name: 'Conservative',
         description: 'Only merge near-exact duplicates. Preserves everything else.',
         prompt: `Merge ONLY near-exact duplicate memories. If two bullets say essentially the same thing, keep the more detailed version. Do NOT combine loosely related facts. Do NOT summarize. Preserve every distinct piece of information.
-Each block must start with a topic tag as the first bullet: "- [Names involved — short description]" (e.g., "- [Alex, Flux — adoption day at the apartment]"). Preserve existing topic tags.`,
+Each block must start with a topic tag as the first bullet: "- [{{charName}}, OtherNames — short description]". ALWAYS include {{charName}} first. Preserve existing topic tags.`,
     },
     balanced: {
         name: 'Balanced',
@@ -6415,12 +6616,14 @@ async function consolidateMemories() {
 
     const editor = createMemoryEditor({ blocks: parseMemories(initialResult) });
     const rerunBackups = []; // separate stack for re-run undo
+    let consolFindPattern = null;
 
     // Re-render the editor pane from editor state
-    const refreshEditor = () => {
+    const refreshEditor = (highlightPattern) => {
+        if (highlightPattern !== undefined) consolFindPattern = highlightPattern;
         const blocks = editor.getBlocks();
         const editing = editor.getEditingSet();
-        $('#charMemory_editorPane').html(renderConsolidatedCards(blocks, editing));
+        $('#charMemory_editorPane').html(renderConsolidatedCards(blocks, editing, consolFindPattern));
         $('#charMemory_afterCount').text(countMemories(blocks));
         $('#charMemory_editorAddBlock').toggleClass('charMemory_editorAddBlock--hidden', editing.size === 0);
     };
@@ -6438,6 +6641,9 @@ async function consolidateMemories() {
     const currentPrompt = overrides[currentStrategy] || CONSOLIDATION_PRESETS[currentStrategy]?.prompt || '';
     $('#charMemory_dialogPrompt').val(currentPrompt);
     $('#charMemory_dialogRestoreDefault').toggle(!!overrides[currentStrategy]);
+
+    // === Find/Replace bar ===
+    const cleanupConsolFR = wireFindReplaceEvents(editor, refreshEditor, 'charMemory_consolFR', '.charMemoryConsolFR');
 
     // === Event delegation for editor interactions ===
 
@@ -6558,6 +6764,7 @@ async function consolidateMemories() {
     const confirmed = await popup;
 
     // Clean up event delegation
+    cleanupConsolFR();
     $(document).off('click.charMemoryEditorToggle');
     $(document).off('input.charMemoryEditor');
     $(document).off('input.charMemoryEditorTheme');
@@ -6628,6 +6835,7 @@ function buildReformatDialog(originalBlocks, originalCount, reformattedBlocks, e
             <input type="button" id="charMemory_undoReformatRerun" class="menu_button" value="Undo" title="Revert to previous reformatted version" disabled />
             <span id="charMemory_reformatRerunSpinner" style="display:none;">Working...</span>
         </div>
+        ${buildFindReplaceBar('charMemory_refFR')}
         <div class="charMemory_consolidationPanes">
             <div class="charMemory_consolidationPane">
                 <h4>Original Memories</h4>
@@ -6653,11 +6861,13 @@ async function showReformatPreview(originalBlocks, reformattedBlocks, charName, 
     const editor = createMemoryEditor({ blocks: reformattedBlocks });
     const rerunBackups = []; // separate stack for re-run undo
     let dialogClosed = false;
+    let refFindPattern = null;
 
-    const refreshEditor = () => {
+    const refreshEditor = (highlightPattern) => {
+        if (highlightPattern !== undefined) refFindPattern = highlightPattern;
         const blocks = editor.getBlocks();
         const editing = editor.getEditingSet();
-        $('#charMemory_reformatEditorPane').html(renderConsolidatedCards(blocks, editing));
+        $('#charMemory_reformatEditorPane').html(renderConsolidatedCards(blocks, editing, refFindPattern));
         $('#charMemory_reformatAfterCount').text(countMemories(blocks));
         $('#charMemory_reformatBlockCount').text(blocks.length);
         $('#charMemory_reformatAddBlock').toggleClass('charMemory_editorAddBlock--hidden', editing.size === 0);
@@ -6668,6 +6878,9 @@ async function showReformatPreview(originalBlocks, reformattedBlocks, charName, 
     const initEditing = editor.getEditingSet();
     const dialogHtml = buildReformatDialog(originalBlocks, originalCount, initBlocks, initEditing);
     const popup = callGenericPopup(dialogHtml, POPUP_TYPE.CONFIRM, '', { wide: true, allowVerticalScrolling: true });
+
+    // === Find/Replace bar ===
+    const cleanupRefFR = wireFindReplaceEvents(editor, refreshEditor, 'charMemory_refFR', '.charMemoryRefFR');
 
     // === Editor event delegation (unique namespace to avoid conflicts) ===
 
@@ -6759,6 +6972,7 @@ async function showReformatPreview(originalBlocks, reformattedBlocks, charName, 
     dialogClosed = true;
 
     // Clean up event delegation
+    cleanupRefFR();
     $(document).off('click.charMemoryRefToggle');
     $(document).off('input.charMemoryRefBullet');
     $(document).off('input.charMemoryRefTheme');

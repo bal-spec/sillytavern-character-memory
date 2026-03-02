@@ -1,4 +1,4 @@
-import { cloneMemoryBlocks, getTimestamp, reindexEditingSet } from './lib.js';
+import { cloneMemoryBlocks, countMatchesInBlocks, getTimestamp, reindexEditingSet, replaceInBlocks } from './lib.js';
 
 /**
  * Create a memory block editor with state management and undo.
@@ -96,6 +96,15 @@ export function createMemoryEditor({ blocks }) {
 
         getEditingSet() {
             return new Set(editingSet);
+        },
+
+        countMatches(find, caseSensitive = false) {
+            return countMatchesInBlocks(editorBlocks, find, caseSensitive);
+        },
+
+        findAndReplaceAll(find, replace, caseSensitive = false) {
+            saveVersion();
+            return { replacements: replaceInBlocks(editorBlocks, find, replace, caseSensitive) };
         },
     };
 }

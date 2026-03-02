@@ -457,3 +457,68 @@ export function getTimestamp(date) {
 export function cloneMemoryBlocks(blocks) {
     return blocks.map(b => ({ ...b, bullets: [...b.bullets] }));
 }
+
+// ─── Find & replace across memory blocks ────────────────────────────────
+
+/**
+ * Escape a string for use in a RegExp.
+ * @param {string} str
+ * @returns {string}
+ */
+function escapeRegex(str) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Count how many times `find` appears across all bullets and chat labels in blocks.
+ * @param {Array<{chat: string, date: string, bullets: string[]}>} blocks
+ * @param {string} find Search string (plain text, not regex).
+ * @param {boolean} [caseSensitive=false]
+ * @returns {number}
+ */
+export function countMatchesInBlocks(blocks, find, caseSensitive = false) {
+    if (!find) return 0;
+    const flags = caseSensitive ? 'g' : 'gi';
+    const re = new RegExp(escapeRegex(find), flags);
+    let count = 0;
+    for (const block of blocks) {
+        count += (block.chat.match(re) || []).length;
+        for (const bullet of block.bullets) {
+            count += (bullet.match(re) || []).length;
+        }
+    }
+    return count;
+}
+
+/**
+ * Replace all occurrences of `find` with `replace` across all bullets and chat labels.
+ * Mutates the blocks array in place.
+ * @param {Array<{chat: string, date: string, bullets: string[]}>} blocks
+ * @param {string} find Search string (plain text, not regex).
+ * @param {string} replace Replacement string (plain text).
+ * @param {boolean} [caseSensitive=false]
+ * @returns {number} Total number of replacements made.
+ */
+export function replaceInBlocks(blocks, find, replace, caseSensitive = false) {
+    if (!find) return 0;
+    const flags = caseSensitive ? 'g' : 'gi';
+    const re = new RegExp(escapeRegex(find), flags);
+    // Use replacer function to avoid $& / $' / $` interpolation in replacement string
+    const replacer = () => replace;
+    let count = 0;
+    for (const block of blocks) {
+        const chatMatches = (block.chat.match(re) || []).length;
+        if (chatMatches) {
+            block.chat = block.chat.replace(re, replacer);
+            count += chatMatches;
+        }
+        for (let i = 0; i < block.bullets.length; i++) {
+            const bulletMatches = (block.bullets[i].match(re) || []).length;
+            if (bulletMatches) {
+                block.bullets[i] = block.bullets[i].replace(re, replacer);
+                count += bulletMatches;
+            }
+        }
+    }
+    return count;
+}
