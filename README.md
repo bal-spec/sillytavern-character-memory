@@ -13,6 +13,7 @@ This is for you if:
 
 This probably isn't for you if:
 - Your memory workflow is lorebook-based (triggered entries in World Info)
+- Your character cards are for multiple characters
 - You don't use character cards
 
 CharMemory and lorebook-based memory extensions can coexist — they use different storage mechanisms.
