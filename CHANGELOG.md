@@ -2,6 +2,10 @@
 
 ## 2.0.0
 
+### New Features
+
+- **Find & Replace across all editing surfaces**: A compact find/replace bar is available in the Memory Manager, Consolidation, Conversion Preview, Reformat Preview, and Data Bank editor. Type to see matches highlighted with a live count. Replace All updates every occurrence at once. Supports case-sensitive matching. In block editor dialogs (Consolidation, Reformat, Conversion), Replace All is undoable via the existing Undo button.
+
 ### UX Redesign
 
 Complete UI overhaul replacing the 4-tab sidebar (Main, Tools, Settings, Log) with a streamlined dashboard + modal architecture.

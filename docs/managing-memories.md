@@ -18,6 +18,14 @@ Memories appear as cards grouped by extraction, newest first. Each card shows th
 
 Changes write directly to the memory file in the character's Data Bank. After editing, Vector Storage's index is stale — [purge and re-vectorize](retrieval-and-prompts.md#purge-and-re-vectorize) to update it, or send a new chat message.
 
+### Find & Replace
+
+A find/replace bar appears at the top of the Memory Manager (and in the Consolidation, Conversion, Reformat, and Data Bank editor dialogs). Type in the **Find** field to see matches highlighted across all cards with a live count. Enter replacement text and click **Replace All** to update every occurrence at once.
+
+- **Case sensitive** — click the **Aa** button to toggle case-sensitive matching
+- In the Memory Manager, Replace All writes changes to disk immediately — **back up your memory file first** if replacing across many memories
+- In the Consolidation, Reformat, and Conversion editors, Replace All is undoable (click Undo to revert)
+
 ---
 
 ## Auto-extraction
@@ -101,7 +109,7 @@ Each strategy has its own prompt, fully visible and editable. **Restore Default*
 4. Not happy with the result? Click **Re-run** for a fresh attempt. Each re-run saves the previous version — click **Undo** to step back through prior versions.
 5. Click **Apply** to write consolidated memories to the file
 
-> **Undo only works before Apply.** Once you click Apply, the consolidated memories are written to the file and there is no undo. Back up the memory file first if you're consolidating a large or important set — open the Data Bank (paperclip icon) and download the file before proceeding.
+> **Undo only works before Apply.** Once you click Apply, the consolidated memories are written to the file and there is no undo. Back up the memory file first if you're consolidating a large or important set — open the Data Bank and download the file, or use SillyTavern's [backup tools](https://docs.sillytavern.app/usage/user-settings/) before proceeding.
 
 In group chats, a character picker appears — consolidation works on one character at a time.
 
@@ -165,7 +173,7 @@ Three options in Settings → Reset / Clear:
 
 **Reset Batch Progress** — clears the Batch tool's record of which messages it has processed across all of this character's chats. Use this when you want the Batch tool to re-process everything from scratch (e.g., after changing the extraction prompt). Does not affect Extract Now or auto-extraction. If you reset batch progress without also clearing memories, the next batch run will re-extract everything and may create duplicates.
 
-**Clear All Memories** — deletes the character's memory file and resets all extraction tracking. In default (shared) mode, this file contains memories from **all** of that character's chats — not just the current one. Cannot be undone.
+**Clear All Memories** — deletes the character's memory file and resets all extraction tracking. In default (shared) mode, this file contains memories from **all** of that character's chats — not just the current one. Cannot be undone. **Back up first** — use SillyTavern's [backup tools](https://docs.sillytavern.app/usage/user-settings/) or download the memory file from the Data Bank before clearing.
 
 ---
 
