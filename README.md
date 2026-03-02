@@ -2,7 +2,7 @@
 
 CharMemory automatically extracts structured memories from your chats and stores them in the character's Data Bank. SillyTavern's built-in Vector Storage retrieves the most relevant ones at generation time — your character remembers what happened.
 
-**This is a beta release. It contains extensive under the hood code changes, alters the extraction prompts and the structure of the extracted memories. If you used previous versions, you should plan to back up your current files.**
+>**This is a beta release. It contains extensive under the hood code changes, alters the extraction prompts and the structure of the extracted memories. If you used previous versions, you should plan to back up your current files.**
 
 ![CharMemory panel open in the SillyTavern sidebar](images/panel-full.png)
 
