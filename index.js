@@ -1034,6 +1034,7 @@ let lastDiagnostics = {
 let diagnosticsHistory = [];
 let pendingDiagnosticsMessageIndex = null;
 let healthRecheckTimer = null; // delayed re-check after vectorization (race condition guard)
+let healthPollInterval = null; // periodic background health poll
 
 /**
  * Toggle provider settings panel visibility.
@@ -1465,6 +1466,11 @@ function loadSettings() {
 
     updateStatusDisplay();
     updateHealthIndicator();
+
+    // Periodic health re-check — catches manual vectorization, VS setting changes,
+    // and any other state changes not covered by event listeners.
+    clearInterval(healthPollInterval);
+    healthPollInterval = setInterval(() => updateHealthIndicator(), 60_000);
 }
 
 function ensureMetadata() {
