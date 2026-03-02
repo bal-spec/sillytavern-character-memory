@@ -24,7 +24,7 @@ A find/replace bar appears at the top of the Memory Manager (and in the Consolid
 
 - **Case sensitive** — click the **Aa** button to toggle case-sensitive matching
 - In the Memory Manager, Replace All writes changes to disk immediately — **back up your memory file first** if replacing across many memories
-- In the Consolidation, Reformat, and Conversion editors, Replace All is undoable (click Undo to revert)
+- In the Consolidation, Reformat, Conversion, and Data Bank editors, Replace All is undoable (click Undo to revert)
 
 ---
 
@@ -149,7 +149,7 @@ After reformatting, [purge and re-vectorize](retrieval-and-prompts.md#purge-and-
 
 ## Data Bank
 
-Click **Data Bank** to browse and manage memory files directly. You can view the raw markdown, edit it, and save changes. This is the same file that Vector Storage indexes — useful for bulk edits or importing content from another tool.
+Click **Data Bank** to browse and manage memory files directly. You can view the raw markdown, edit it, and save changes. The editor includes find/replace and an **Undo** button — nothing is written to disk until you click **Save changes**. This is the same file that Vector Storage indexes — useful for bulk edits or importing content from another tool.
 
 In group chats, the browser shows files for all group members, not just the active character. See [Group Chats → Data Bank browser](group-chats.md#data-bank-browser) for details.
 

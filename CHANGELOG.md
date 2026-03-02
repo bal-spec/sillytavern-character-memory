@@ -4,7 +4,8 @@
 
 ### New Features
 
-- **Find & Replace across all editing surfaces**: A compact find/replace bar is available in the Memory Manager, Consolidation, Conversion Preview, Reformat Preview, and Data Bank editor. Type to see matches highlighted with a live count. Replace All updates every occurrence at once. Supports case-sensitive matching. In block editor dialogs (Consolidation, Reformat, Conversion), Replace All is undoable via the existing Undo button.
+- **Find & Replace across all editing surfaces**: A compact find/replace bar is available in the Memory Manager, Consolidation, Conversion Preview, Reformat Preview, and Data Bank editor. Type to see matches highlighted with a live count. Replace All updates every occurrence at once. Supports case-sensitive matching. In block editor dialogs (Consolidation, Reformat, Conversion, Data Bank editor), Replace All is undoable.
+- **Undo in Data Bank editor**: The Data Bank file editor now has an Undo button that reverts Replace All, delete, and add operations. Nothing is written to disk until you click Save.
 
 ### UX Redesign
 
