@@ -1617,6 +1617,34 @@
     white-space: nowrap;
 }
 
+/* NanoGPT filter pill row */
+.charMemory_filterRow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 6px;
+}
+
+.charMemory_filterRow .checkbox_label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 10px 3px 8px;
+    border: 1px solid var(--SmartThemeBorderColor, #555);
+    border-radius: 12px;
+    font-size: 0.8em;
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+    background: var(--SmartThemeBlurTintColor, rgba(0, 0, 0, 0.2));
+    transition: border-color 0.15s, background 0.15s;
+}
+
+.charMemory_filterRow .checkbox_label:has(input:checked) {
+    border-color: var(--SmartThemeQuoteColor, #888);
+    background: rgba(74, 170, 74, 0.1);
+}
+
 /* NanoGPT inline model badges */
 .charMemory_modelBadge {
     display: inline-block;

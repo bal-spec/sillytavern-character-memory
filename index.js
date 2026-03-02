@@ -407,10 +407,10 @@ const PROVIDER_PRESETS = {
         name: 'NVIDIA',
         baseUrl: 'https://integrate.api.nvidia.com/v1',
         authStyle: 'bearer',
-        modelsEndpoint: 'standard',
+        modelsEndpoint: 'none',
         requiresApiKey: true,
         extraHeaders: {},
-        defaultModel: '',
+        defaultModel: 'meta/llama-3.3-70b-instruct',
         helpUrl: 'https://build.nvidia.com/',
         useProxy: true,
     },
@@ -3415,10 +3415,15 @@ async function showSettingsModal() {
     const providerSettings = getProviderSettings(providerKey);
     const preset = PROVIDER_PRESETS[providerKey] || {};
 
-    // Build provider options
-    const providerOptions = Object.entries(PROVIDER_PRESETS).map(([key, p]) =>
-        `<option value="${escapeHtml(key)}" ${key === providerKey ? 'selected' : ''}>${escapeHtml(p.name)}</option>`
-    ).join('');
+    // Build provider options — sorted alphabetically, custom last
+    const providerOptions = Object.entries(PROVIDER_PRESETS)
+        .sort(([ka, a], [kb, b]) => {
+            if (ka === 'custom') return 1;
+            if (kb === 'custom') return -1;
+            return a.name.localeCompare(b.name);
+        })
+        .map(([key, p]) => `<option value="${escapeHtml(key)}" ${key === providerKey ? 'selected' : ''}>${escapeHtml(p.name)}</option>`)
+        .join('');
 
     // Build source options
     const sourceOptions = [
@@ -4583,11 +4588,17 @@ async function showSetupWizard(startStep = 1) {
     const providerSettings = providerKey ? getProviderSettings(providerKey) : {};
     const preset = providerKey ? (PROVIDER_PRESETS[providerKey] || {}) : {};
 
-    // Build provider options — highlight Pollinations
-    const providerOptions = Object.entries(PROVIDER_PRESETS).map(([key, p]) => {
-        const label = key === 'pollinations' ? `${p.name} \u2014 recommended for quick start` : p.name;
-        return `<option value="${escapeHtml(key)}" ${key === providerKey ? 'selected' : ''}>${escapeHtml(label)}</option>`;
-    }).join('');
+    // Build provider options — sorted alphabetically, custom last, Pollinations highlighted
+    const providerOptions = Object.entries(PROVIDER_PRESETS)
+        .sort(([ka, a], [kb, b]) => {
+            if (ka === 'custom') return 1;
+            if (kb === 'custom') return -1;
+            return a.name.localeCompare(b.name);
+        })
+        .map(([key, p]) => {
+            const label = key === 'pollinations' ? `${p.name} \u2014 free, no API key` : p.name;
+            return `<option value="${escapeHtml(key)}" ${key === providerKey ? 'selected' : ''}>${escapeHtml(label)}</option>`;
+        }).join('');
 
     // Step indicator
     const stepIndicatorHtml = `
@@ -4895,10 +4906,12 @@ async function showSetupWizard(startStep = 1) {
             const passed = reply.includes('CHARMMEMORY_TEST_OK');
 
             const modelShort = testModel.length > 30 ? testModel.slice(0, 30) + '\u2026' : testModel;
+            // For providers without a model list (e.g. Pollinations), show provider name not the internal model ID
+            const displayLabel = (p.modelsEndpoint === 'none') ? p.name : modelShort;
             if (passed) {
-                $status.text(`\u2714 ${modelShort} responded correctly (${elapsed}s)`).css('color', '#2ecc71').show();
+                $status.text(`\u2714 ${displayLabel} responded correctly (${elapsed}s)`).css('color', '#2ecc71').show();
             } else {
-                $status.html(`\u2714 ${escapeHtml(modelShort)} connected (${elapsed}s). It may still work for extraction.`).css('color', '#27ae60').show();
+                $status.html(`\u2714 ${escapeHtml(displayLabel)} connected (${elapsed}s). It may still work for extraction.`).css('color', '#27ae60').show();
             }
 
             wizConnectionOk = true;
