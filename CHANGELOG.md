@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.0.1
+
+### Improvements
+
+- **Topic tags now include character name**: All extraction, consolidation, and conversion prompts produce topic tags starting with the character's name (e.g., `[Flux, Alex — adoption day]` instead of `[Alex — adoption day]`). This improves vector embedding discrimination for retrieval. Prompt versions bumped to `2.0.1` — users with customized prompts will see an update notification.
+- **Cross-chunk deduplication**: When extraction spans multiple chunks, each chunk's output is now fed forward as existing memories for subsequent chunks. This prevents duplicate memory blocks when a scene spans a chunk boundary.
+- **Sanitized prompt examples**: DO NOT EXTRACT examples in extraction prompts now use neutral, non-explicit examples.
+
+### Bug Fixes
+
+- **False alarm: file vectorization on chat open**: The health check no longer shows a red error when opening an existing chat whose memory file hasn't been re-indexed yet by Vector Storage. Downgraded to a yellow note explaining it resolves automatically on the next message.
+- **False alarm: "no memories injected"**: When no memories match the current conversation topic (score threshold filtering working correctly), the health check and injection viewer now show a yellow info note instead of a red error. Zero matches is a normal state, not a failure.
+- **Consolidation {{charName}} substitution**: The consolidation pipeline now correctly substitutes the character's name into topic tag instructions. Previously, `{{charName}}` in consolidation prompts was not replaced because `buildConsolidationPrompt()` only called `substituteParamsExtended()` (which handles `{{char}}` but not `{{charName}}`).
+
 ## 2.0.0
 
 ### New Features

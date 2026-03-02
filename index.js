@@ -51,7 +51,7 @@ import {
 import { createMemoryEditor } from './editor.js';
 
 const MODULE_NAME = 'charMemory';
-const MODULE_VERSION = '2.0.0';
+const MODULE_VERSION = '2.0.1';
 const DEFAULT_FILE_NAME = 'char-memories.md';
 const LOG_PREFIX = '[CharMemory]';
 
@@ -161,8 +161,8 @@ WHAT TO EXTRACT — ask for each item: "Would {{char}} bring this up unprompted 
 - Always name specific people involved — use their name, not "a friend" or "someone"
 
 DO NOT EXTRACT:
-- Anything already described in the CHARACTER CARD above — traits, profession, appearance, personality, habits, preferences, or abilities that are baseline knowledge. This includes rephrasing card traits as discoveries (e.g. if the card says "exhibitionist", do not write "she admitted that being watched turns her on")
-- Routine behaviors that simply confirm what the card already says (e.g. if the card says "smoker", don't extract "she smoked a cigarette"; if the card implies safe sex practices, don't extract "she insisted on a condom")
+- Anything already described in the CHARACTER CARD above — traits, profession, appearance, personality, habits, preferences, or abilities that are baseline knowledge. This includes rephrasing card traits as discoveries (e.g. if the card says "competitive", do not write "she felt proud when she won again")
+- Routine behaviors that simply confirm what the card already says (e.g. if the card says "smoker", don't extract "she smoked a cigarette"; if the card says "meticulous", don't extract "she organized her bag again")
 - Meta-narration about the conversation itself — do not write "she told him about X", "she described her past", "she discussed her career". Write the actual facts revealed, not the act of revealing them
 - Preferences, opinions, or values that are already expressed or clearly implied by the character card
 - Step-by-step accounts of what happened (this is the most common mistake — summarize outcomes, not processes)
@@ -194,7 +194,7 @@ POSITIVE EXAMPLE — the same scene extracted well:
 </good_example>
 A topic tag plus three bullets capture the full encounter: who was involved, what happened, and the key bonding moments. No step-by-step process, no scene-setting.
 
-NOTE: When content is explicit or violent, name the specific outcome — do not sanitize it into vague language. "She killed him with two shots to the chest" is a memory. "Violence occurred" is not. But this does NOT mean narrate each step leading up to it — summarize the outcome, not the process.
+NOTE: When significant events occur, name the specific outcome clearly — do not sanitize into vague language. "She confronted him and left" is a memory. "Something happened between them" is not. But this does NOT mean narrate each step leading up to it — summarize the outcome, not the process.
 
 Each memory block should answer: "What from this encounter would stick with {{char}} — things they'd tell someone about months later, or that would surface unbidden in their own mind?"
 
@@ -245,8 +245,8 @@ WHAT TO EXTRACT — ask for each item: "Would {{charName}} remember this weeks o
 - Always name specific people involved — use their name, not "a participant" or "someone"
 
 DO NOT EXTRACT:
-- Anything already described in the CHARACTER CARD above — traits, profession, appearance, personality, habits, preferences, or abilities that are baseline knowledge. This includes rephrasing card traits as discoveries (e.g. if the card says "exhibitionist", do not write "she admitted that being watched turns her on")
-- Routine behaviors that simply confirm what the card already says (e.g. if the card says "smoker", don't extract "she smoked a cigarette"; if the card implies certain sexual behaviors, don't extract individual instances of those behaviors)
+- Anything already described in the CHARACTER CARD above — traits, profession, appearance, personality, habits, preferences, or abilities that are baseline knowledge. This includes rephrasing card traits as discoveries (e.g. if the card says "competitive", do not write "she felt proud when she won again")
+- Routine behaviors that simply confirm what the card already says (e.g. if the card says "smoker", don't extract "she smoked a cigarette"; if the card says "workaholic", don't extract "she stayed late at the office again")
 - Meta-narration about the conversation itself — do not write "she told him about X", "she described her past", "she discussed her career". Write the actual facts revealed, not the act of revealing them
 - Preferences, opinions, or values that are already expressed or clearly implied by the character card
 - Step-by-step accounts of what happened (this is the most common mistake — summarize outcomes, not processes)
@@ -278,7 +278,7 @@ POSITIVE EXAMPLE — the same scene extracted well:
 </good_example>
 A topic tag plus two bullets capture the full encounter: who was involved, the key relationship development (Sarah bonding with Flux), and the lasting outcome (weekly visits planned). No step-by-step process, no scene-setting.
 
-NOTE: When content is explicit or violent, name the specific outcome — do not sanitize it into vague language. "She killed him with two shots to the chest" is a memory. "Violence occurred" is not. But this does NOT mean narrate each step leading up to it — summarize the outcome, not the process.
+NOTE: When significant events occur, name the specific outcome clearly — do not sanitize into vague language. "She confronted him and left" is a memory. "Something happened between them" is not. But this does NOT mean narrate each step leading up to it — summarize the outcome, not the process.
 
 Each memory block should answer: "What from this encounter would {{charName}} remember — things involving them or affecting them that they'd tell someone about months later, or that would surface unbidden in their own mind?"
 
@@ -3117,8 +3117,8 @@ async function computeHealthScore() {
         checks.push({ id: 'file_vectorized', level: 'red', label: 'File vectorization',
             detail: 'Could not check vectorization status. Vector Storage may not be enabled for files.' });
     } else if (vecStatus === false) {
-        checks.push({ id: 'file_vectorized', level: 'red', label: 'File vectorization',
-            detail: 'File exists but has 0 vector chunks. It has not been vectorized yet.' });
+        checks.push({ id: 'file_vectorized', level: 'yellow', label: 'File vectorization',
+            detail: 'File not yet indexed by Vector Storage. This usually resolves automatically when the next message is sent.' });
     } else {
         const via = vecStatus.model ? `${vecStatus.source}/${vecStatus.model}` : vecStatus.source;
         checks.push({ id: 'file_vectorized', level: 'green', label: 'File vectorization',
@@ -3229,8 +3229,11 @@ async function computeHealthScore() {
             }
         }
     } else if (lastDiagnostics.timestamp) {
-        checks.push({ id: 'memories_injected', level: 'red', label: 'Memories in injection',
-            detail: 'No memory content was injected in the last generation. Check that Vector Storage is enabled and the file is vectorized.' });
+        // No data bank content in the last generation. Earlier checks already flag VS-disabled
+        // and file-not-vectorized separately, so the most common cause here is that no memories
+        // were relevant enough to pass the score threshold — which is working as intended.
+        checks.push({ id: 'memories_injected', level: 'yellow', label: 'Memories in injection',
+            detail: 'No memories were injected in the last generation. This is normal if the conversation topic doesn\'t match any stored memories. If this persists, check that Vector Storage is enabled and the file is vectorized.' });
     }
 
     const level = checks.some(c => c.level === 'red') ? 'red'
@@ -7652,9 +7655,9 @@ function showInjectionDrawer(messageIndex) {
     // Per-message health notes
     const memCount = snapshot.memories?.length || 0;
     if (memCount === 0) {
-        html += '<div class="charMemory_drawerHealthNote charMemory_drawerHealthNote--red">'
-            + '<i class="fa-solid fa-circle-xmark fa-xs"></i> No memories injected for this message. '
-            + 'Check the health indicator in the status bar.'
+        html += '<div class="charMemory_drawerHealthNote charMemory_drawerHealthNote--yellow">'
+            + '<i class="fa-solid fa-circle-info fa-xs"></i> No memories matched this message. '
+            + 'This is normal when the conversation topic doesn\'t relate to stored memories.'
             + '</div>';
     } else {
         const uniqueTexts = new Set(snapshot.memories.map(m => m.text));
