@@ -8175,7 +8175,7 @@ jQuery(async function () {
         showSetupWizard(1);
     });
 
-    // Nudge banner: fix button opens troubleshooter health checks
+    // Nudge banner: View button opens troubleshooter health checks
     $('#charMemory_nudgeFix').on('click', function () {
         showTroubleshooter('health');
     });
