@@ -3069,6 +3069,39 @@ function captureDiagnostics(messageIndex) {
 }
 
 /**
+ * Discover the KoboldCPP embedding model name by querying the server.
+ * KoboldCPP doesn't store its model name in Vector Storage settings — it's
+ * discovered dynamically from the API response during embedding creation.
+ * This mirrors what the VS extension itself does for its list operations.
+ * @returns {Promise<string|null>} The model name, or null if unavailable.
+ */
+async function discoverKoboldCppModel() {
+    try {
+        const vecSettings = extension_settings.vectors;
+        let serverUrl;
+        if (vecSettings?.use_alt_endpoint) {
+            serverUrl = vecSettings.alt_endpoint_url;
+        } else {
+            const tgSettings = getContext().textCompletionSettings;
+            serverUrl = tgSettings?.server_urls?.koboldcpp;
+        }
+        if (!serverUrl) return null;
+
+        const response = await fetch('/api/backends/kobold/embed', {
+            method: 'POST',
+            headers: getRequestHeaders(),
+            body: JSON.stringify({ items: [], server: serverUrl }),
+        });
+        if (!response.ok) return null;
+
+        const data = await response.json();
+        return data.model || null;
+    } catch {
+        return null;
+    }
+}
+
+/**
  * Check vectorization status for a file URL.
  * @param {string} fileUrl The attachment URL.
  * @returns {Promise<{chunks: number, source: string, model: string}|false|null>}
@@ -3080,7 +3113,12 @@ async function checkVectorizationStatus(fileUrl) {
 
         const source = vecSettings.source || 'transformers';
         const modelKey = `${source === 'palm' || source === 'vertexai' ? 'google' : source}_model`;
-        const model = vecSettings[modelKey] || '';
+        let model = vecSettings[modelKey] || '';
+
+        // KoboldCPP doesn't store its model in VS settings — discover it from the API
+        if (!model && source === 'koboldcpp') {
+            model = await discoverKoboldCppModel() || '';
+        }
 
         const collectionId = `file_${getStringHash(fileUrl)}`;
         const body = { collectionId, source };
