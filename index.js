@@ -4620,10 +4620,7 @@ async function showSetupWizard(startStep = 1) {
             <div class="charMemory_modalFieldGroup">
                 <label><small>Provider</small></label>
                 <select id="cm_wiz_provider" class="text_pole">${providerOptions}</select>
-                <small class="charMemory_helperText">
-                    <strong>Pollinations</strong> is free and requires no API key \u2014 great for trying out CharMemory.
-                    For higher quality, try OpenRouter, Groq, or DeepSeek with an API key.
-                </small>
+                <small id="cm_wiz_providerHint" class="charMemory_helperText"></small>
             </div>
             <div class="charMemory_modalFieldGroup" id="cm_wiz_apiKeyRow" style="${preset.requiresApiKey ? '' : 'display:none;'}">
                 <label><small>API Key <a id="cm_wiz_helpLink" href="${escapeAttr(preset.helpUrl || '#')}" target="_blank" style="font-size:0.85em;${preset.helpUrl ? '' : 'display:none;'}">(get key)</a></small></label>
@@ -4795,6 +4792,13 @@ async function showSetupWizard(startStep = 1) {
             $wizard.find('#cm_wiz_nanogptFilterRP').prop('checked', !!ps.nanogptFilterRoleplay);
             $wizard.find('#cm_wiz_nanogptFilterReasoning').prop('checked', !!ps.nanogptFilterReasoning);
         }
+
+        // Provider-specific hint below the dropdown
+        const providerHints = {
+            pollinations: '<strong>Pollinations</strong> is free and requires no API key \u2014 great for trying out CharMemory. For higher quality, try OpenRouter, Groq, or DeepSeek with an API key.',
+            ollama: 'Ollama runs locally. Make sure Ollama is running and set <code>OLLAMA_ORIGINS=*</code> to allow browser access.',
+        };
+        $wizard.find('#cm_wiz_providerHint').html(providerHints[pk] || '');
 
         // Reset connection state
         wizConnectionOk = false;
