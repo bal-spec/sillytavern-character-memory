@@ -472,6 +472,8 @@ const defaultSettings = {
     conversionPrompt: '',
     injectionDrawerOpen: false,
     displayMode: 'auto',
+    protectRecentMessages: false,
+    protectRecentMessagesCount: 4,
 };
 
 const PROMPT_CONFIG = {
@@ -2606,7 +2608,15 @@ async function extractMemories({
 
     // Calculate total unprocessed messages and chunks
     const chat = chatArray || context.chat;
-    const effectiveEnd = endIndex !== null ? endIndex + 1 : chat.length;
+    let effectiveEnd = endIndex !== null ? endIndex + 1 : chat.length;
+
+    // Protect recent messages: for auto-extraction, skip the most recent N messages
+    // so swipes/regenerations aren't constrained by just-extracted memories
+    if (!force && endIndex === null && extension_settings[MODULE_NAME].protectRecentMessages) {
+        const buffer = extension_settings[MODULE_NAME].protectRecentMessagesCount || 4;
+        effectiveEnd = Math.max(currentLastExtracted + 1, effectiveEnd - buffer);
+    }
+
     const totalUnprocessed = effectiveEnd - (currentLastExtracted + 1);
 
     if (totalUnprocessed <= 0) {
@@ -3582,6 +3592,23 @@ async function showSettingsModal() {
             </div>
         </div>
         <small class="charMemory_helperText">These settings only affect automatic extraction. Manual and batch extraction ignore them.</small>
+        <div class="charMemory_statusRow" style="margin-top: 12px;">
+            <label class="checkbox_label" for="cm_modal_protectRecent" title="Excludes the most recent messages from auto-extraction so swipes and regenerations aren't constrained by just-extracted memories.">
+                <input type="checkbox" id="cm_modal_protectRecent" ${s.protectRecentMessages ? 'checked' : ''} />
+                <span>Protect recent messages</span>
+            </label>
+            <small class="charMemory_helperText">Excludes the most recent messages from auto-extraction, so swipes and regenerations aren't constrained by just-extracted memories. Skipped messages are picked up on the next cycle.</small>
+        </div>
+        <div class="charMemory_sliderRow" id="cm_modal_protectRecentCountRow" style="display: ${s.protectRecentMessages ? 'flex' : 'none'};">
+            <label title="How many recent messages to skip during auto-extraction.">
+                <small>Messages to protect</small>
+            </label>
+            <input class="neo-range-slider" type="range" id="cm_modal_protectRecentCount" min="1" max="20" step="1" value="${s.protectRecentMessagesCount}" />
+            <div class="wide100p">
+                <input class="neo-range-input" type="number" min="1" max="20" step="1"
+                       data-for="cm_modal_protectRecentCount" id="cm_modal_protectRecentCountCounter" value="${s.protectRecentMessagesCount}" />
+            </div>
+        </div>
 
         <hr class="charMemory_separator" />
         <h4 class="charMemory_modalSectionTitle">Extraction Settings</h4>
@@ -3983,6 +4010,14 @@ async function showSettingsModal() {
         // Sync sidebar
         $('#charMemory_mergeChunks').prop('checked', extension_settings[MODULE_NAME].mergeChunks);
     });
+
+    $('#cm_modal_protectRecent').off('change').on('change', function () {
+        extension_settings[MODULE_NAME].protectRecentMessages = !!$(this).prop('checked');
+        saveSettingsDebounced();
+        $('#cm_modal_protectRecentCountRow').toggle(extension_settings[MODULE_NAME].protectRecentMessages);
+    });
+
+    sliderHandler('cm_modal_protectRecentCount', 'cm_modal_protectRecentCountCounter', 'protectRecentMessagesCount');
 
     // Prompt view/edit buttons — open the Prompts modal
     $('#cm_modal_promptsViewExtraction').off('click').on('click', () => showPromptsModal('extraction'));

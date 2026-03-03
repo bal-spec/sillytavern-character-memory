@@ -2,6 +2,10 @@
 
 ## 2.1.1
 
+### New Features
+
+- **Protect recent messages**: New toggle in Settings > Extraction that excludes the most recent messages from auto-extraction, preventing a feedback loop where just-extracted memories constrain swipes and regenerations. When enabled, a configurable buffer (default: 4 messages) keeps recent events out of memories until the next extraction cycle. Does not affect Extract Now or Extract Here.
+
 ### Bug Fixes
 
 - **KoboldCPP vectorization check false negative**: The health check reported files as "not vectorized" when using KoboldCPP as the vectorization backend. KoboldCPP doesn't store its model name in Vector Storage settings — it's discovered dynamically from the API. The check now queries the KoboldCPP embed endpoint to discover the correct model name before looking up vector data.
