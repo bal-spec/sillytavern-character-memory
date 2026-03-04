@@ -5495,7 +5495,9 @@ async function showTroubleshooter(initialSection = 'health') {
     // Supports group chats — renders a labeled section per member.
     const buildMemberFileList = (t) => {
         ensureCharacterAttachments(t.avatar);
-        const attachments = extension_settings.character_attachments[t.avatar] || [];
+        const disabledUrls = new Set(extension_settings.disabled_attachments || []);
+        const attachments = (extension_settings.character_attachments[t.avatar] || [])
+            .filter(att => !disabledUrls.has(att.url));
         if (attachments.length === 0) {
             return '<div class="charMemory_diagEmpty" style="margin:4px 0 8px;">No Data Bank files yet — run <b>Extract Now</b> to create memories.</div>';
         }
@@ -5541,10 +5543,6 @@ async function showTroubleshooter(initialSection = 'health') {
         dataBankSubtitle = `${avatarImg} ${escapeHtml(charName)}'s Data Bank files`;
         dataBankHtml = buildMemberFileList(target);
     }
-    dataBankHtml += `<div class="charMemory_tsImportRow">
-            <input type="file" id="cm_ts_fileImport" style="display:none;" accept=".md,.txt,.json" />
-            <button class="menu_button" id="cm_ts_importBtn"><i class="fa-solid fa-upload fa-sm"></i> Import file</button>
-        </div>`;
 
     // Build full modal
     const navActive = (s) => s === initialSection ? ' active' : '';
@@ -5567,6 +5565,10 @@ async function showTroubleshooter(initialSection = 'health') {
                 <h4 class="charMemory_modalSectionTitle">Data Bank Browser</h4>
                 <small class="charMemory_helperText">${dataBankSubtitle}</small>
                 <div id="cm_ts_dataBankList">${dataBankHtml}</div>
+                <div class="charMemory_tsImportRow">
+                    <input type="file" id="cm_ts_fileImport" style="display:none;" accept=".md,.txt,.json" />
+                    <button class="menu_button" id="cm_ts_importBtn"><i class="fa-solid fa-upload fa-sm"></i> Import file</button>
+                </div>
             </div>
             <div class="charMemory_modalSection${navActive('report')}" data-section="report">
                 <h4 class="charMemory_modalSectionTitle">Diagnostic Report</h4>
@@ -5606,8 +5608,9 @@ async function showTroubleshooter(initialSection = 'health') {
         </div>
     </div>`;
 
+    let autoRefreshInterval;
     const popup = callGenericPopup(html, POPUP_TYPE.TEXT, '', { wide: true, allowVerticalScrolling: true });
-    popup.then(() => updateHealthIndicator());
+    popup.then(() => { clearInterval(autoRefreshInterval); updateHealthIndicator(); });
 
     // Wire nav switching
     const $modal = $('.charMemory_troubleshooter').last();
@@ -5981,6 +5984,28 @@ async function showTroubleshooter(initialSection = 'health') {
         if (!confirmed) return;
         await clearAllMemories();
     });
+
+    // Auto-refresh the Data Bank file list every 2s while the databank section is active
+    const rebuildDataBankList = () => {
+        if (!$modal.find('.charMemory_modalSection[data-section="databank"]').hasClass('active')) return;
+        let newHtml = '';
+        if (!charName || !target) {
+            newHtml = '<div class="charMemory_diagEmpty">No character selected.</div>';
+        } else if (targets.length > 1) {
+            for (const t of targets) {
+                const avatarImg = `<img class="charMemory_groupAvatar" src="/thumbnail?type=avatar&file=${encodeURIComponent(t.avatar)}" alt="" onerror="this.style.display='none'" />`;
+                newHtml += `<div class="charMemory_tsMemberSection">
+                    <div class="charMemory_tsMemberLabel">${avatarImg}${escapeHtml(t.name)}</div>
+                    ${buildMemberFileList(t)}
+                </div>`;
+            }
+        } else {
+            newHtml = buildMemberFileList(target);
+        }
+        const $list = $('#cm_ts_dataBankList');
+        if ($list.html() !== newHtml) $list.html(newHtml);
+    };
+    autoRefreshInterval = setInterval(rebuildDataBankList, 2000);
 
     return popup;
 }
