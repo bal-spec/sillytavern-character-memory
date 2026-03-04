@@ -51,7 +51,7 @@ import {
 import { createMemoryEditor } from './editor.js';
 
 const MODULE_NAME = 'charMemory';
-const MODULE_VERSION = '2.1.0';
+const MODULE_VERSION = '2.1.2';
 const DEFAULT_FILE_NAME = 'char-memories.md';
 const LOG_PREFIX = '[CharMemory]';
 
