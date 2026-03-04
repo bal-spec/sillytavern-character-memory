@@ -1700,12 +1700,22 @@ function getGroupMembers() {
     const context = getContext();
     if (!context.groupId) return [];
     const group = context.groups?.find(g => g.id === context.groupId);
-    if (!group) return [];
-    return group.members
-        .filter(avatar => !group.disabled_members?.includes(avatar))
+    if (!group) {
+        console.warn(LOG_PREFIX, `Group not found: groupId="${context.groupId}", available groups:`, context.groups?.map(g => g.id));
+        return [];
+    }
+    const activeMembers = group.members
+        .filter(avatar => !group.disabled_members?.includes(avatar));
+    if (activeMembers.length === 0) {
+        console.warn(LOG_PREFIX, `Group "${group.name}" has no active members. members=${group.members?.length}, disabled=${group.disabled_members?.length}`);
+    }
+    return activeMembers
         .map(avatar => {
             const charIndex = characters.findIndex(c => c.avatar === avatar);
             const char = characters[charIndex];
+            if (!char) {
+                console.warn(LOG_PREFIX, `Group member avatar "${avatar}" not found in characters array (${characters.length} characters loaded)`);
+            }
             return char ? { name: char.name, avatar, charIndex } : null;
         })
         .filter(Boolean);
@@ -2935,25 +2945,29 @@ async function onChatChanged() {
     const meta = chat_metadata[MODULE_NAME];
     const lastIdx = meta.lastExtractedIndex ?? -1;
 
-    // Detect stale metadata: lastExtractedIndex is set but no memories exist
-    // for this chat. This happens when old code advanced the index even on
-    // NO_NEW_MEMORIES. Auto-reset so extraction can run.
+    // Detect stale metadata: lastExtractedIndex is set but the memory file is empty.
+    // This happens when old code advanced the index even on NO_NEW_MEMORIES, or when
+    // the user clears memories after extraction. Auto-reset so extraction can run.
+    //
+    // We check for ANY blocks (not chat-specific), because consolidation replaces the
+    // original chatId labels with thematic labels (e.g. "First Meeting"). Requiring a
+    // chatId match would falsely reset the index every session after consolidation.
     if (lastIdx >= 0) {
         try {
-            let hasMemoriesForChat = false;
+            let hasAnyMemories = false;
             const targets = getMemoryTargets();
             for (const target of targets) {
                 const content = await readMemoriesForCharacter(target.avatar, target.fileName);
                 const blocks = parseMemories(content);
-                if (blocks.some(b => b.chat === chatId || b.chat === 'consolidated' || b.chat === 'unknown')) {
-                    hasMemoriesForChat = true;
+                if (blocks.length > 0) {
+                    hasAnyMemories = true;
                     break;
                 }
             }
-            if (!hasMemoriesForChat) {
+            if (!hasAnyMemories) {
                 meta.lastExtractedIndex = -1;
                 saveMetadataDebounced();
-                logActivity(`Auto-reset lastExtractedIndex: was ${lastIdx} but no memories found for chat="${chatId}" — stale metadata`, 'warning');
+                logActivity(`Auto-reset lastExtractedIndex: was ${lastIdx} but memory file is empty — stale metadata`, 'warning');
             }
         } catch { /* ignore read errors */ }
     }
@@ -6073,8 +6087,21 @@ Version: ${MODULE_VERSION}
 
 --- Character ---
 Name: ${charName}
-Group chat: ${targets.length > 1 ? 'Yes (' + targets.length + ' members)' : 'No'}
-
+Group chat: ${isGroupChat() ? 'Yes (' + targets.length + ' members found)' : 'No'}
+${(() => {
+    if (!isGroupChat()) return '';
+    const context = getContext();
+    const group = context.groups?.find(g => g.id === context.groupId);
+    if (!group) {
+        return `\n--- Group Debug ---\nGroup ID: ${context.groupId}\nGroups loaded: ${context.groups?.length ?? 0}\nAvailable IDs: ${context.groups?.map(g => g.id).join(', ') || '(none)'}\n`;
+    }
+    const activeAvatars = (group.members || []).filter(a => !group.disabled_members?.includes(a));
+    const resolved = activeAvatars.filter(a => characters.findIndex(c => c.avatar === a) >= 0);
+    const unresolved = activeAvatars.filter(a => characters.findIndex(c => c.avatar === a) < 0);
+    let out = `\n--- Group Debug ---\nGroup name: ${group.name}\nTotal members: ${group.members?.length ?? 0}, disabled: ${group.disabled_members?.length ?? 0}, active: ${activeAvatars.length}\nResolved: ${resolved.length}, unresolved: ${unresolved.length}\nCharacters loaded: ${characters.length}`;
+    if (unresolved.length > 0) out += `\nUnresolved avatars: ${unresolved.join(', ')}`;
+    return out + '\n';
+})()}
 --- Settings ---
 Source: ${s.source || 'provider'}
 Provider: ${s.selectedProvider || '(none)'}
