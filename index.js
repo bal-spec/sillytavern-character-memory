@@ -5526,7 +5526,7 @@ async function showTroubleshooter(initialSection = 'health') {
 
     let dataBankHtml = '';
     let dataBankSubtitle = 'No character selected';
-    if (!charName || !target) {
+    if (!targets.length) {
         dataBankHtml = '<div class="charMemory_diagEmpty">No character selected.</div>';
     } else if (targets.length > 1) {
         // Group chat: labeled section per member
@@ -5539,8 +5539,9 @@ async function showTroubleshooter(initialSection = 'health') {
             </div>`;
         }
     } else {
+        const displayName = charName || target.name;
         const avatarImg = `<img class="charMemory_groupAvatar" src="/thumbnail?type=avatar&file=${encodeURIComponent(target.avatar)}" alt="" onerror="this.style.display='none'" style="vertical-align:middle;" />`;
-        dataBankSubtitle = `${avatarImg} ${escapeHtml(charName)}'s Data Bank files`;
+        dataBankSubtitle = `${avatarImg} ${escapeHtml(displayName)}'s Data Bank files`;
         dataBankHtml = buildMemberFileList(target);
     }
 
@@ -5992,9 +5993,8 @@ async function showTroubleshooter(initialSection = 'health') {
     const rebuildDataBankList = () => {
         if (!$modal.find('.charMemory_modalSection[data-section="databank"]').hasClass('active')) return;
         const currentTargets = getMemoryTargets();
-        const currentCharName = getCharacterName();
         let newHtml = '';
-        if (!currentCharName || !currentTargets.length) {
+        if (!currentTargets.length) {
             newHtml = '<div class="charMemory_diagEmpty">No character selected.</div>';
         } else if (currentTargets.length > 1) {
             for (const t of currentTargets) {
