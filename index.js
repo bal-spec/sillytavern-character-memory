@@ -2766,11 +2766,15 @@ async function extractMemories({
                     logActivity(`${logLabel} Raw response:\n${result}`);
                 }
 
-                // For active chats: verify context hasn't changed
+                // For active chats: verify context hasn't changed mid-extraction.
+                // In group chats we only check chatId — characterId legitimately flips
+                // between members as they reply and is not a signal of a context switch.
                 if (isActiveChat) {
                     const newContext = getContext();
-                    if (newContext.characterId !== savedCharId || newContext.chatId !== savedChatId) {
-                        console.log(LOG_PREFIX, 'Context changed during extraction, discarding result');
+                    const chatChanged = newContext.chatId !== savedChatId;
+                    const charChanged = !isMultiTarget && newContext.characterId !== savedCharId;
+                    if (chatChanged || charChanged) {
+                        logActivity('Context changed during extraction — discarding result', 'warning');
                         return { totalMemories, chunksProcessed, lastExtractedIndex: currentLastExtracted };
                     }
                 }
