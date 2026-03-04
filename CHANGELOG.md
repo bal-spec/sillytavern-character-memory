@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.1.2
+
+### Bug Fixes
+
+- **Extraction restarting from the beginning every session**: After running consolidation, `lastExtractedIndex` was reset to -1 on every SillyTavern restart. Consolidation replaces the original chat-ID labels on memory blocks with thematic labels (e.g. "First vet visit"), and the stale-metadata check incorrectly treated those as "no memories found for this chat." The check now resets only when the memory file is genuinely empty.
+- **Group chat extraction discarded mid-flight**: If any group member sent a message during an LLM call, the extraction result was silently thrown away and the same messages re-extracted after cooldown — doubling API cost. The context-change guard now only checks for a chat switch in group chats; `characterId` flipping between members is expected and no longer triggers a discard. The discard event is also now visible in the Activity Log instead of being hidden in the browser console.
+
+### Improvements
+
+- **Group chat diagnostics in Troubleshooter**: The Diagnostic Report now includes a Group Debug section when in a group chat, showing member counts, how many resolved vs. unresolved, and any avatar strings that couldn't be matched to a loaded character. Helps diagnose issue #4 where group members aren't detected.
+
 ## 2.1.1
 
 ### New Features
