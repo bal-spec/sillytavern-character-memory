@@ -5620,6 +5620,7 @@ async function showTroubleshooter(initialSection = 'health') {
         $(this).addClass('active');
         $modal.find('.charMemory_modalSection').removeClass('active');
         $modal.find(`.charMemory_modalSection[data-section="${section}"]`).addClass('active');
+        if (section === 'databank') rebuildDataBankList();
     });
 
     // Re-run health checks
@@ -5985,14 +5986,18 @@ async function showTroubleshooter(initialSection = 'health') {
         await clearAllMemories();
     });
 
-    // Auto-refresh the Data Bank file list every 2s while the databank section is active
+    // Auto-refresh the Data Bank file list every 2s while the databank section is active.
+    // Targets are recomputed each tick so the list updates if the character context changes
+    // after the modal was opened (e.g. chat loaded after the troubleshooter was opened).
     const rebuildDataBankList = () => {
         if (!$modal.find('.charMemory_modalSection[data-section="databank"]').hasClass('active')) return;
+        const currentTargets = getMemoryTargets();
+        const currentCharName = getCharacterName();
         let newHtml = '';
-        if (!charName || !target) {
+        if (!currentCharName || !currentTargets.length) {
             newHtml = '<div class="charMemory_diagEmpty">No character selected.</div>';
-        } else if (targets.length > 1) {
-            for (const t of targets) {
+        } else if (currentTargets.length > 1) {
+            for (const t of currentTargets) {
                 const avatarImg = `<img class="charMemory_groupAvatar" src="/thumbnail?type=avatar&file=${encodeURIComponent(t.avatar)}" alt="" onerror="this.style.display='none'" />`;
                 newHtml += `<div class="charMemory_tsMemberSection">
                     <div class="charMemory_tsMemberLabel">${avatarImg}${escapeHtml(t.name)}</div>
@@ -6000,11 +6005,12 @@ async function showTroubleshooter(initialSection = 'health') {
                 </div>`;
             }
         } else {
-            newHtml = buildMemberFileList(target);
+            newHtml = buildMemberFileList(currentTargets[0]);
         }
         const $list = $('#cm_ts_dataBankList');
         if ($list.html() !== newHtml) $list.html(newHtml);
     };
+    rebuildDataBankList(); // Populate immediately so initial render reflects current state
     autoRefreshInterval = setInterval(rebuildDataBankList, 2000);
 
     return popup;
