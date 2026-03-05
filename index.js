@@ -1715,7 +1715,7 @@ function getGroupMembers() {
     const activeMembers = group.members
         .filter(avatar => !group.disabled_members?.includes(avatar));
     if (activeMembers.length === 0) {
-        console.warn(LOG_PREFIX, `Group "${group.name}" has no active members. members=${group.members?.length}, disabled=${group.disabled_members?.length}`);
+        console.warn(LOG_PREFIX, `Group "${group.name}" has no active members. members=${group.members?.length}, disabled=${group.disabled_members?.length}, mode=${group.generation_mode}`);
     }
     return activeMembers
         .map(avatar => {
@@ -6116,7 +6116,7 @@ ${(() => {
     const activeAvatars = (group.members || []).filter(a => !group.disabled_members?.includes(a));
     const resolved = activeAvatars.filter(a => characters.findIndex(c => c.avatar === a) >= 0);
     const unresolved = activeAvatars.filter(a => characters.findIndex(c => c.avatar === a) < 0);
-    let out = `\n--- Group Debug ---\nGroup name: ${group.name}\nTotal members: ${group.members?.length ?? 0}, disabled: ${group.disabled_members?.length ?? 0}, active: ${activeAvatars.length}\nResolved: ${resolved.length}, unresolved: ${unresolved.length}\nCharacters loaded: ${characters.length}`;
+    let out = `\n--- Group Debug ---\nGroup name: ${group.name}\nGeneration mode: ${group.generation_mode ?? 0}\nTotal members: ${group.members?.length ?? 0}, disabled: ${group.disabled_members?.length ?? 0}, active: ${activeAvatars.length}\nResolved: ${resolved.length}, unresolved: ${unresolved.length}\nCharacters loaded: ${characters.length}`;
     if (unresolved.length > 0) out += `\nUnresolved avatars: ${unresolved.join(', ')}`;
     return out + '\n';
 })()}
