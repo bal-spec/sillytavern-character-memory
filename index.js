@@ -1473,6 +1473,14 @@ function loadSettings() {
 
     // Check prompt versions for update notifications
     checkPromptVersions();
+    const pendingPromptUpdates = Object.keys(PROMPT_CONFIG).filter(k => hasPromptUpdate(k));
+    if (pendingPromptUpdates.length > 0) {
+        setTimeout(() => toastr.info(
+            'Some CharMemory prompts have been updated. Open <b>Settings → Prompts</b> to review.',
+            'CharMemory',
+            { timeOut: 10000, escapeHtml: false },
+        ), 2000);
+    }
 
     // Bind dashboard UI elements to settings
     $('#charMemory_autoExtractPill').toggleClass('active', !!extension_settings[MODULE_NAME].enabled);
@@ -4266,8 +4274,14 @@ function checkPromptVersions() {
         const current = config.version;
 
         if (!stored) {
-            // First time — store the current version (no notification)
-            s.promptVersions[key] = current;
+            if (isPromptCustomized(key)) {
+                // Upgrading from pre-2.0 (no promptVersions stored) with a custom prompt
+                // — use a sentinel so hasPromptUpdate() fires and the banner is shown
+                s.promptVersions[key] = 'pre-2.0';
+            } else {
+                // First time with default prompt — silently initialize to current
+                s.promptVersions[key] = current;
+            }
             changed = true;
         } else if (stored !== current && !isPromptCustomized(key)) {
             // User has the default prompt text — silently update stored version

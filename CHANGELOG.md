@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.1.3
+
+### Bug Fixes
+
+- **Prompt update notifications silent after upgrading from 1.x**: Users who customized an extraction or consolidation prompt in 1.x and then upgraded to 2.x were never notified that the default prompts had changed. The version-tracking system introduced in 2.0 only ran on the second launch (after `promptVersions` was already initialized), so the first launch after upgrade silently marked all prompts as up-to-date — even customized ones. The check now detects a customized prompt with no prior version record and flags it for review. A toast notification also appears 2 seconds after load whenever any prompt has a pending update, directing users to Settings → Prompts.
+
 ## 2.1.2
 
 ### Bug Fixes
