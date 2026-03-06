@@ -2610,7 +2610,19 @@ async function extractMemories({
     // Determine extraction targets
     const targets = getMemoryTargets();
     if (targets.length === 0) {
-        logActivity('Extraction: no targets found', 'warning');
+        if (isGroupChat()) {
+            const _ctx = getContext();
+            const _group = _ctx.groups?.find(g => g.id === _ctx.groupId);
+            const _total = _group?.members?.length ?? 0;
+            const _active = (_group?.members || []).filter(a => !_group?.disabled_members?.includes(a)).length;
+            if (_total > 0 && _active === 0) {
+                logActivity('Extraction: all group members are disabled in SillyTavern — re-enable at least one in the group settings', 'warning');
+            } else {
+                logActivity('Extraction: no targets found', 'warning');
+            }
+        } else {
+            logActivity('Extraction: no targets found', 'warning');
+        }
         return noopResult;
     }
     const isMultiTarget = targets.length > 1;
