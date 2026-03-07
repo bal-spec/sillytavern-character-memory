@@ -386,58 +386,9 @@
     margin-bottom: 6px;
 }
 
-.charMemory_cardTitle {
-    font-weight: bold;
-    font-size: 0.95em;
-}
-
-.charMemory_cardTimestamp {
-    font-size: 0.8em;
-    opacity: 0.6;
-    flex: 1;
-}
-
 .charMemory_cardActions {
     display: flex;
     gap: 4px;
-}
-
-.charMemory_cardBullets {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-.charMemory_bulletRow {
-    display: flex;
-    align-items: flex-start;
-    gap: 8px;
-    padding: 3px 0;
-    border-top: 1px solid var(--SmartThemeBorderColor, rgba(128, 128, 128, 0.15));
-}
-
-.charMemory_bulletRow:first-child {
-    border-top: none;
-}
-
-.charMemory_bulletText {
-    flex: 1;
-    font-size: 0.9em;
-    line-height: 1.4;
-    min-width: 0;
-    word-break: break-word;
-}
-
-.charMemory_bulletActions {
-    display: flex;
-    gap: 4px;
-    flex-shrink: 0;
-}
-
-.charMemory_bulletActions .menu_button_icon {
-    padding: 2px 6px;
-    font-size: 0.85em;
-    min-width: unset;
 }
 
 /* Per-message buttons — inherit .mes_button base styling from ST */

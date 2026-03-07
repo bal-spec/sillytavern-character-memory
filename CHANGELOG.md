@@ -6,7 +6,8 @@
 
 - **Generation mode in group diagnostics**: The Group Debug section of the Diagnostic Report now shows the group's generation mode value. This is the key piece needed to diagnose issue #4 — groups using Append (with disabled) mode have all members in the disabled list by design, which was invisible in prior reports.
 - **Clearer warning when all group members are disabled**: Instead of the generic "no targets found" message, the Activity Log now says "all group members are disabled in SillyTavern — re-enable at least one in the group settings" when a group has members but all are in the disabled list.
-- **Clearer dialog buttons**: Consolidation, conversion, and reformat dialogs now show "Save" and "Cancel" buttons instead of the ambiguous "Yes"/"No" defaults, preventing accidental loss of edits.
+- **Clearer dialog buttons**: Consolidation, conversion, reformat, and Data Bank editor dialogs now show "Save" and "Cancel" buttons instead of ambiguous defaults, preventing accidental loss of edits.
+- **Unified Memory Manager editor**: The View/Edit memories dialog now uses the same block editor as Consolidation, Conversion, and the Data Bank browser. Inline editing, undo, add/delete blocks and bullets, and find/replace — all consistent across every editing surface. In group chats, a character picker selects which member to edit.
 
 ### Bug Fixes
 

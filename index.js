@@ -5763,11 +5763,10 @@ async function showTroubleshooter(initialSection = 'health') {
                 <div class="charMemory_tsFileEditorFooter">
                     <button class="charMemory_editorAddBlock menu_button charMemory_editorAddBlock--hidden" id="cm_ts_fileEditorAddBlock"><i class="fa-solid fa-plus fa-xs"></i> Add Block</button>
                     <button class="menu_button" id="cm_ts_fileUndoBtn" disabled><i class="fa-solid fa-rotate-left fa-xs"></i> Undo</button>
-                    <button class="menu_button" id="cm_ts_fileSaveBtn"><i class="fa-solid fa-floppy-disk fa-xs"></i> Save changes</button>
                 </div>
             </div>`;
 
-            const savePopup = callGenericPopup(editorHtml, POPUP_TYPE.TEXT, escapeHtml(name || 'View / Edit file'), { wide: true, allowVerticalScrolling: true });
+            const savePopup = callGenericPopup(editorHtml, POPUP_TYPE.CONFIRM, '', { wide: true, allowVerticalScrolling: true, okButton: 'Save', cancelButton: 'Cancel' });
 
             // Find/Replace bar
             const cleanupTsFR = wireFindReplaceEvents(tsEditor, refreshTsEditor, 'cm_ts_fileFR', '.charMemoryTsFR');
@@ -5813,31 +5812,27 @@ async function showTroubleshooter(initialSection = 'health') {
                 if (tsEditor.undo()) refreshTsEditor();
             });
 
-            // Save button — explicit save (popup stays open on error, closes on success)
-            $(document).off('click.charMemoryTsEditorSave').on('click.charMemoryTsEditorSave', '#cm_ts_fileSaveBtn', async function () {
-                if (!avatar) return;
-                const $btn = $(this).prop('disabled', true).html('<i class="fa-solid fa-spinner fa-spin fa-xs"></i> Saving…');
-                try {
-                    const updatedBlocks = tsEditor.getBlocks();
-                    const updatedContent = serializeMemories(updatedBlocks);
-                    await writeMemoriesForCharacter(updatedContent, avatar, name);
-                    toastr.success(`Saved ${countMemories(updatedBlocks)} memories to ${name}.`, 'CharMemory');
-                    updateStatusDisplay();
-                    // Close the popup after a successful save
-                    $('.dialogue_popup_ok').trigger('click');
-                } catch (err) {
-                    console.error(LOG_PREFIX, 'Failed to save edited file:', err);
-                    toastr.error('Could not save changes.', 'CharMemory');
-                    $btn.prop('disabled', false).html('<i class="fa-solid fa-floppy-disk fa-xs"></i> Save changes');
-                }
-            });
+            // Wait for Save/Cancel
+            const confirmed = await savePopup;
 
-            // Popup dismissed (OK or Escape) — just clean up event handlers
-            savePopup.then(() => {
-                cleanupTsFR();
-                $(document).off('click.charMemoryTsEditorToggle click.charMemoryTsEditorDelBullet click.charMemoryTsEditorDelBlock click.charMemoryTsEditorAddBullet click.charMemoryTsEditorAddBlock click.charMemoryTsEditorUndo click.charMemoryTsEditorSave');
-                $(document).off('input.charMemoryTsEditorBullet input.charMemoryTsEditorTheme');
-            });
+            // Clean up event handlers
+            cleanupTsFR();
+            $(document).off('click.charMemoryTsEditorToggle click.charMemoryTsEditorDelBullet click.charMemoryTsEditorDelBlock click.charMemoryTsEditorAddBullet click.charMemoryTsEditorAddBlock click.charMemoryTsEditorUndo');
+            $(document).off('input.charMemoryTsEditorBullet input.charMemoryTsEditorTheme');
+
+            if (confirmed && avatar) {
+                const cleanBlocks = tsEditor.getBlocks()
+                    .map(b => ({ ...b, bullets: b.bullets.filter(bullet => bullet.trim() !== '') }))
+                    .filter(b => b.bullets.length > 0);
+
+                if (cleanBlocks.length === 0) {
+                    toastr.warning('No memories to save.', 'CharMemory');
+                } else {
+                    await writeMemoriesForCharacter(serializeMemories(cleanBlocks), avatar, name);
+                    toastr.success(`Saved ${countMemories(cleanBlocks)} memories to ${name}.`, 'CharMemory');
+                    updateStatusDisplay();
+                }
+            }
         } catch (err) {
             console.error(LOG_PREFIX, 'Failed to read file:', err);
             toastr.error('Could not read file.', 'CharMemory');
@@ -6188,307 +6183,133 @@ async function showMemoryManager() {
         callGenericPopup('No character selected.', POPUP_TYPE.TEXT);
         return;
     }
-    const isMultiTarget = targets.length > 1;
 
-    // Load all targets' memories in parallel
-    const targetData = await Promise.all(targets.map(async (target) => {
-        const content = await readMemoriesForCharacter(target.avatar, target.fileName);
-        const blocks = parseMemories(content || '');
-        return { ...target, blocks };
-    }));
+    // For group chats, show a character picker first
+    let target;
+    if (targets.length === 1) {
+        target = targets[0];
+    } else {
+        // Load counts for the picker labels
+        const targetData = await Promise.all(targets.map(async (t) => {
+            const content = await readMemoriesForCharacter(t.avatar, t.fileName);
+            const blocks = parseMemories(content || '');
+            const count = blocks.reduce((sum, b) => sum + b.bullets.length, 0);
+            return { ...t, count };
+        }));
+        const pickerHtml = targetData.map((t, i) =>
+            `<label class="checkbox_label"><input type="radio" name="charMemory_mmTarget" value="${i}" ${i === 0 ? 'checked' : ''} /> ${escapeHtml(t.name)} <small style="opacity:0.5;">(${t.count} memories)</small></label>`,
+        ).join('<br>');
+        const picked = await callGenericPopup(`Select a character to view/edit memories for:<br><br>${pickerHtml}`, POPUP_TYPE.CONFIRM);
+        if (!picked) return;
+        const selectedIdx = Number($('input[name="charMemory_mmTarget"]:checked').val()) || 0;
+        target = targets[selectedIdx];
+    }
 
-    const totalBlocks = targetData.reduce((sum, t) => sum + t.blocks.length, 0);
-    if (totalBlocks === 0) {
-        callGenericPopup(isMultiTarget ? 'No memories yet for any group member.' : 'No memories yet.', POPUP_TYPE.TEXT);
+    const content = await readMemoriesForCharacter(target.avatar, target.fileName);
+    const blocks = parseMemories(content || '');
+
+    if (blocks.length === 0) {
+        callGenericPopup('No memories yet.', POPUP_TYPE.TEXT);
         return;
     }
 
-    let html = '<div class="charMemory_manager">';
-    html += buildFindReplaceBar('charMemory_mmFR');
-    for (const target of targetData) {
-        if (target.blocks.length === 0) continue;
+    const memCount = countMemories(blocks);
+    const editor = createMemoryEditor({ blocks });
+    let mmFindPattern = null;
 
-        // Character header (group mode only)
-        if (isMultiTarget) {
-            const memCount = target.blocks.reduce((sum, b) => sum + b.bullets.length, 0);
-            html += `<div class="charMemory_groupSection" data-avatar="${escapeAttr(target.avatar)}" data-filename="${escapeAttr(target.fileName)}">
-                <div style="font-weight:bold;font-size:0.95em;margin:8px 0 4px;border-bottom:1px solid var(--SmartThemeBorderColor, rgba(128,128,128,0.2));padding-bottom:4px;">
-                    ${escapeHtml(target.name)} <small style="opacity:0.5;">(${memCount} memories)</small>
-                </div>`;
-        }
+    const refreshEditor = (highlightPattern) => {
+        if (highlightPattern !== undefined) mmFindPattern = highlightPattern;
+        const currentBlocks = editor.getBlocks();
+        const editing = editor.getEditingSet();
+        $('#charMemory_mmEditorPane').html(renderConsolidatedCards(currentBlocks, editing, mmFindPattern));
+        $('#charMemory_mmCount').text(`${countMemories(currentBlocks)} memories in ${currentBlocks.length} blocks`);
+        $('#charMemory_mmAddBlock').toggleClass('charMemory_editorAddBlock--hidden', editing.size === 0);
+        $('#charMemory_mmUndoBtn').prop('disabled', !editor.canUndo());
+    };
 
-        // Display newest blocks first (reverse chronological) while preserving original indices
-        for (let bi = target.blocks.length - 1; bi >= 0; bi--) {
-            const b = target.blocks[bi];
-            const chatLabel = b.chat.length > 16 ? b.chat.slice(0, 16) + '...' : b.chat;
-            html += `<div class="charMemory_card" data-block="${bi}" data-avatar="${escapeAttr(target.avatar)}" data-filename="${escapeAttr(target.fileName)}">
-                <div class="charMemory_cardHeader">
-                    <span class="charMemory_cardTitle">${escapeHtml(chatLabel)}</span>
-                    <span class="charMemory_cardTimestamp">${escapeHtml(b.date)}</span>
-                    <span class="charMemory_cardActions">
-                        <button class="charMemory_deleteBlockBtn menu_button menu_button_icon" data-block="${bi}" data-avatar="${escapeAttr(target.avatar)}" data-filename="${escapeAttr(target.fileName)}" title="Delete all memories from this block"><i class="fa-solid fa-trash"></i></button>
-                    </span>
-                </div>
-                <div class="charMemory_cardBullets">`;
-            for (let bui = 0; bui < b.bullets.length; bui++) {
-                html += `<div class="charMemory_bulletRow" data-block="${bi}" data-bullet="${bui}">
-                    <span class="charMemory_bulletText">- ${escapeHtml(b.bullets[bui])}</span>
-                    <span class="charMemory_bulletActions">
-                        <button class="charMemory_editBtn menu_button menu_button_icon" data-block="${bi}" data-bullet="${bui}" data-avatar="${escapeAttr(target.avatar)}" data-filename="${escapeAttr(target.fileName)}" title="Edit"><i class="fa-solid fa-pencil"></i></button>
-                        <button class="charMemory_deleteBtn menu_button menu_button_icon" data-block="${bi}" data-bullet="${bui}" data-avatar="${escapeAttr(target.avatar)}" data-filename="${escapeAttr(target.fileName)}" title="Delete"><i class="fa-solid fa-trash"></i></button>
-                    </span>
-                </div>`;
-            }
-            html += '</div></div>';
-        }
+    const editorHtml = `<div class="charMemory_manager">
+        <div class="charMemory_tsFileEditorHeader">
+            <span class="charMemory_dimText">${escapeHtml(target.name)}</span>
+            <span id="charMemory_mmCount" class="charMemory_dimText">${memCount} memories in ${blocks.length} blocks</span>
+        </div>
+        ${buildFindReplaceBar('charMemory_mmFR')}
+        <div class="charMemory_consolidationContent" id="charMemory_mmEditorPane">${renderConsolidatedCards(blocks, editor.getEditingSet())}</div>
+        <div class="charMemory_tsFileEditorFooter">
+            <button class="charMemory_editorAddBlock menu_button charMemory_editorAddBlock--hidden" id="charMemory_mmAddBlock"><i class="fa-solid fa-plus fa-xs"></i> Add Block</button>
+            <button class="menu_button" id="charMemory_mmUndoBtn" disabled><i class="fa-solid fa-rotate-left fa-xs"></i> Undo</button>
+        </div>
+    </div>`;
 
-        if (isMultiTarget) {
-            html += '</div>'; // close .charMemory_groupSection
-        }
-    }
-    html += '</div>';
+    const popup = callGenericPopup(editorHtml, POPUP_TYPE.CONFIRM, '', { wide: true, allowVerticalScrolling: true, okButton: 'Save', cancelButton: 'Cancel' });
 
-    const popup = callGenericPopup(html, POPUP_TYPE.TEXT, '', { wide: true, allowVerticalScrolling: true });
+    // Find/Replace bar
+    const cleanupMmFR = wireFindReplaceEvents(editor, refreshEditor, 'charMemory_mmFR', '.charMemoryMmFR');
 
-    // Wire up event handlers — always read avatar+fileName from data attributes
-    $(document).off('click.charMemoryManager').on('click.charMemoryManager', '.charMemory_editBtn', async function (e) {
-        e.stopPropagation();
-        const blockIdx = Number($(this).data('block'));
-        const bulletIdx = Number($(this).data('bullet'));
-        const avatar = String($(this).data('avatar'));
-        const fileName = String($(this).data('filename'));
-        await editMemory(blockIdx, bulletIdx, avatar, fileName);
+    // Editor event delegation
+    $(document).off('click.charMemoryMmToggle').on('click.charMemoryMmToggle', '#charMemory_mmEditorPane .charMemory_editorToggleEdit', function () {
+        editor.toggleEdit(Number($(this).data('block')));
+        refreshEditor();
     });
 
-    $(document).off('click.charMemoryDelete').on('click.charMemoryDelete', '.charMemory_deleteBtn', async function (e) {
-        e.stopPropagation();
-        const blockIdx = Number($(this).data('block'));
-        const bulletIdx = Number($(this).data('bullet'));
-        const avatar = String($(this).data('avatar'));
-        const fileName = String($(this).data('filename'));
-        await deleteMemory(blockIdx, bulletIdx, avatar, fileName);
+    $(document).off('input.charMemoryMmBullet').on('input.charMemoryMmBullet', '#charMemory_mmEditorPane .charMemory_editorBulletInput', function () {
+        editor.updateBullet(Number($(this).data('block')), Number($(this).data('bullet')), $(this).val());
     });
 
-    $(document).off('click.charMemoryDeleteBlock').on('click.charMemoryDeleteBlock', '.charMemory_deleteBlockBtn', async function (e) {
-        e.stopPropagation();
-        const blockIdx = Number($(this).data('block'));
-        const avatar = String($(this).data('avatar'));
-        const fileName = String($(this).data('filename'));
-        await deleteBlock(blockIdx, avatar, fileName);
+    $(document).off('input.charMemoryMmTheme').on('input.charMemoryMmTheme', '#charMemory_mmEditorPane .charMemory_editorThemeInput', function () {
+        editor.updateTheme(Number($(this).data('block')), $(this).val());
     });
 
-    // === Memory Manager Find/Replace (standalone — no createMemoryEditor) ===
-    let mmCaseSensitive = false;
-
-    function mmGetPattern() {
-        const find = $('#charMemory_mmFR_findInput').val();
-        if (!find) return null;
-        const escaped = find.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        return new RegExp(escaped, mmCaseSensitive ? 'g' : 'gi');
-    }
-
-    function mmUpdateHighlights() {
-        const pattern = mmGetPattern();
-        $('.charMemory_manager .charMemory_bulletText').each(function () {
-            const $el = $(this);
-            const raw = $el.data('raw') || $el.text().replace(/^- /, '');
-            $el.data('raw', raw);
-            $el.html('- ' + highlightText(raw, pattern));
-        });
-    }
-
-    function mmUpdateCount() {
-        const find = $('#charMemory_mmFR_findInput').val();
-        let count = 0;
-        for (const t of targetData) {
-            count += countMatchesInBlocks(t.blocks, find, mmCaseSensitive);
-        }
-        const $count = $('#charMemory_mmFR_matchCount');
-        $count.text(count > 0 ? `${count} match${count === 1 ? '' : 'es'}` : (find ? 'No matches' : ''));
-        $('#charMemory_mmFR_replaceAllBtn').prop('disabled', count === 0);
-    }
-
-    $(document).on('input.charMemoryMmFR', '#charMemory_mmFR_findInput', function () {
-        mmUpdateCount();
-        mmUpdateHighlights();
+    $(document).off('click.charMemoryMmDelBullet').on('click.charMemoryMmDelBullet', '#charMemory_mmEditorPane .charMemory_editorDeleteBullet', function () {
+        editor.deleteBullet(Number($(this).data('block')), Number($(this).data('bullet')));
+        refreshEditor();
     });
 
-    $(document).on('click.charMemoryMmFR', '#charMemory_mmFR_caseSensitive', function () {
-        mmCaseSensitive = !mmCaseSensitive;
-        $(this).toggleClass('charMemory_frCaseBtn--active', mmCaseSensitive);
-        mmUpdateCount();
-        mmUpdateHighlights();
+    $(document).off('click.charMemoryMmDelBlock').on('click.charMemoryMmDelBlock', '#charMemory_mmEditorPane .charMemory_editorDeleteBlock', function () {
+        editor.deleteBlock(Number($(this).data('block')));
+        refreshEditor();
     });
 
-    $(document).on('click.charMemoryMmFR', '#charMemory_mmFR_replaceAllBtn', async function () {
-        const find = $('#charMemory_mmFR_findInput').val();
-        const replace = $('#charMemory_mmFR_replaceInput').val();
-        if (!find) return;
-
-        let totalReplacements = 0;
-        for (const t of targetData) {
-            const count = replaceInBlocks(t.blocks, find, replace, mmCaseSensitive);
-            if (count > 0) {
-                totalReplacements += count;
-                await writeMemoriesForCharacter(serializeMemories(t.blocks), t.avatar, t.fileName);
-            }
-        }
-
-        if (totalReplacements > 0) {
-            // Re-render all bullet text elements with updated data
-            $('.charMemory_manager .charMemory_bulletText').each(function () {
-                $(this).removeData('raw');
-            });
-            // Rebuild card content from updated targetData
-            for (const t of targetData) {
-                const $scope = isMultiTarget
-                    ? $(`.charMemory_groupSection[data-avatar="${t.avatar}"]`)
-                    : $('.charMemory_manager');
-                for (let bi = t.blocks.length - 1; bi >= 0; bi--) {
-                    const b = t.blocks[bi];
-                    const $card = $scope.find(`.charMemory_card[data-block="${bi}"][data-avatar="${t.avatar}"]`);
-                    $card.find('.charMemory_bulletRow').each(function (bui) {
-                        if (bui < b.bullets.length) {
-                            $(this).find('.charMemory_bulletText').text('- ' + b.bullets[bui]).removeData('raw');
-                        }
-                    });
-                }
-            }
-            mmUpdateCount();
-            mmUpdateHighlights();
-            toastr.success(`Replaced ${totalReplacements} occurrence${totalReplacements === 1 ? '' : 's'}.`, 'CharMemory');
-            updateStatusDisplay();
-        }
+    $(document).off('click.charMemoryMmAddBullet').on('click.charMemoryMmAddBullet', '#charMemory_mmEditorPane .charMemory_editorAddBullet', function () {
+        const bi = Number($(this).data('block'));
+        editor.addBullet(bi);
+        refreshEditor();
+        $(`#charMemory_mmEditorPane .charMemory_editorCard[data-block="${bi}"] .charMemory_editorBulletInput:last`).focus();
     });
 
-    popup.finally(() => {
-        $(document).off('click.charMemoryManager');
-        $(document).off('click.charMemoryDelete');
-        $(document).off('click.charMemoryDeleteBlock');
-        $(document).off('input.charMemoryMmFR');
-        $(document).off('click.charMemoryMmFR');
+    $(document).off('click.charMemoryMmAddBlock').on('click.charMemoryMmAddBlock', '#charMemory_mmAddBlock', function () {
+        editor.addBlock();
+        refreshEditor();
+        $('#charMemory_mmEditorPane .charMemory_editorCard:last .charMemory_editorBulletInput:last').focus();
     });
-}
 
-/**
- * Re-index block/bullet data attributes within a scope after deletion.
- * If group sections exist, re-indexes within each section independently.
- * Otherwise re-indexes all cards in the manager.
- */
-function reindexManager() {
-    const $sections = $('.charMemory_manager .charMemory_groupSection');
-    if ($sections.length > 0) {
-        $sections.each(function () {
-            $(this).find('.charMemory_card').each(function (ci) {
-                $(this).attr('data-block', ci);
-                $(this).find('.charMemory_deleteBlockBtn').attr('data-block', ci);
-                $(this).find('.charMemory_bulletRow').each(function (ri) {
-                    $(this).attr('data-block', ci).attr('data-bullet', ri);
-                    $(this).find('.charMemory_editBtn, .charMemory_deleteBtn').attr('data-block', ci).attr('data-bullet', ri);
-                });
-            });
-        });
-    } else {
-        $('.charMemory_manager .charMemory_card').each(function (ci) {
-            $(this).attr('data-block', ci);
-            $(this).find('.charMemory_deleteBlockBtn').attr('data-block', ci);
-            $(this).find('.charMemory_bulletRow').each(function (ri) {
-                $(this).attr('data-block', ci).attr('data-bullet', ri);
-                $(this).find('.charMemory_editBtn, .charMemory_deleteBtn').attr('data-block', ci).attr('data-bullet', ri);
-            });
-        });
-    }
-}
+    $(document).off('click.charMemoryMmUndo').on('click.charMemoryMmUndo', '#charMemory_mmUndoBtn', function () {
+        if (editor.undo()) refreshEditor();
+    });
 
-async function editMemory(blockIndex, bulletIndex, avatar, fileName) {
-    const content = await readMemoriesForCharacter(avatar, fileName);
-    const blocks = parseMemories(content);
+    // Wait for Save/Cancel
+    const confirmed = await popup;
 
-    if (blockIndex < 0 || blockIndex >= blocks.length) return;
-    const block = blocks[blockIndex];
-    if (bulletIndex < 0 || bulletIndex >= block.bullets.length) return;
+    // Clean up
+    cleanupMmFR();
+    $(document).off('click.charMemoryMmToggle click.charMemoryMmDelBullet click.charMemoryMmDelBlock click.charMemoryMmAddBullet click.charMemoryMmAddBlock click.charMemoryMmUndo');
+    $(document).off('input.charMemoryMmBullet input.charMemoryMmTheme');
 
-    const edited = await callGenericPopup('Edit memory:', POPUP_TYPE.INPUT, block.bullets[bulletIndex], { rows: 3 });
-    if (edited === null || edited === false) return;
+    if (!confirmed) return;
 
-    const newText = String(edited).trim();
-    block.bullets[bulletIndex] = newText;
-    await writeMemoriesForCharacter(serializeMemories(blocks), avatar, fileName);
-    toastr.success('Memory updated.', 'CharMemory');
+    // Filter out empty bullets and empty blocks before saving
+    const cleanBlocks = editor.getBlocks()
+        .map(b => ({ ...b, bullets: b.bullets.filter(bullet => bullet.trim() !== '') }))
+        .filter(b => b.bullets.length > 0);
 
-    // Update DOM in place — scope to section if present
-    const $scope = $(`.charMemory_groupSection[data-avatar="${avatar}"]`);
-    const $row = ($scope.length ? $scope : $('.charMemory_manager'))
-        .find(`.charMemory_bulletRow[data-block="${blockIndex}"][data-bullet="${bulletIndex}"]`);
-    $row.find('.charMemory_bulletText').text('- ' + newText);
-}
-
-async function deleteMemory(blockIndex, bulletIndex, avatar, fileName) {
-    const content = await readMemoriesForCharacter(avatar, fileName);
-    const blocks = parseMemories(content);
-
-    if (blockIndex < 0 || blockIndex >= blocks.length) return;
-    const block = blocks[blockIndex];
-    if (bulletIndex < 0 || bulletIndex >= block.bullets.length) return;
-
-    const confirm = await callGenericPopup(`Delete this memory?\n\n- ${block.bullets[bulletIndex]}`, POPUP_TYPE.CONFIRM);
-    if (!confirm) return;
-
-    block.bullets.splice(bulletIndex, 1);
-    if (block.bullets.length === 0) {
-        blocks.splice(blockIndex, 1);
+    if (cleanBlocks.length === 0) {
+        toastr.warning('No memories to save.', 'CharMemory');
+        return;
     }
 
-    await writeMemoriesForCharacter(serializeMemories(blocks), avatar, fileName);
-    toastr.success('Memory deleted.', 'CharMemory');
-
-    // Update DOM in place
-    const $scope = $(`.charMemory_groupSection[data-avatar="${avatar}"]`);
-    const $row = ($scope.length ? $scope : $('.charMemory_manager'))
-        .find(`.charMemory_bulletRow[data-block="${blockIndex}"][data-bullet="${bulletIndex}"]`);
-    const $card = $row.closest('.charMemory_card');
-    $row.remove();
-
-    if ($card.find('.charMemory_bulletRow').length === 0) {
-        $card.remove();
-    }
-    if ($scope.length && $scope.find('.charMemory_card').length === 0) {
-        $scope.remove();
-    }
-    if ($('.charMemory_manager .charMemory_card').length === 0) {
-        $('.charMemory_manager').html('<div style="text-align:center;padding:1em;">No memories yet.</div>');
-    }
-
-    reindexManager();
-}
-
-async function deleteBlock(blockIndex, avatar, fileName) {
-    const content = await readMemoriesForCharacter(avatar, fileName);
-    const blocks = parseMemories(content);
-
-    if (blockIndex < 0 || blockIndex >= blocks.length) return;
-    const block = blocks[blockIndex];
-
-    const confirm = await callGenericPopup(`Delete all ${block.bullets.length} memories from this block?`, POPUP_TYPE.CONFIRM);
-    if (!confirm) return;
-
-    blocks.splice(blockIndex, 1);
-    await writeMemoriesForCharacter(serializeMemories(blocks), avatar, fileName);
-    toastr.success('Block deleted.', 'CharMemory');
-
-    // Update DOM in place
-    const $scope = $(`.charMemory_groupSection[data-avatar="${avatar}"]`);
-    ($scope.length ? $scope : $('.charMemory_manager'))
-        .find(`.charMemory_card[data-block="${blockIndex}"]`).remove();
-
-    if ($scope.length && $scope.find('.charMemory_card').length === 0) {
-        $scope.remove();
-    }
-    if ($('.charMemory_manager .charMemory_card').length === 0) {
-        $('.charMemory_manager').html('<div style="text-align:center;padding:1em;">No memories yet.</div>');
-    }
-
-    reindexManager();
+    await writeMemoriesForCharacter(serializeMemories(cleanBlocks), target.avatar, target.fileName);
+    const savedCount = countMemories(cleanBlocks);
+    toastr.success(`Saved ${savedCount} memories.`, 'CharMemory');
+    updateStatusDisplay();
 }
 
 // ============ Find & Replace ============
