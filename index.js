@@ -982,7 +982,7 @@ async function previewConversion() {
     const formatLabel = formatLabels[format] || format;
     const method = useLLM && format !== 'memory_tags' ? 'LLM' : 'Heuristic';
     const dialogHtml = buildConversionDialog(sourceContent, formatLabel, method, editorBlocks, editingSet, useLLM && format !== 'memory_tags');
-    const popup = callGenericPopup(dialogHtml, POPUP_TYPE.CONFIRM, '', { wide: true, allowVerticalScrolling: true });
+    const popup = callGenericPopup(dialogHtml, POPUP_TYPE.CONFIRM, '', { wide: true, allowVerticalScrolling: true, okButton: 'Save', cancelButton: 'Cancel' });
 
     // === Editor event delegation (same card classes as consolidation, different namespaces) ===
 
@@ -4194,7 +4194,7 @@ async function consolidateMemories() {
 
     // Build and show the interactive dialog
     const dialogHtml = buildConsolidationDialog(memories, beforeCount, editorBlocks, editingSet);
-    const popup = callGenericPopup(dialogHtml, POPUP_TYPE.CONFIRM, '', { wide: true, allowVerticalScrolling: true });
+    const popup = callGenericPopup(dialogHtml, POPUP_TYPE.CONFIRM, '', { wide: true, allowVerticalScrolling: true, okButton: 'Save', cancelButton: 'Cancel' });
 
     // Set up the strategy dropdown and prompt viewer to match current setting
     const currentStrategy = extension_settings[MODULE_NAME].consolidationStrategy || 'balanced';

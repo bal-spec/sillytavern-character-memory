@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.2
+
+### Improvements
+
+- **Clearer dialog buttons**: Consolidation and conversion dialogs now show "Save" and "Cancel" buttons instead of the ambiguous "Yes"/"No" defaults, preventing accidental loss of edits.
+
 ## 1.6.1
 
 ### New Features
