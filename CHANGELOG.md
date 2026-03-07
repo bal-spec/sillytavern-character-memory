@@ -10,6 +10,7 @@
 
 ### Bug Fixes
 
+- **Consolidation dialog not appearing with some LLMs**: Models like GLM-4.7 produce self-closing `<memory chat="..."></memory>` tags with bullets placed after the closing tag instead of inside it. The parser now handles this pattern, recovering per-block structure instead of silently returning an empty result. The same fix is applied to the extraction pipeline.
 - **Prompt update notifications silent after upgrading from 1.x**: Users who customized an extraction or consolidation prompt in 1.x and then upgraded to 2.x were never notified that the default prompts had changed. The version-tracking system introduced in 2.0 only ran on the second launch (after `promptVersions` was already initialized), so the first launch after upgrade silently marked all prompts as up-to-date — even customized ones. The check now detects a customized prompt with no prior version record and flags it for review. A toast notification also appears 2 seconds after load whenever any prompt has a pending update, directing users to Settings → Prompts.
 
 ## 2.1.2

@@ -2816,9 +2816,21 @@ async function extractMemories({
 
                 const memoryRegex = /<memory[^>]*>([\s\S]*?)<\/memory>/gi;
                 const matches = [...cleanResult.matchAll(memoryRegex)];
-                const rawEntries = matches.length > 0
+                let rawEntries = matches.length > 0
                     ? matches.map(m => m[1].trim()).filter(Boolean)
-                    : [cleanResult.trim()].filter(Boolean);
+                    : [];
+
+                // Handle LLMs that produce self-closing <memory></memory> with bullets after the tag
+                if (rawEntries.length === 0 && matches.length > 0) {
+                    const altRegex = /<memory[^>]*>\s*<\/memory>([\s\S]*?)(?=<memory|$)/gi;
+                    const altEntries = [...cleanResult.matchAll(altRegex)];
+                    rawEntries = altEntries.map(m => m[1].trim()).filter(Boolean);
+                }
+
+                // Final fallback: treat entire response as one block
+                if (rawEntries.length === 0) {
+                    rawEntries = [cleanResult.trim()].filter(Boolean);
+                }
 
                 let newBulletCount = 0;
                 for (const entry of rawEntries) {
@@ -6781,9 +6793,21 @@ async function runConsolidationLLM(memories, charName) {
 
         const consolidationRegex = /<memory(?:\s+chat="([^"]*)")?>([\s\S]*?)<\/memory>/gi;
         const consolidationMatches = [...cleanResult.matchAll(consolidationRegex)];
-        const rawEntries = consolidationMatches.length > 0
+        let rawEntries = consolidationMatches.length > 0
             ? consolidationMatches.map(m => ({ theme: m[1] || 'Consolidated', content: m[2].trim() })).filter(e => e.content)
-            : [{ theme: 'Consolidated', content: cleanResult.trim() }].filter(e => e.content);
+            : [];
+
+        // Handle LLMs that produce self-closing <memory></memory> with bullets after the tag
+        if (rawEntries.length === 0 && consolidationMatches.length > 0) {
+            const altRegex = /<memory(?:\s+chat="([^"]*)")?\s*>\s*<\/memory>([\s\S]*?)(?=<memory|$)/gi;
+            const altMatches = [...cleanResult.matchAll(altRegex)];
+            rawEntries = altMatches.map(m => ({ theme: m[1] || 'Consolidated', content: m[2].trim() })).filter(e => e.content);
+        }
+
+        // Final fallback: treat entire response as one block
+        if (rawEntries.length === 0) {
+            rawEntries = [{ theme: 'Consolidated', content: cleanResult.trim() }].filter(e => e.content);
+        }
 
         const consolidated = rawEntries.map(entry => {
             const bullets = entry.content.split('\n')
