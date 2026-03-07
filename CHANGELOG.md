@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.1.6
+
+### Improvements
+
+- **Prompt Breakdown at top of injection viewer**: The injection viewer now opens with a "Prompt Breakdown" section at the top that loads automatically — no need to find or click a collapsed panel. Shows exact per-category token counts (System, Char card, Lorebook, Data Bank, Examples, Chat history) via ST's Prompt Itemization when available, or estimated injection-only numbers for snapshots from previous sessions.
+- **Accurate Lorebook token estimates**: Previously token estimates were computed by summing truncated entry content (200 chars/entry from `WORLD_INFO_ACTIVATED`), causing large overestimates on multi-entry lorebooks. Estimates now use the actual injected `worldInfoString` and `dataBankVectorsString` from ST's prompt data, matching the Prompt Breakdown numbers.
+- **Data Bank label consistency**: CharMemory's injected memories are now labelled "Data Bank" throughout — section header, breakdown rows, and tips popup — matching SillyTavern's own terminology.
+- **Expanded "Optimize" tips popup**: The tips popup now covers all breakdown categories. A new "Char Card / System Prompt" section advises shortening the description, moving lore to the Lorebook, and trimming the system prompt. The intro text is updated to reflect that the breakdown now shows the full prompt, not injections only.
+
 ## 2.1.5
 
 ### Improvements

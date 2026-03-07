@@ -7950,9 +7950,9 @@ function renderEstimatedBreakdown(snapshot) {
     html += `<div class="charMemory_tokenRow charMemory_tokenRow--total"><span></span><span>Total tracked</span><span>${totalStr} tk</span></div>`;
     html += '</div>';
 
-    html += '<div class="charMemory_tokenNote" style="margin-top:6px;">Estimates (~4 chars/token) for injections only. '
-        + 'Exact counts unavailable — previous session or Prompt Itemization disabled. '
-        + '<span class="charMemory_tokenTipsLink">Tips to reduce <i class="fa-solid fa-circle-question fa-xs"></i></span></div>';
+    html += '<div class="charMemory_tokenNote" style="margin-top:6px;">Estimated injection tokens (~4 chars/token). '
+        + 'Char card, system prompt, and chat history not included — Prompt Itemization was unavailable for this message. '
+        + '<span class="charMemory_tokenTipsLink">Tips <i class="fa-solid fa-circle-question fa-xs"></i></span></div>';
     return html;
 }
 
@@ -7972,11 +7972,16 @@ function showTokenTipsPopup() {
     };
 
     const html = `<div style="max-width:420px;font-size:0.9em;">
-        <h4 style="margin:0 0 14px;">Reducing Injection Token Usage</h4>
+        <h4 style="margin:0 0 14px;">Optimizing Token Usage</h4>
         <p style="opacity:0.65;margin:0 0 14px;font-size:0.9em;">
-            These are injections only — char card, system prompt, and chat history
-            also consume context and are not shown here.
+            Each category in the Prompt Breakdown competes for the same context window.
+            Reducing any one of them leaves more room for chat history and the model's reply.
         </p>
+        ${section('Char Card / System Prompt', '#5b8dd9', [
+            ['Shorten the description', 'The character description, personality, and scenario fields are injected every generation — keep them focused on what's relevant to the RP rather than exhaustive world-building.'],
+            ['Move lore to the Lorebook', 'Details that are only relevant in certain situations (locations, side characters, history) belong in the Lorebook, where they only activate when triggered.'],
+            ['Trim the system prompt', 'Long system / author's notes prompts add up quickly. Cut any instructions the model already follows by default.'],
+        ])}
         ${section('Data Bank', '#7c6bc9', [
             ['Consolidate', 'Use the <strong>Consolidate</strong> button on the dashboard to compress memories into fewer, denser bullets.'],
             ['Retrieve chunks', 'Lower <strong>Vector Storage → Data Bank files → Retrieve chunks</strong> to inject fewer chunks per generation. Also raise <strong>Score threshold</strong> to filter out low-relevance results.'],
@@ -8027,7 +8032,7 @@ function showInjectionDrawer(messageIndex) {
 
     let html = '';
 
-    // ── Token Budget section ──────────────────────────────────────────────
+    // ── Prompt Breakdown section (auto-loaded) ───────────────────────────
     const td = snapshot.tokenData;
     const memTokens   = estimateTokens(td?.charMemoryChars || 0);
     const wiTokens    = estimateTokens(td?.wiChars || 0);
@@ -8035,59 +8040,15 @@ function showInjectionDrawer(messageIndex) {
         .filter(([k]) => k !== '4_vectors_data_bank')
         .reduce((sum, [, v]) => sum + v, 0);
     const otherEpTokens = estimateTokens(otherEpChars);
-    const totalTracked = memTokens + wiTokens + otherEpTokens;
-    const maxCtx = td?.contextMaxTokens || null;
 
-    {
-        // Bar fills proportionally between sources (so it's always visible).
-        // Context % is shown in the summary text instead.
-        let barSegsHtml = '';
-        let summaryClass = '';
-        let summaryText = `~${totalTracked.toLocaleString()} tk`;
-        if (totalTracked > 0) {
-            const pMem = (memTokens    / totalTracked) * 100;
-            const pWi  = (wiTokens     / totalTracked) * 100;
-            const pEp  = (otherEpTokens / totalTracked) * 100;
-            if (pMem > 0) barSegsHtml += `<div class="charMemory_tokenBarSeg charMemory_tokenBarSeg--mem" style="width:${pMem.toFixed(1)}%"></div>`;
-            if (pWi  > 0) barSegsHtml += `<div class="charMemory_tokenBarSeg charMemory_tokenBarSeg--wi"  style="width:${pWi.toFixed(1)}%"></div>`;
-            if (pEp  > 0) barSegsHtml += `<div class="charMemory_tokenBarSeg charMemory_tokenBarSeg--ep"  style="width:${pEp.toFixed(1)}%"></div>`;
-        }
-        if (maxCtx) {
-            const totalPct = (totalTracked / maxCtx) * 100;
-            summaryText = `~${totalTracked.toLocaleString()} / ${maxCtx.toLocaleString()} tk (${Math.round(totalPct)}%)`;
-            if (totalPct > 100) summaryClass = 'charMemory_tokenSummary--over';
-            else if (totalPct > 40) summaryClass = 'charMemory_tokenSummary--heavy';
-        }
-
-        html += '<div class="charMemory_drawerSection">';
-        html += `<div class="charMemory_drawerSectionHeader charMemory_tokenHeader" data-section="context" data-mesid="${messageIndex}">`;
-        html += '<i class="fa-solid fa-chevron-down charMemory_drawerChevron collapsed"></i>';
-        html += '<strong>Context</strong>';
-        html += `<div class="charMemory_tokenBarInline" title="Injected token estimates vs context limit">${barSegsHtml}</div>`;
-        html += `<span class="charMemory_tokenSummary ${summaryClass}">${escapeHtml(summaryText)}</span>`;
-        html += '</div>';
-        // Body starts collapsed — lazy-loaded on first expand
-        html += '<div class="charMemory_drawerSectionBody" style="display:none;">';
-        html += '<div class="charMemory_diagEmpty">Expand to load full token breakdown…</div>';
-        html += '</div></div>';
-
-        // Health notes based on token budget
-        if (maxCtx) {
-            const totalPct = (totalTracked / maxCtx) * 100;
-            if (totalTracked > maxCtx) {
-                html += '<div class="charMemory_drawerHealthNote charMemory_drawerHealthNote--red">'
-                    + '<i class="fa-solid fa-triangle-exclamation fa-xs"></i> Injection overflow: tracked injections alone (~'
-                    + `${totalTracked.toLocaleString()} tk) exceed the model context (${maxCtx.toLocaleString()} tk). `
-                    + 'Content will be silently truncated.'
-                    + '</div>';
-            } else if (totalPct > 40) {
-                html += '<div class="charMemory_drawerHealthNote charMemory_drawerHealthNote--yellow">'
-                    + `<i class="fa-solid fa-circle-info fa-xs"></i> Injections are using ${Math.round(totalPct)}% of context. `
-                    + 'Char card + chat history will compete for the remainder.'
-                    + '</div>';
-            }
-        }
-    }
+    html += '<div class="charMemory_drawerSection">';
+    html += '<div class="charMemory_drawerSectionHeader" data-section="promptbreakdown">';
+    html += '<i class="fa-solid fa-chevron-down charMemory_drawerChevron"></i> ';
+    html += '<strong>Prompt Breakdown</strong>';
+    html += '</div>';
+    html += '<div class="charMemory_drawerSectionBody charMemory_promptBreakdownBody">';
+    html += '<div class="charMemory_diagEmpty"><i class="fa-solid fa-spinner fa-spin fa-sm"></i> Loading…</div>';
+    html += '</div></div>';
 
     // ── Per-message health notes ──────────────────────────────────────────
     const memCount = snapshot.memories?.length || 0;
@@ -8186,6 +8147,24 @@ function showInjectionDrawer(messageIndex) {
 
 
     $body.html(html);
+
+    // Auto-load prompt breakdown
+    (async () => {
+        const $pbBody = $body.find('.charMemory_promptBreakdownBody');
+        try {
+            const idx = itemizedPrompts.findIndex(x => Number(x.mesId) === messageIndex);
+            if (idx !== -1) {
+                const params = await itemizedParams(itemizedPrompts, idx, messageIndex);
+                $pbBody.html(renderPromptBreakdown(params));
+            } else {
+                $pbBody.html(renderEstimatedBreakdown(snapshot));
+            }
+        } catch (err) {
+            console.error(LOG_PREFIX, 'Failed to load prompt breakdown:', err);
+            $pbBody.html('<div class="charMemory_diagEmpty">Error computing token counts.</div>');
+        }
+    })();
+
     $toolbar.html(`<span>Captured at ${escapeHtml(snapshot.timestamp)}</span><span class="charMemory_drawerDiagLink" title="Open CharMemory panel and scroll to Diagnostics">Diagnostics</span>`);
 
     // Open the drawer
@@ -8657,36 +8636,7 @@ jQuery(async function () {
         showTokenTipsPopup();
     });
 
-    // Context section — lazy-load full token breakdown on first expand
-    $(document).on('click', '.charMemory_drawerSectionHeader[data-section="context"]', async function () {
-        const $header = $(this);
-        const $body = $header.next('.charMemory_drawerSectionBody');
-        if ($body.data('cm-loaded')) return;
 
-        const mesId = Number($header.data('mesid'));
-        $body.html('<div class="charMemory_diagEmpty"><i class="fa-solid fa-spinner fa-spin fa-sm"></i> Computing token counts…</div>');
-        $body.data('cm-loaded', true);
-
-        try {
-            const idx = itemizedPrompts.findIndex(x => Number(x.mesId) === mesId);
-            if (idx !== -1) {
-                // Exact counts from ST's prompt itemization
-                const params = await itemizedParams(itemizedPrompts, idx, mesId);
-                $body.html(renderPromptBreakdown(params));
-            } else {
-                // Fall back to snapshot-based estimates (previous session or itemization disabled)
-                ensureMetadata();
-                const snapshot = chat_metadata[MODULE_NAME]?.injectionData?.[mesId];
-                $body.html(snapshot
-                    ? renderEstimatedBreakdown(snapshot)
-                    : '<div class="charMemory_diagEmpty">Prompt data not available for this message — it may be from a previous session, or Prompt Itemization may be disabled in ST settings.</div>');
-            }
-        } catch (err) {
-            console.error(LOG_PREFIX, 'Failed to load prompt breakdown:', err);
-            $body.html('<div class="charMemory_diagEmpty">Error computing token counts.</div>');
-            $body.data('cm-loaded', false); // allow retry on next expand
-        }
-    });
 
     // Restore drawer state from settings
     if (extension_settings[MODULE_NAME].injectionDrawerOpen) {
