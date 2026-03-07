@@ -393,6 +393,21 @@
 }
 .charMemory_tokenTipsLink:hover { opacity: 1; }
 
+/* Full prompt breakdown bar (block-level, taller than the inline header bar) */
+.charMemory_fullPromptBar {
+    display: flex;
+    height: 10px;
+    border-radius: 4px;
+    overflow: hidden;
+    background: rgba(128, 128, 128, 0.15);
+    margin-bottom: 5px;
+}
+.charMemory_fullPromptSummary {
+    font-size: 0.82em;
+    opacity: 0.65;
+    margin-bottom: 4px;
+}
+
 /* Token hint in other section headers (e.g. "CharMemory ~320 tk") */
 .charMemory_drawerTokenHint {
     margin-left: auto;

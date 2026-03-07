@@ -10,6 +10,8 @@ import {
     substituteParamsExtended,
     getRequestHeaders,
     getMaxContextSize,
+    itemizedPrompts,
+    itemizedParams,
 } from '../../../../script.js';
 import { getStringHash, getCharaFilename, convertTextToBase64 } from '../../../utils.js';
 import {
@@ -7814,6 +7816,79 @@ function updateLogDrawer(entry) {
 /**
  * Show a popup with actionable tips for reducing injection token usage.
  */
+/**
+ * Render the full prompt token breakdown from ST's itemized prompt data.
+ * @param {object} params Result of itemizedParams()
+ * @returns {string} HTML string
+ */
+function renderPromptBreakdown(params) {
+    const isOAI = params.this_main_api === 'openai';
+    let categories = [];
+    let total, maxCtx;
+
+    if (isOAI) {
+        total  = params.finalPromptTokens || 0;
+        maxCtx = params.thisPrompt_max_context || null;
+        // oaiPromptTokens includes char card + WI + scenario anchors; subtract WI to isolate char card
+        const charCardTk = Math.max(0, (params.oaiPromptTokens || 0) - (params.worldInfoStringTokens || 0));
+        categories = [
+            { label: 'System',       tokens: params.oaiSystemTokens            || 0, color: '#7878aa' },
+            { label: 'Char card',    tokens: charCardTk,                             color: '#5b8dd9' },
+            { label: 'Lorebook',     tokens: params.worldInfoStringTokens       || 0, color: '#e8a33d' },
+            { label: 'Data Bank',    tokens: params.dataBankVectorsStringTokens || 0, color: '#7c6bc9' },
+            { label: 'Examples',     tokens: params.examplesStringTokens        || 0, color: '#6aaa64' },
+            { label: 'Chat history', tokens: params.ActualChatHistoryTokens     || 0, color: '#4a8fa8' },
+        ];
+    } else {
+        total  = params.totalTokensInPrompt || 0;
+        maxCtx = params.thisPrompt_max_context || null;
+        categories = [
+            { label: 'Char card',    tokens: params.storyStringTokens      || 0, color: '#5b8dd9' },
+            { label: 'Lorebook',     tokens: params.worldInfoStringTokens   || 0, color: '#e8a33d' },
+            { label: 'Anchors',      tokens: params.allAnchorsTokens        || 0, color: '#7878aa' },
+            { label: 'Examples',     tokens: params.examplesStringTokens    || 0, color: '#6aaa64' },
+            { label: 'Chat history', tokens: params.ActualChatHistoryTokens || 0, color: '#4a8fa8' },
+        ];
+    }
+
+    const active = categories.filter(c => c.tokens > 0);
+    let html = '';
+
+    // Proportional bar across all categories
+    if (total > 0) {
+        html += '<div class="charMemory_fullPromptBar">';
+        for (const cat of active) {
+            const pct = ((cat.tokens / total) * 100).toFixed(1);
+            html += `<div class="charMemory_tokenBarSeg" style="width:${pct}%;background:${escapeHtml(cat.color)};" title="${escapeHtml(cat.label)}: ${cat.tokens.toLocaleString()} tk (${pct}%)"></div>`;
+        }
+        html += '</div>';
+    }
+
+    // Summary line: total vs usable context
+    const ctxPct = (maxCtx && total) ? ` (${Math.round((total / maxCtx) * 100)}% of usable context)` : '';
+    const maxStr = maxCtx ? ` / ${maxCtx.toLocaleString()} tk` : '';
+    html += `<div class="charMemory_fullPromptSummary">${total.toLocaleString()}${maxStr} tk${escapeHtml(ctxPct)}</div>`;
+
+    // Breakdown table
+    html += '<div class="charMemory_tokenBreakdown" style="margin-top:4px;">';
+    for (const cat of active) {
+        const pct = total > 0 ? ((cat.tokens / total) * 100).toFixed(1) : '0';
+        html += '<div class="charMemory_tokenRow">';
+        html += `<span class="charMemory_tokenDot" style="background:${escapeHtml(cat.color)};"></span>`;
+        html += `<span>${escapeHtml(cat.label)}</span>`;
+        html += `<span>${cat.tokens.toLocaleString()} tk (${pct}%)</span>`;
+        html += '</div>';
+    }
+    html += `<div class="charMemory_tokenRow charMemory_tokenRow--total"><span></span><span>Total</span><span>${total.toLocaleString()} tk</span></div>`;
+    html += '</div>';
+
+    // Footer: model + tokenizer
+    const meta = [params.modelUsed, params.selectedTokenizer ? `tokenizer: ${params.selectedTokenizer}` : ''].filter(Boolean).join(' · ');
+    if (meta) html += `<div class="charMemory_tokenNote" style="margin-top:6px;">${escapeHtml(meta)}</div>`;
+
+    return html;
+}
+
 function showTokenTipsPopup() {
     const section = (title, color, items) => {
         const bullets = items.map(([label, detail]) =>
@@ -8049,6 +8124,17 @@ function showInjectionDrawer(messageIndex) {
     } else {
         html += '<div class="charMemory_diagEmpty">No extension prompts active</div>';
     }
+    html += '</div></div>';
+
+    // ── Prompt Breakdown section (lazy-loaded) ────────────────────────────
+    html += '<div class="charMemory_drawerSection">';
+    html += `<div class="charMemory_drawerSectionHeader" data-section="fullprompt" data-mesid="${messageIndex}">`;
+    html += '<i class="fa-solid fa-chevron-down charMemory_drawerChevron collapsed"></i>';
+    html += '<strong>Prompt Breakdown</strong>';
+    html += '<span class="charMemory_drawerCount">exact tokens · click to load</span>';
+    html += '</div>';
+    html += '<div class="charMemory_drawerSectionBody" style="display:none;">';
+    html += '<div class="charMemory_diagEmpty">Expand to compute the full token breakdown for this message.</div>';
     html += '</div></div>';
 
     $body.html(html);
@@ -8521,6 +8607,31 @@ jQuery(async function () {
     $(document).on('click', '.charMemory_tokenTipsLink', function (e) {
         e.stopPropagation(); // don't trigger section collapse
         showTokenTipsPopup();
+    });
+
+    // Prompt Breakdown section — lazy-load token data on first expand
+    $(document).on('click', '.charMemory_drawerSectionHeader[data-section="fullprompt"]', async function () {
+        const $header = $(this);
+        const $body = $header.next('.charMemory_drawerSectionBody');
+        if ($body.data('cm-loaded')) return;
+
+        const mesId = Number($header.data('mesid'));
+        $body.html('<div class="charMemory_diagEmpty"><i class="fa-solid fa-spinner fa-spin fa-sm"></i> Computing token counts…</div>');
+        $body.data('cm-loaded', true);
+
+        try {
+            const idx = itemizedPrompts.findIndex(x => Number(x.mesId) === mesId);
+            if (idx === -1) {
+                $body.html('<div class="charMemory_diagEmpty">Prompt data not available for this message — it may be from a previous session, or the Prompt Itemization feature may be disabled in ST settings.</div>');
+                return;
+            }
+            const params = await itemizedParams(itemizedPrompts, idx, mesId);
+            $body.html(renderPromptBreakdown(params));
+        } catch (err) {
+            console.error(LOG_PREFIX, 'Failed to load prompt breakdown:', err);
+            $body.html('<div class="charMemory_diagEmpty">Error computing token counts.</div>');
+            $body.data('cm-loaded', false); // allow retry on next expand
+        }
     });
 
     // Restore drawer state from settings
