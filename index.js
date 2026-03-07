@@ -7864,29 +7864,34 @@ function renderPromptBreakdown(params) {
     const active = categories.filter(c => c.tokens > 0);
     let html = '';
 
-    // Proportional bar across all categories
+    // Bar: segments sized relative to context window so unused context shows as grey
+    const barBase = (maxCtx && maxCtx > total) ? maxCtx : (total || 1);
     if (total > 0) {
         html += '<div class="charMemory_fullPromptBar">';
         for (const cat of active) {
-            const pct = ((cat.tokens / total) * 100).toFixed(1);
-            html += `<div class="charMemory_tokenBarSeg" style="width:${pct}%;background:${escapeHtml(cat.color)};" title="${escapeHtml(cat.label)}: ${cat.tokens.toLocaleString()} tk (${pct}%)"></div>`;
+            const pct = ((cat.tokens / barBase) * 100).toFixed(2);
+            const pctOfTotal = ((cat.tokens / total) * 100).toFixed(1);
+            html += `<div class="charMemory_tokenBarSeg" style="width:${pct}%;background:${escapeHtml(cat.color)};" title="${escapeHtml(cat.label)}: ${cat.tokens.toLocaleString()} tk (${pctOfTotal}% of prompt)"></div>`;
         }
         html += '</div>';
     }
 
-    // Summary line: total vs usable context
-    const ctxPct = (maxCtx && total) ? ` (${Math.round((total / maxCtx) * 100)}% of usable context)` : '';
+    // Summary line: total / context and %
+    const usedPct = (maxCtx && total) ? Math.round((total / maxCtx) * 100) : null;
     const maxStr = maxCtx ? ` / ${maxCtx.toLocaleString()} tk` : '';
-    html += `<div class="charMemory_fullPromptSummary">${total.toLocaleString()}${maxStr} tk${escapeHtml(ctxPct)}</div>`;
+    const pctStr = usedPct !== null ? ` — ${usedPct}% of context used` : '';
+    html += `<div class="charMemory_fullPromptSummary">${total.toLocaleString()}${maxStr} tk${escapeHtml(pctStr)}</div>`;
 
-    // Breakdown table
+    // Breakdown table: % of context window if available, else % of total
     html += '<div class="charMemory_tokenBreakdown" style="margin-top:4px;">';
     for (const cat of active) {
-        const pct = total > 0 ? ((cat.tokens / total) * 100).toFixed(1) : '0';
+        const pct = maxCtx
+            ? ((cat.tokens / maxCtx) * 100).toFixed(1) + '% of ctx'
+            : ((cat.tokens / (total || 1)) * 100).toFixed(1) + '% of total';
         html += '<div class="charMemory_tokenRow">';
         html += `<span class="charMemory_tokenDot" style="background:${escapeHtml(cat.color)};"></span>`;
         html += `<span>${escapeHtml(cat.label)}</span>`;
-        html += `<span>${cat.tokens.toLocaleString()} tk (${pct}%)</span>`;
+        html += `<span>${cat.tokens.toLocaleString()} tk (${pct})</span>`;
         html += '</div>';
     }
     html += `<div class="charMemory_tokenRow charMemory_tokenRow--total"><span></span><span>Total</span><span>${total.toLocaleString()} tk</span></div>`;
@@ -7923,25 +7928,31 @@ function renderEstimatedBreakdown(snapshot) {
     ].filter(c => c.tokens > 0);
 
     let html = '';
+    const barBase = (maxCtx && maxCtx > total) ? maxCtx : (total || 1);
     if (total > 0) {
         html += '<div class="charMemory_fullPromptBar">';
         for (const cat of cats) {
-            const pct = ((cat.tokens / total) * 100).toFixed(1);
-            html += `<div class="charMemory_tokenBarSeg" style="width:${pct}%;background:${escapeHtml(cat.color)};" title="${escapeHtml(cat.label)}: ~${cat.tokens.toLocaleString()} tk"></div>`;
+            const pct = ((cat.tokens / barBase) * 100).toFixed(2);
+            const pctOfTotal = ((cat.tokens / total) * 100).toFixed(1);
+            html += `<div class="charMemory_tokenBarSeg" style="width:${pct}%;background:${escapeHtml(cat.color)};" title="${escapeHtml(cat.label)}: ~${cat.tokens.toLocaleString()} tk (${pctOfTotal}% of injections)"></div>`;
         }
         html += '</div>';
     }
 
+    const usedPct = (maxCtx && total) ? Math.round((total / maxCtx) * 100) : null;
     const ctxStr = maxCtx ? ` / ${maxCtx.toLocaleString()} tk` : '';
-    html += `<div class="charMemory_fullPromptSummary">~${total.toLocaleString()}${ctxStr} tk &middot; injections estimated</div>`;
+    const pctStr = usedPct !== null ? ` — ~${usedPct}% of context (injections only)` : '';
+    html += `<div class="charMemory_fullPromptSummary">~${total.toLocaleString()}${ctxStr} tk${escapeHtml(pctStr)}</div>`;
 
     html += '<div class="charMemory_tokenBreakdown" style="margin-top:4px;">';
     for (const cat of cats) {
-        const pct = total > 0 ? ((cat.tokens / total) * 100).toFixed(1) : '0';
+        const pct = maxCtx
+            ? '~' + ((cat.tokens / maxCtx) * 100).toFixed(1) + '% of ctx'
+            : '~' + ((cat.tokens / (total || 1)) * 100).toFixed(1) + '%';
         html += '<div class="charMemory_tokenRow">';
         html += `<span class="charMemory_tokenDot" style="background:${escapeHtml(cat.color)};"></span>`;
         html += `<span>${escapeHtml(cat.label)}</span>`;
-        html += `<span>~${cat.tokens.toLocaleString()} tk (${pct}%)</span>`;
+        html += `<span>~${cat.tokens.toLocaleString()} tk (${pct})</span>`;
         html += '</div>';
     }
     const totalStr = maxCtx
@@ -7971,7 +7982,7 @@ function showTokenTipsPopup() {
             </div>`;
     };
 
-    const html = `<div style="max-width:420px;font-size:0.9em;">
+    const html = `<div style="max-width:420px;font-size:0.9em;text-align:left;">
         <h4 style="margin:0 0 14px;">Optimizing Token Usage</h4>
         <p style="opacity:0.65;margin:0 0 14px;font-size:0.9em;">
             Each category in the Prompt Breakdown competes for the same context window.
@@ -8044,7 +8055,7 @@ function showInjectionDrawer(messageIndex) {
     html += '<div class="charMemory_drawerSection">';
     html += '<div class="charMemory_drawerSectionHeader" data-section="promptbreakdown">';
     html += '<i class="fa-solid fa-chevron-down charMemory_drawerChevron"></i> ';
-    html += '<strong>Prompt Breakdown</strong>';
+    html += '<strong>Context</strong>';
     html += '</div>';
     html += '<div class="charMemory_drawerSectionBody charMemory_promptBreakdownBody">';
     html += '<div class="charMemory_diagEmpty"><i class="fa-solid fa-spinner fa-spin fa-sm"></i> Loading…</div>';
