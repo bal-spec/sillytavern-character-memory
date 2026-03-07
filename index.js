@@ -856,7 +856,7 @@ async function previewConversion() {
     const initBlocks = editor.getBlocks();
     const initEditing = editor.getEditingSet();
     const dialogHtml = buildConversionDialog(sourceContent, formatLabel, method, initBlocks, initEditing, useLLM && format !== 'memory_tags');
-    const popup = callGenericPopup(dialogHtml, POPUP_TYPE.CONFIRM, '', { wide: true, allowVerticalScrolling: true });
+    const popup = callGenericPopup(dialogHtml, POPUP_TYPE.CONFIRM, '', { wide: true, allowVerticalScrolling: true, okButton: 'Save', cancelButton: 'Cancel' });
 
     // === Find/Replace bar ===
     const cleanupConvFR = wireFindReplaceEvents(editor, refreshEditor, 'charMemory_convFR', '.charMemoryConvFR');
@@ -6873,7 +6873,7 @@ async function consolidateMemories() {
     const initBlocks = editor.getBlocks();
     const initEditing = editor.getEditingSet();
     const dialogHtml = buildConsolidationDialog(memories, beforeCount, initBlocks, initEditing);
-    const popup = callGenericPopup(dialogHtml, POPUP_TYPE.CONFIRM, '', { wide: true, allowVerticalScrolling: true });
+    const popup = callGenericPopup(dialogHtml, POPUP_TYPE.CONFIRM, '', { wide: true, allowVerticalScrolling: true, okButton: 'Save', cancelButton: 'Cancel' });
 
     // Set up the strategy dropdown and prompt viewer to match current setting
     const currentStrategy = extension_settings[MODULE_NAME].consolidationStrategy || 'balanced';
@@ -7118,7 +7118,7 @@ async function showReformatPreview(originalBlocks, reformattedBlocks, charName, 
     const initBlocks = editor.getBlocks();
     const initEditing = editor.getEditingSet();
     const dialogHtml = buildReformatDialog(originalBlocks, originalCount, initBlocks, initEditing);
-    const popup = callGenericPopup(dialogHtml, POPUP_TYPE.CONFIRM, '', { wide: true, allowVerticalScrolling: true });
+    const popup = callGenericPopup(dialogHtml, POPUP_TYPE.CONFIRM, '', { wide: true, allowVerticalScrolling: true, okButton: 'Save', cancelButton: 'Cancel' });
 
     // === Find/Replace bar ===
     const cleanupRefFR = wireFindReplaceEvents(editor, refreshEditor, 'charMemory_refFR', '.charMemoryRefFR');
