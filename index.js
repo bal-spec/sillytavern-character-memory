@@ -7989,9 +7989,9 @@ function showTokenTipsPopup() {
             Reducing any one of them leaves more room for chat history and the model's reply.
         </p>
         ${section('Char Card / System Prompt', '#5b8dd9', [
-            ['Shorten the description', 'The character description, personality, and scenario fields are injected every generation — keep them focused on what's relevant to the RP rather than exhaustive world-building.'],
+            ['Shorten the description', 'The character description, personality, and scenario fields are injected every generation — keep them focused on what\'s relevant to the RP rather than exhaustive world-building.'],
             ['Move lore to the Lorebook', 'Details that are only relevant in certain situations (locations, side characters, history) belong in the Lorebook, where they only activate when triggered.'],
-            ['Trim the system prompt', 'Long system / author's notes prompts add up quickly. Cut any instructions the model already follows by default.'],
+            ['Trim the system prompt', 'Long system / author\'s notes prompts add up quickly. Cut any instructions the model already follows by default.'],
         ])}
         ${section('Data Bank', '#7c6bc9', [
             ['Consolidate', 'Use the <strong>Consolidate</strong> button on the dashboard to compress memories into fewer, denser bullets.'],
