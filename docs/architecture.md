@@ -20,11 +20,11 @@ The extension writes memories as plain markdown files to the Data Bank. Vector S
 
 | File | Lines | Role |
 |------|------:|------|
-| `index.js` | ~8200 | Main runtime: extraction pipeline, LLM dispatch, all UI (modals, drawers, sidebar), event handlers, provider API calls |
+| `index.js` | ~8660 | Main runtime: extraction pipeline, LLM dispatch, all UI (modals, drawers, sidebar), event handlers, provider API calls |
 | `lib.js` | ~520 | Pure utility functions: parsing, serialization, text processing, format detection. Canonical source — `index.js` imports these at runtime |
 | `editor.js` | ~110 | Memory block editor factory. Pure state management with undo stack — no DOM. Used by preview dialogs |
 | `settings.html` | ~100 | Sidebar dashboard HTML: stats bar, tool buttons, activity log, diagnostics summary |
-| `style.css` | ~1940 | All styling: dashboard, modals, drawers, wizard, troubleshooter, memory cards |
+| `style.css` | ~2160 | All styling: dashboard, modals, drawers, wizard, troubleshooter, memory cards, token budget |
 | `manifest.json` | 12 | Extension metadata: version, load order, entry points |
 
 ### Module relationships
@@ -64,14 +64,14 @@ The file is large. This section-by-section map helps you navigate it. Line numbe
 | 4016–4520 | **Prompts modal** | `showPromptsModal()` — 4-tab prompt editor with version tracking |
 | 4523–5300 | **Setup wizard** | `showSetupWizard()` — 3-step first-run flow |
 | 5306–5935 | **Troubleshooter** | `showTroubleshooter()` — health checks, Data Bank browser, diagnostic report |
-| 5938–6250 | **Memory Manager** | `showMemoryManager()` — browse/edit/delete individual memories |
-| 6254–6340 | **Find & Replace** | `buildFindReplaceBar()`, `wireFindReplaceEvents()`, `highlightText()` |
+| 5938–6500 | **Memory Manager** | `showMemoryManager()` — unified block editor with character picker for groups, inline editing, undo, find/replace |
+| 6500–6590 | **Find & Replace** | `buildFindReplaceBar()`, `wireFindReplaceEvents()`, `highlightText()` |
 | 6344–6820 | **Consolidation** | Strategy presets (conservative/balanced/aggressive), LLM consolidation, preview dialog, undo |
 | 6821–7138 | **Reformat** | Format migration preview dialog, LLM-powered reformat, undo |
 | 7139–7355 | **Slash commands & wiring** | `registerSlashCommands()`, `setupToolControls()`, `setupLogControls()`, `setupListeners()` |
-| 7360–7740 | **Per-message UI** | Extract Here / Pin Memory / View Injected buttons, injection drawer, log drawer |
-| 7753–7960 | **Batch extraction** | `showBatchPopup()`, `runBatchExtraction()` — multi-chat extraction |
-| 7963–8164 | **Initialization** | Extension entry point: loads HTML, calls `loadSettings()`, wires events, auto-triggers wizard on first run |
+| 7360–8000 | **Per-message UI & Injection Viewer** | Extract Here / Pin Memory / View Injected buttons, injection drawer with Context/Prompt Breakdown/token budget panel, log drawer |
+| 8000–8210 | **Batch extraction** | `showBatchPopup()`, `runBatchExtraction()` — multi-chat extraction |
+| 8210–8660 | **Initialization** | Extension entry point: loads HTML, calls `loadSettings()`, wires events, auto-triggers wizard on first run |
 
 ---
 
@@ -150,7 +150,7 @@ countMatches(), findAndReplaceAll()
 
 Every mutation calls `saveVersion()` first, pushing a deep clone onto the undo stack. This makes any operation (including Replace All) undoable as a single step.
 
-Used by the Consolidation, Conversion, Reformat, and Data Bank editor dialogs. The Memory Manager uses its own standalone editing logic since it writes directly to disk per-bullet.
+Used by the Consolidation, Conversion, Reformat, Data Bank editor, and Memory Manager dialogs. All five editing surfaces share this unified editor — inline editing, undo, add/delete, and find/replace work identically everywhere.
 
 ---
 

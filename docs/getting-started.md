@@ -114,15 +114,11 @@ Extraction speed will vary based on the number of messages being sent to the LLM
 
 There are a few ways to view your memories — you can open the Data Bank directly and read the raw file, or use the Memory Manager for a more structured view. Click **View / Edit** in the CharMemory panel to open the Memory Manager.
 
-![Memory Manager showing memory cards with topic tags and edit controls](../images/memory-manager.png)
+![Memory Manager showing memory cards with find/replace bar and Save/Cancel buttons](../images/memory-manager.png)
 
-Memories appear as cards grouped by extraction, newest first. Each card shows the chat it came from, the extraction timestamp, and the individual memory bullets. You can:
+Memories appear as cards grouped by extraction, newest first. Each card shows the extraction timestamp and the individual memory bullets. Click the **pencil icon** on any card to enter edit mode — bullets become editable text fields where you can modify, delete, or add new memories. The editor includes **find/replace**, **undo**, and explicit **Save/Cancel** buttons so nothing is written to disk until you confirm. In group chats, a **character picker** lets you switch between members.
 
-- **Edit** any bullet to refine its wording
-- **Delete** individual bullets (empty cards are removed automatically)
-- Browse by scrolling — in group chats, each character has their own section
-
-Memories are stored as a plain markdown file in the character's Data Bank. You can also edit that file directly from the **Data Bank** button in the panel.
+Memories are stored as a plain markdown file in the character's Data Bank. You can also edit that file directly from the **Data Bank** button in the panel. See [Managing Memories](managing-memories.md) for the full editing reference.
 
 ---
 

@@ -8,23 +8,30 @@ This doc covers the tools for working with memories after they've been extracted
 
 Click **View / Edit** in the CharMemory panel to open the Memory Manager.
 
-![Memory Manager showing memory cards with topic tags and edit controls](../images/memory-manager.png)
+![Memory Manager showing memory cards with find/replace bar and Save/Cancel buttons](../images/memory-manager.png)
 
-Memories appear as cards grouped by extraction, newest first. Each card shows the chat it came from, the extraction timestamp, and the individual memory bullets. You can:
+Memories appear as cards grouped by extraction, newest first. Each card shows the extraction timestamp and the individual memory bullets. The Memory Manager uses the same unified block editor as Consolidation, Conversion, Reformat, and the Data Bank browser — so editing works identically everywhere. You can:
 
-- **Edit** any bullet — click the pencil icon, modify the text, save
-- **Delete** any bullet — click the trash icon. Empty cards are removed automatically.
-- **Add a bullet** — click the + button at the bottom of a card
+- **Edit a block** — click the pencil icon on any card header to enter edit mode. Bullets become editable text fields.
+- **Delete a bullet** — click the trash icon next to any bullet in edit mode
+- **Delete a block** — click the trash icon in the block header in edit mode. Removes the entire block.
+- **Add a bullet** — click **+ Add memory** at the bottom of a block in edit mode
+- **Add a block** — click **+ Add Block** at the bottom of the editor
+- **Undo** — click **Undo** to revert the last edit operation (delete, add, or Replace All)
 
-Changes write directly to the memory file in the character's Data Bank. After editing, Vector Storage's index is stale — [purge and re-vectorize](retrieval-and-prompts.md#purge-and-re-vectorize) to update it, or send a new chat message.
+![Memory Manager in edit mode showing editable bullets with delete and add controls](../images/memory-manager-editing.png)
+
+Nothing is written to disk until you click **Save**. Click **Cancel** to discard all changes. After saving, Vector Storage's index is stale — [purge and re-vectorize](retrieval-and-prompts.md#purge-and-re-vectorize) to update it, or send a new chat message.
+
+In group chats, a **character picker** appears at the top — select which member's memories to view and edit.
 
 ### Find & Replace
 
 A find/replace bar appears at the top of the Memory Manager (and in the Consolidation, Conversion, Reformat, and Data Bank editor dialogs). Type in the **Find** field to see matches highlighted across all cards with a live count. Enter replacement text and click **Replace All** to update every occurrence at once.
 
 - **Case sensitive** — click the **Aa** button to toggle case-sensitive matching
-- In the Memory Manager, Replace All writes changes to disk immediately — **back up your memory file first** if replacing across many memories
-- In the Consolidation, Reformat, Conversion, and Data Bank editors, Replace All is undoable (click Undo to revert)
+- Replace All is undoable (click **Undo** to revert) — but once you click **Save**, changes are written to disk and cannot be undone
+- In the Consolidation, Reformat, Conversion, and Data Bank editors, Replace All works the same way with Undo support
 
 ---
 

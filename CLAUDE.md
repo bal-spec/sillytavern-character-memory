@@ -11,7 +11,7 @@ A SillyTavern extension that automatically extracts structured character memorie
 ## File Structure
 
 ```
-index.js        — All extension logic: extraction, consolidation, provider API calls, UI controllers, event handlers, modals (~7800 lines)
+index.js        — All extension logic: extraction, consolidation, provider API calls, UI controllers, event handlers, modals (~8660 lines)
 lib.js          — Pure utility functions imported by index.js at runtime and used by tests (parsing, serialization, formatting, stripping)
 editor.js       — Shared memory block editor factory (createMemoryEditor) with state management and undo
 settings.html   — Sidebar dashboard HTML (stats bar, extraction controls, tool launchers, activity, diagnostics)

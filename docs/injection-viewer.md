@@ -18,25 +18,40 @@ Once open, click the **pen icon** on any character message to load that message'
 
 ## What the viewer shows
 
-The viewer has three collapsible sections:
+The viewer has four collapsible sections:
 
-### CharMemory
+### Context
 
-The memory bullets that Vector Storage retrieved and injected for this generation. The header shows a count (e.g., "CharMemory (6)"). Each bullet is listed individually — this is the direct answer to "what did the character remember when writing this message?"
+The **Context** section appears at the top and loads automatically when you open a message's injection data. It shows a **Prompt Breakdown** — a per-category token breakdown of the full prompt that was sent to the LLM:
+
+- **System** — system prompt tokens
+- **Char card** — character description and personality
+- **Lorebook** — World Info / lorebook entries that fired
+- **Data Bank** — CharMemory's injected memories
+- **Examples** — example dialogue
+- **Chat history** — the actual conversation messages
+
+When SillyTavern's Prompt Itemization data is available (current session), the numbers are exact token counts. For snapshots from previous sessions, the section shows estimated counts based on character length (~4 chars/token) with a note that the numbers are approximate.
+
+A compact **stacked bar** visualizes the proportions at a glance, and a **"Tips"** link opens actionable guidance for reducing token usage across each category.
+
+If tracked injections exceed the model's context window, a **red health note** flags the overflow. If they exceed 40% of context (leaving little room for char card and chat history), a **yellow advisory** appears.
+
+### Data Bank
+
+The memory bullets that Vector Storage retrieved and injected for this generation. The header shows a count and estimated token cost (e.g., "Data Bank (6) ~120 tk"). Each bullet is listed individually — this is the direct answer to "what did the character remember when writing this message?"
 
 If this section is empty but memories exist in the file, Vector Storage either filtered them out (score threshold too high) or didn't find a close enough semantic match. See [Retrieval & Prompts](retrieval-and-prompts.md) for how to tune retrieval.
 
-![CharMemory section expanded showing memory bullets with topic tags](../images/injection-viewer.png)
-
 ### Lorebook Entries
 
-Which World Info / lorebook entries fired for this generation, based on their trigger keywords matching the recent conversation. Each entry shows its name, trigger keys, and a content preview.
+Which World Info / lorebook entries fired for this generation, based on their trigger keywords matching the recent conversation. Each entry shows its name, trigger keys, estimated token cost (~N tk), and a content preview.
 
 If an entry you expected to see isn't listed, its keywords didn't match the recent context window. This section is useful for understanding the full picture — memories and lorebook entries both contribute to what the character "knows," and they can complement or conflict with each other.
 
 ### Extension Prompts
 
-The raw content injected by all active extensions, keyed by injection position (e.g., `4_vectors_data_bank` for Vector Storage, `2_floating_prompt` for Author's Note). This is the unprocessed view — useful for seeing the exact `<memory>` block markup and chunk boundaries that the LLM received.
+Content injected by all active extensions, keyed by injection position (e.g., `4_vectors_data_bank` for Vector Storage, `2_floating_prompt` for Author's Note). Each extension's entry shows its estimated token cost and injection position/depth (e.g., `~340 tk · in-chat @ depth 2`). This is the unprocessed view — useful for seeing the exact `<memory>` block markup and chunk boundaries that the LLM received.
 
 ---
 

@@ -2,7 +2,8 @@
 
 CharMemory automatically extracts structured memories from your chats and stores them in the character's Data Bank. SillyTavern's built-in Vector Storage retrieves the most relevant ones at generation time — your character remembers what happened.
 
->**This is a beta release. It contains extensive under the hood code changes, alters the extraction prompts and the structure of the extracted memories. If you used previous versions, you should plan to back up your current files.**
+>**Upgrading from 1.x?**
+This release contains extensive under the hood code changes, alters the extraction prompts and the structure of the extracted memories. If you used previous versions, you should back up your current files before updating and you'll want to compare your edited prompts with the new ones.
 
 ![CharMemory panel open in the SillyTavern sidebar](images/panel-full.png)
 
@@ -28,12 +29,13 @@ CharMemory does not touch your lorebooks so if those contain information about t
 
 - **Automatic extraction** — automatically extracts memories from your current chat. No manual steps after setup.
 - **Group chat support** — each group member gets their own memory file, extracted in a single pass. View and edit all members' memories from one place, including a full Data Bank browser per character.
-- **Injection Viewer** — a real-time sidebar showing exactly which memories were injected for any message, with scores and lorebook context.
+- **Injection Viewer** — a real-time sidebar showing exactly which memories were injected for any message, with lorebook entries, extension prompts, and per-source token estimates.
+- **Prompt Breakdown** — see exactly where your context window is going. The injection viewer shows a per-category token breakdown (System, Char card, Lorebook, Data Bank, Examples, Chat history) with a stacked bar and actionable tips for reducing usage.
 - **Vector Storage health checks** — a traffic-light indicator flags misconfigured settings and tells you what to fix, so you're not guessing why memories aren't showing up.
-- **Full memory control** — browse, edit, or delete individual memories. Consolidate duplicates with preview and undo. Batch-extract from all chats at once.
+- **Full memory control** — browse, edit, or delete individual memories with a unified block editor (inline editing, undo, find/replace). Consolidate duplicates with preview and undo. Batch-extract from all chats at once.
 - **Highly configurable extraction prompts** — separate prompts for 1:1 and group chats and memory file consolidation and conversion.
 - **Guided setup** — the Setup Wizard tests your LLM connection, checks Vector Storage, and handles existing memory file conversion in about 2 minutes.
-- **Tablet & phone support** *(new in 2.1.0 — testing appreciated!)* — on touch devices, the dashboard opens as a floating panel with touch-friendly controls. Phone layout widens drawers for small screens. If auto-detection doesn't match your device, override it in Settings > Advanced > Display Mode. Please [report issues](https://github.com/bal-spec/sillytavern-character-memory/issues) with how it behaves on your device.
+- **Tablet & phone support** — on touch devices, the dashboard opens as a floating panel with touch-friendly controls. Phone layout widens drawers for small screens. If auto-detection doesn't match your device, override it in Settings > Advanced > Display Mode. Please [report issues on GitHub](https://github.com/bal-spec/sillytavern-character-memory/issues) with how it behaves on your device.
 - **Plain files** — memories are stored as readable, editable markdown in the character's Data Bank. No database, no lock-in.
 
 ## What you need
@@ -80,8 +82,8 @@ The documentation uses **Flux** (an orange tabby cat) and **Alex** as fictional 
 
 ## What it looks like
 
-![Memory Manager showing memory cards with topic tags and bullet points](images/memory-manager.png)
+![Memory Manager showing memory cards with find/replace and edit controls](images/memory-manager.png)
 
-![Injection Viewer showing memories injected for the latest message](images/injection-viewer.png)
+![Injection Viewer showing context breakdown, memories, and lorebook entries](images/injection-viewer.png)
 
 ![Data Bank browser showing memory files for multiple group members](images/databank-group.png)

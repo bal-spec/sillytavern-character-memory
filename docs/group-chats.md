@@ -23,11 +23,9 @@ The group chat uses a **separate extraction prompt** from 1:1 chats. It follows 
 
 ## Viewing and editing group memories
 
-Click **View / Edit** to open the Memory Manager. In a group chat it shows a section per character, each with their own memory cards. Edit and delete controls work the same as in 1:1 — they target the correct character's file based on which section the control is in.
+Click **View / Edit** to open the Memory Manager. In a group chat, a **character picker** appears first — select which member's memories to view and edit. Memory cards for the selected character are displayed with the same editing interface as in 1:1 chats (inline editing, undo, find/replace, Save/Cancel).
 
-![Memory Manager in a group chat showing two character sections](../images/memory-manager-group-both.png)
-
-Newest memory blocks appear first (reverse chronological) within each character's section.
+Newest memory blocks appear first (reverse chronological). Switch between characters using the picker at the top to review or edit each member's memories.
 
 ---
 

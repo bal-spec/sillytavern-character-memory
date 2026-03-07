@@ -6,15 +6,17 @@ Start with the **health dot** in the CharMemory stats bar — it runs automated 
 
 ## Health checks
 
-The health dot runs up to 7 checks depending on what data is available. Checks 1–5 run immediately when you open a chat. Checks 6–7 run after at least one generation has been captured.
+The health dot runs up to 9 checks depending on what data is available. Checks 1–7 run immediately when you open a chat. Checks 8–9 run after at least one generation has been captured.
 
 | Check | What it looks for | States |
 |-------|-------------------|--------|
 | **Files enabled** | "Enable for files" is on in Vector Storage | RED if off |
-| **Memory file exists** | A memory file is in the character's Data Bank | RED if missing |
+| **Memory file exists** | A memory file is in the character's Data Bank | YELLOW if missing |
 | **File vectorized** | Memory file has been indexed (chunk count > 0) | YELLOW if 0 chunks (resolves on next generation) |
 | **Chunk overlap** | Data Bank overlap setting in Vector Storage | YELLOW if 0% |
-| **Chunk size** | Data Bank chunk size in Vector Storage | YELLOW if outside recommended range |
+| **Chunk size** | Data Bank chunk size vs. average memory block size | YELLOW if outside recommended range |
+| **Retrieve chunks** | Number of chunks Vector Storage retrieves per query | YELLOW if > 5 (recommended: 2–3) |
+| **Score threshold** | Minimum similarity score for retrieval | YELLOW if not set or too low |
 | **Memories injected** | Memory bullets appeared in the last generation | YELLOW if 0 injected (may be normal — score threshold filtering) |
 | **Duplicate detection** | Same bullet appears more than once in injected content | YELLOW if duplicates found |
 
