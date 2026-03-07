@@ -51,7 +51,7 @@ import {
 import { createMemoryEditor } from './editor.js';
 
 const MODULE_NAME = 'charMemory';
-const MODULE_VERSION = '2.1.2';
+const MODULE_VERSION = '2.1.4';
 const DEFAULT_FILE_NAME = 'char-memories.md';
 const LOG_PREFIX = '[CharMemory]';
 
@@ -3033,6 +3033,30 @@ async function onChatChanged() {
 // ============ Diagnostics ============
 
 /**
+ * Read the active model's max context size from ST global settings.
+ * Returns token count or null if unavailable.
+ */
+function getMainContextMaxTokens() {
+    try {
+        // Chat completion backends (OpenAI, Claude, etc.)
+        if (window.oai_settings?.openai_max_context) {
+            return Number(window.oai_settings.openai_max_context);
+        }
+        // Text completion backends (KoboldCpp, llama.cpp, etc.)
+        const tgSettings = getContext().textCompletionSettings;
+        if (tgSettings?.max_context_length) {
+            return Number(tgSettings.max_context_length);
+        }
+    } catch { /* ignore */ }
+    return null;
+}
+
+/** Estimate token count from character count (~4 chars per token for Latin text). */
+function estimateTokens(chars) {
+    return Math.round(chars / 4);
+}
+
+/**
  * Capture diagnostics data from WORLD_INFO_ACTIVATED event.
  */
 function onWorldInfoActivated(entries) {
@@ -3090,6 +3114,21 @@ function captureDiagnostics(messageIndex) {
             }
         }
 
+        // Capture char counts for token estimation before truncation
+        const dbCharCount = fullDbContent
+            ? (typeof fullDbContent === 'string' ? fullDbContent.length : String(fullDbContent).length)
+            : 0;
+        const wiTotalChars = lastDiagnostics.worldInfoEntries.reduce(
+            (sum, e) => sum + (e.content?.length || 0), 0);
+        const epCharCounts = {};
+        for (const [key, value] of Object.entries(context.extensionPrompts || {})) {
+            if (value?.value) {
+                epCharCounts[key] = typeof value.value === 'string'
+                    ? value.value.length
+                    : String(value.value).length;
+            }
+        }
+
         const snapshot = {
             memories,
             worldInfo: lastDiagnostics.worldInfoEntries.map(e => ({
@@ -3101,7 +3140,14 @@ function captureDiagnostics(messageIndex) {
                 label: p.label,
                 content: p.label === '4_vectors_data_bank' ? p.content : p.content.substring(0, 500),
                 position: p.position,
+                depth: p.depth,
             })),
+            tokenData: {
+                charMemoryChars: dbCharCount,
+                wiChars: wiTotalChars,
+                epCharCounts,
+                contextMaxTokens: getMainContextMaxTokens(),
+            },
             timestamp: lastDiagnostics.timestamp,
         };
 
@@ -7772,6 +7818,57 @@ function updateLogDrawer(entry) {
 }
 
 /**
+ * Show a popup with actionable tips for reducing injection token usage.
+ */
+function showTokenTipsPopup() {
+    const section = (title, color, items) => {
+        const bullets = items.map(([label, detail]) =>
+            `<li style="margin-bottom:6px;"><strong>${label}</strong> — ${detail}</li>`
+        ).join('');
+        return `
+            <div style="margin-bottom:14px;">
+                <div style="font-weight:bold;margin-bottom:6px;display:flex;align-items:center;gap:6px;">
+                    <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${color};flex-shrink:0;"></span>
+                    ${title}
+                </div>
+                <ul style="margin:0;padding-left:18px;line-height:1.5;">${bullets}</ul>
+            </div>`;
+    };
+
+    const html = `<div style="max-width:420px;font-size:0.9em;">
+        <h4 style="margin:0 0 14px;">Reducing Injection Token Usage</h4>
+        <p style="opacity:0.65;margin:0 0 14px;font-size:0.9em;">
+            These are injections only — char card, system prompt, and chat history
+            also consume context and are not shown here.
+        </p>
+        ${section('CharMemory', '#7c6bc9', [
+            ['Consolidate', 'Use the <strong>Consolidate</strong> button on the dashboard to compress memories into fewer, denser bullets.'],
+            ['Retrieve chunks', 'Lower <strong>Vector Storage → Data Bank files → Retrieve chunks</strong> to inject fewer chunks per generation. Also raise <strong>Score threshold</strong> to filter out low-relevance results.'],
+            ['Per-chat isolation', 'Enable <strong>Settings → Storage → Per-chat isolation</strong> so only memories from the current chat are retrieved, not the entire character file.'],
+            ['Edit the memory file', 'Open the memory file via <strong>Troubleshooter → Data Bank</strong> and manually trim verbose or redundant bullets.'],
+        ])}
+        ${section('Lorebook', '#e8a33d', [
+            ['Shorten entry content', 'The full text of each triggered entry is injected verbatim — keep entries concise.'],
+            ['More specific keywords', 'Broad trigger keywords activate entries unnecessarily; tighten them to reduce spurious activations.'],
+            ['Token budget', 'Use ST\'s built-in <strong>Lorebook → Token budget</strong> setting to cap total WI injection size.'],
+            ['Disable idle entries', 'Disable lorebook entries that aren\'t relevant to the current story arc.'],
+        ])}
+        ${section('Other Extensions', '#4a8fa8', [
+            ['Identify heavy injectors', 'The <strong>Extension Prompts</strong> section shows each extension\'s name and estimated token cost.'],
+            ['Disable unused extensions', 'Many extensions inject a system prompt even when idle — disable ones you\'re not actively using.'],
+            ['Per-extension settings', 'Most extensions have their own injection size controls (e.g. Summary max tokens, memory depth).'],
+        ])}
+        ${section('Overall', 'rgba(128,128,128,0.4)', [
+            ['Expand context window', 'Increase the model\'s <strong>Max context</strong> setting if the model supports a larger window.'],
+            ['Reduce response tokens', 'Lowering <strong>Max response tokens</strong> reserves less space for output, freeing more for injections and history.'],
+            ['Use a larger model', 'Switch to a model with a bigger context window (32k, 128k) to accommodate injections without crowding out chat history.'],
+        ])}
+    </div>`;
+
+    callGenericPopup(html, POPUP_TYPE.TEXT, '', { wide: false, allowVerticalScrolling: true });
+}
+
+/**
  * Show the injection drawer for a specific message.
  * @param {number} messageIndex The chat message index to display.
  */
@@ -7794,7 +7891,76 @@ function showInjectionDrawer(messageIndex) {
 
     let html = '';
 
-    // Per-message health notes
+    // ── Token Budget section ──────────────────────────────────────────────
+    const td = snapshot.tokenData;
+    const memTokens   = estimateTokens(td?.charMemoryChars || 0);
+    const wiTokens    = estimateTokens(td?.wiChars || 0);
+    const otherEpChars = Object.entries(td?.epCharCounts || {})
+        .filter(([k]) => k !== '4_vectors_data_bank')
+        .reduce((sum, [, v]) => sum + v, 0);
+    const otherEpTokens = estimateTokens(otherEpChars);
+    const totalTracked = memTokens + wiTokens + otherEpTokens;
+    const maxCtx = td?.contextMaxTokens || null;
+
+    {
+        // Build inline stacked bar segments for the header
+        let barSegsHtml = '';
+        let summaryClass = '';
+        let summaryText = `~${totalTracked.toLocaleString()} tk`;
+        if (maxCtx) {
+            const safePct = (n) => Math.max(0, Math.min(100, (n / maxCtx) * 100));
+            const pMem = safePct(memTokens);
+            const pWi  = Math.min(safePct(wiTokens),      100 - pMem);
+            const pEp  = Math.min(safePct(otherEpTokens), 100 - pMem - pWi);
+            if (pMem > 0) barSegsHtml += `<div class="charMemory_tokenBarSeg charMemory_tokenBarSeg--mem" style="width:${pMem.toFixed(1)}%"></div>`;
+            if (pWi  > 0) barSegsHtml += `<div class="charMemory_tokenBarSeg charMemory_tokenBarSeg--wi"  style="width:${pWi.toFixed(1)}%"></div>`;
+            if (pEp  > 0) barSegsHtml += `<div class="charMemory_tokenBarSeg charMemory_tokenBarSeg--ep"  style="width:${pEp.toFixed(1)}%"></div>`;
+            const totalPct = (totalTracked / maxCtx) * 100;
+            summaryText = `~${totalTracked.toLocaleString()} / ${maxCtx.toLocaleString()} tk`;
+            if (totalPct > 100) summaryClass = 'charMemory_tokenSummary--over';
+            else if (totalPct > 40) summaryClass = 'charMemory_tokenSummary--heavy';
+        }
+
+        html += '<div class="charMemory_drawerSection">';
+        html += '<div class="charMemory_drawerSectionHeader charMemory_tokenHeader" data-section="tokenbudget">';
+        html += '<i class="fa-solid fa-chevron-down charMemory_drawerChevron collapsed"></i>';
+        html += '<strong>Context Budget</strong>';
+        html += `<div class="charMemory_tokenBarInline" title="Injected token estimates vs context limit">${barSegsHtml}</div>`;
+        html += `<span class="charMemory_tokenSummary ${summaryClass}">${escapeHtml(summaryText)}</span>`;
+        html += '</div>';
+        // Body starts collapsed
+        html += '<div class="charMemory_drawerSectionBody" style="display:none;">';
+        html += '<div class="charMemory_tokenBreakdown">';
+        html += `<div class="charMemory_tokenRow"><span class="charMemory_tokenDot charMemory_tokenDot--mem"></span><span>CharMemory</span><span>~${memTokens.toLocaleString()} tk</span></div>`;
+        html += `<div class="charMemory_tokenRow"><span class="charMemory_tokenDot charMemory_tokenDot--wi"></span><span>Lorebook</span><span>~${wiTokens.toLocaleString()} tk</span></div>`;
+        html += `<div class="charMemory_tokenRow"><span class="charMemory_tokenDot charMemory_tokenDot--ep"></span><span>Other extensions</span><span>~${otherEpTokens.toLocaleString()} tk</span></div>`;
+        const totalLabel = maxCtx
+            ? `~${totalTracked.toLocaleString()} / ${maxCtx.toLocaleString()}`
+            : `~${totalTracked.toLocaleString()}`;
+        html += `<div class="charMemory_tokenRow charMemory_tokenRow--total"><span></span><span>Total tracked</span><span>${totalLabel} tk</span></div>`;
+        html += '<div class="charMemory_tokenNote">Estimates (~4 chars/token). Char card, system prompt, and chat history not counted. '
+            + '<span class="charMemory_tokenTipsLink">Tips to reduce <i class="fa-solid fa-circle-question fa-xs"></i></span></div>';
+        html += '</div></div></div>';
+
+        // Health notes based on token budget
+        if (maxCtx) {
+            const totalPct = (totalTracked / maxCtx) * 100;
+            if (totalTracked > maxCtx) {
+                html += '<div class="charMemory_drawerHealthNote charMemory_drawerHealthNote--red">'
+                    + '<i class="fa-solid fa-triangle-exclamation fa-xs"></i> Injection overflow: tracked injections alone (~'
+                    + `${totalTracked.toLocaleString()} tk) exceed the model context (${maxCtx.toLocaleString()} tk). `
+                    + 'Content will be silently truncated.'
+                    + '</div>';
+            } else if (totalPct > 40) {
+                html += '<div class="charMemory_drawerHealthNote charMemory_drawerHealthNote--yellow">'
+                    + `<i class="fa-solid fa-circle-info fa-xs"></i> Injections are using ${Math.round(totalPct)}% of context. `
+                    + 'Char card + chat history will compete for the remainder.'
+                    + '</div>';
+            }
+        }
+    }
+
+    // ── Per-message health notes ──────────────────────────────────────────
     const memCount = snapshot.memories?.length || 0;
     if (memCount === 0) {
         html += '<div class="charMemory_drawerHealthNote charMemory_drawerHealthNote--yellow">'
@@ -7812,11 +7978,12 @@ function showInjectionDrawer(messageIndex) {
         }
     }
 
-    // CharMemory section
+    // ── CharMemory section ────────────────────────────────────────────────
     html += '<div class="charMemory_drawerSection">';
     html += '<div class="charMemory_drawerSectionHeader" data-section="memories">';
     html += '<i class="fa-solid fa-chevron-down charMemory_drawerChevron"></i> ';
     html += `<strong>CharMemory</strong> <span class="charMemory_drawerCount">(${memCount})</span>`;
+    if (memTokens > 0) html += `<span class="charMemory_drawerTokenHint">~${memTokens.toLocaleString()} tk</span>`;
     html += '</div>';
     html += '<div class="charMemory_drawerSectionBody">';
     if (memCount > 0) {
@@ -7828,21 +7995,24 @@ function showInjectionDrawer(messageIndex) {
     }
     html += '</div></div>';
 
-    // Lorebook Entries section
+    // ── Lorebook Entries section ──────────────────────────────────────────
     const wiCount = snapshot.worldInfo?.length || 0;
     html += '<div class="charMemory_drawerSection">';
     html += '<div class="charMemory_drawerSectionHeader" data-section="worldinfo">';
     html += '<i class="fa-solid fa-chevron-down charMemory_drawerChevron"></i> ';
     html += `<strong>Lorebook Entries</strong> <span class="charMemory_drawerCount">(${wiCount})</span>`;
+    if (wiTokens > 0) html += `<span class="charMemory_drawerTokenHint">~${wiTokens.toLocaleString()} tk</span>`;
     html += '</div>';
     html += '<div class="charMemory_drawerSectionBody">';
     if (wiCount > 0) {
         for (const entry of snapshot.worldInfo) {
+            const entryTk = estimateTokens(entry.content?.length || 0);
             html += '<div class="charMemory_drawerCard">';
             html += `<div class="charMemory_drawerCardTitle">${escapeHtml(entry.comment)}</div>`;
             if (entry.keys?.length > 0) {
                 html += `<div class="charMemory_drawerCardKeys">Keys: ${escapeHtml(entry.keys.join(', '))}</div>`;
             }
+            html += `<div class="charMemory_drawerCardMeta">~${entryTk.toLocaleString()} tk</div>`;
             if (entry.content) {
                 html += `<div class="charMemory_drawerCardContent">${escapeHtml(entry.content)}${entry.content.length >= 200 ? '...' : ''}</div>`;
             }
@@ -7853,19 +8023,30 @@ function showInjectionDrawer(messageIndex) {
     }
     html += '</div></div>';
 
-    // Extension Prompts section
+    // ── Extension Prompts section ─────────────────────────────────────────
     const epCount = snapshot.extensionPrompts?.length || 0;
+    const epPositionLabel = (position, depth) => {
+        const names = { 0: 'before prompt', 1: 'after system', 2: 'before messages', 3: 'in-chat', 4: 'before reply' };
+        const label = names[position] ?? `pos ${position}`;
+        return typeof depth === 'number' ? `${label} @ depth ${depth}` : label;
+    };
     html += '<div class="charMemory_drawerSection">';
     html += '<div class="charMemory_drawerSectionHeader" data-section="prompts">';
     html += '<i class="fa-solid fa-chevron-down charMemory_drawerChevron"></i> ';
     html += `<strong>Extension Prompts</strong> <span class="charMemory_drawerCount">(${epCount})</span>`;
+    if (otherEpTokens > 0) html += `<span class="charMemory_drawerTokenHint">~${otherEpTokens.toLocaleString()} tk</span>`;
     html += '</div>';
     html += '<div class="charMemory_drawerSectionBody">';
     if (epCount > 0) {
         for (const prompt of snapshot.extensionPrompts) {
+            const rawChars = td?.epCharCounts?.[prompt.label] ?? prompt.content.length;
+            const promptTk = estimateTokens(rawChars);
+            const posLabel = prompt.position !== undefined
+                ? epPositionLabel(prompt.position, prompt.depth) : '';
+            const isTruncated = prompt.label !== '4_vectors_data_bank' && prompt.content.length >= 500;
             html += '<div class="charMemory_drawerCard">';
             html += `<div class="charMemory_drawerCardTitle">${escapeHtml(prompt.label)}</div>`;
-            const isTruncated = prompt.label !== '4_vectors_data_bank' && prompt.content.length >= 500;
+            html += `<div class="charMemory_drawerCardMeta">~${promptTk.toLocaleString()} tk${posLabel ? ' · ' + escapeHtml(posLabel) : ''}</div>`;
             html += `<div class="charMemory_drawerCardContent" style="white-space:pre-wrap;">${escapeHtml(prompt.content)}${isTruncated ? '...' : ''}</div>`;
             html += '</div>';
         }
@@ -8338,6 +8519,12 @@ jQuery(async function () {
         const $chevron = $(this).find('.charMemory_drawerChevron');
         $body.slideToggle(150);
         $chevron.toggleClass('collapsed');
+    });
+
+    // Token tips link in the budget breakdown
+    $(document).on('click', '.charMemory_tokenTipsLink', function (e) {
+        e.stopPropagation(); // don't trigger section collapse
+        showTokenTipsPopup();
     });
 
     // Restore drawer state from settings

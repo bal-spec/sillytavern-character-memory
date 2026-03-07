@@ -318,6 +318,97 @@
     background: rgba(232, 163, 61, 0.1);
 }
 
+/* ── Token Budget section in injection drawer ─────────────────────────── */
+
+/* Section header override: make room for the inline bar */
+.charMemory_tokenHeader {
+    gap: 8px;
+}
+
+/* Inline stacked bar that lives in the section header */
+.charMemory_tokenBarInline {
+    flex: 1;
+    min-width: 40px;
+    height: 6px;
+    border-radius: 3px;
+    overflow: hidden;
+    background: rgba(128, 128, 128, 0.15);
+    display: flex;
+}
+.charMemory_tokenBarSeg         { height: 100%; }
+.charMemory_tokenBarSeg--mem    { background: #7c6bc9; }
+.charMemory_tokenBarSeg--wi     { background: #e8a33d; }
+.charMemory_tokenBarSeg--ep     { background: #4a8fa8; }
+
+/* Summary label to the right of the bar */
+.charMemory_tokenSummary {
+    font-size: 0.78em;
+    opacity: 0.65;
+    white-space: nowrap;
+    font-weight: normal;
+}
+.charMemory_tokenSummary--over   { color: #c44;    opacity: 1; }
+.charMemory_tokenSummary--heavy  { color: #e8a33d; opacity: 1; }
+
+/* Expanded breakdown body */
+.charMemory_tokenBreakdown {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    font-size: 0.85em;
+}
+.charMemory_tokenRow {
+    display: grid;
+    grid-template-columns: 10px 1fr auto;
+    align-items: center;
+    gap: 6px;
+    line-height: 1.5;
+}
+.charMemory_tokenRow--total {
+    border-top: 1px solid var(--SmartThemeBorderColor, rgba(128, 128, 128, 0.2));
+    margin-top: 2px;
+    padding-top: 3px;
+    font-weight: bold;
+}
+.charMemory_tokenDot {
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    flex-shrink: 0;
+}
+.charMemory_tokenDot--mem { background: #7c6bc9; }
+.charMemory_tokenDot--wi  { background: #e8a33d; }
+.charMemory_tokenDot--ep  { background: #4a8fa8; }
+.charMemory_tokenNote {
+    margin-top: 5px;
+    font-size: 0.82em;
+    opacity: 0.5;
+    line-height: 1.3;
+}
+.charMemory_tokenTipsLink {
+    cursor: pointer;
+    text-decoration: underline;
+    opacity: 0.8;
+    white-space: nowrap;
+}
+.charMemory_tokenTipsLink:hover { opacity: 1; }
+
+/* Token hint in other section headers (e.g. "CharMemory ~320 tk") */
+.charMemory_drawerTokenHint {
+    margin-left: auto;
+    font-size: 0.78em;
+    opacity: 0.5;
+    font-weight: normal;
+    white-space: nowrap;
+}
+
+/* Meta line under card titles (token count, position) */
+.charMemory_drawerCardMeta {
+    font-size: 0.82em;
+    opacity: 0.55;
+    margin-bottom: 2px;
+}
+
 /* Activity Log */
 .charMemory_logEntry {
     padding: 2px 4px;

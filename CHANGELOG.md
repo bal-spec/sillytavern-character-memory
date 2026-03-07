@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.1.4
+
+### Improvements
+
+- **Token budget panel in injection viewer**: The per-message injection viewer now shows a "Context Budget" section at the top of each snapshot. A compact horizontal stacked bar (collapsed by default) displays estimated token usage across three tracked sources — CharMemory (purple), Lorebook (amber), and other extension prompts (teal) — relative to the model's configured context limit. Expanding the section shows a per-source breakdown table. Token estimates (~4 chars/token) are labeled as approximate; char card, system prompt, and chat history are noted as not counted.
+- **Context overflow and heavy injection warnings**: If tracked injections alone exceed the model context, a red health note flags the overflow. If they exceed 40% of context (leaving little room for char card and chat history), a yellow advisory note appears.
+- **Token hints in section headers**: The CharMemory, Lorebook, and Extension Prompts section headers each show a faint `~N tk` estimate so token cost is visible without expanding the budget panel.
+- **Token and position metadata in cards**: Each Extension Prompt card now shows its estimated token cost and injection position/depth (e.g. `~340 tk · in-chat @ depth 2`). Lorebook entry cards show estimated token cost. The snapshot now also captures injection `depth` for extension prompts, which was previously missing.
+- **"Tips to reduce" popup**: A "Tips to reduce" link in the budget breakdown opens a popup with actionable guidance organized by source — Consolidate and Retrieve chunks for CharMemory, token budget and keyword specificity for Lorebook, per-extension settings for other extensions, and context window / response token tuning for overall budget.
+
 ## 2.1.3
 
 ### Improvements
