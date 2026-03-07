@@ -9,6 +9,7 @@ import {
     this_chid,
     substituteParamsExtended,
     getRequestHeaders,
+    getMaxContextSize,
 } from '../../../../script.js';
 import { getStringHash, getCharaFilename, convertTextToBase64 } from '../../../utils.js';
 import {
@@ -3033,20 +3034,13 @@ async function onChatChanged() {
 // ============ Diagnostics ============
 
 /**
- * Read the active model's max context size from ST global settings.
- * Returns token count or null if unavailable.
+ * Return the usable context window size (max context minus reserved response tokens).
+ * Delegates to ST's getMaxContextSize() which handles all API backends correctly.
  */
 function getMainContextMaxTokens() {
     try {
-        // Chat completion backends (OpenAI, Claude, etc.)
-        if (window.oai_settings?.openai_max_context) {
-            return Number(window.oai_settings.openai_max_context);
-        }
-        // Text completion backends (KoboldCpp, llama.cpp, etc.)
-        const tgSettings = getContext().textCompletionSettings;
-        if (tgSettings?.max_context_length) {
-            return Number(tgSettings.max_context_length);
-        }
+        const size = getMaxContextSize();
+        if (typeof size === 'number' && size > 0) return size;
     } catch { /* ignore */ }
     return null;
 }
@@ -7903,20 +7897,22 @@ function showInjectionDrawer(messageIndex) {
     const maxCtx = td?.contextMaxTokens || null;
 
     {
-        // Build inline stacked bar segments for the header
+        // Bar fills proportionally between sources (so it's always visible).
+        // Context % is shown in the summary text instead.
         let barSegsHtml = '';
         let summaryClass = '';
         let summaryText = `~${totalTracked.toLocaleString()} tk`;
-        if (maxCtx) {
-            const safePct = (n) => Math.max(0, Math.min(100, (n / maxCtx) * 100));
-            const pMem = safePct(memTokens);
-            const pWi  = Math.min(safePct(wiTokens),      100 - pMem);
-            const pEp  = Math.min(safePct(otherEpTokens), 100 - pMem - pWi);
+        if (totalTracked > 0) {
+            const pMem = (memTokens    / totalTracked) * 100;
+            const pWi  = (wiTokens     / totalTracked) * 100;
+            const pEp  = (otherEpTokens / totalTracked) * 100;
             if (pMem > 0) barSegsHtml += `<div class="charMemory_tokenBarSeg charMemory_tokenBarSeg--mem" style="width:${pMem.toFixed(1)}%"></div>`;
             if (pWi  > 0) barSegsHtml += `<div class="charMemory_tokenBarSeg charMemory_tokenBarSeg--wi"  style="width:${pWi.toFixed(1)}%"></div>`;
             if (pEp  > 0) barSegsHtml += `<div class="charMemory_tokenBarSeg charMemory_tokenBarSeg--ep"  style="width:${pEp.toFixed(1)}%"></div>`;
+        }
+        if (maxCtx) {
             const totalPct = (totalTracked / maxCtx) * 100;
-            summaryText = `~${totalTracked.toLocaleString()} / ${maxCtx.toLocaleString()} tk`;
+            summaryText = `~${totalTracked.toLocaleString()} / ${maxCtx.toLocaleString()} tk (${Math.round(totalPct)}%)`;
             if (totalPct > 100) summaryClass = 'charMemory_tokenSummary--over';
             else if (totalPct > 40) summaryClass = 'charMemory_tokenSummary--heavy';
         }
