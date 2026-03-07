@@ -9,6 +9,9 @@ import {
     this_chid,
     substituteParamsExtended,
     getRequestHeaders,
+    getMaxContextSize,
+    itemizedPrompts,
+    itemizedParams,
 } from '../../../../script.js';
 import { getStringHash, getCharaFilename, convertTextToBase64 } from '../../../utils.js';
 import {
@@ -31,8 +34,27 @@ import { removeReasoningFromString } from '../../../reasoning.js';
 import { callGenericPopup, POPUP_TYPE } from '../../../popup.js';
 import { world_info, loadWorldInfo } from '../../../world-info.js';
 import { isWebLlmSupported, generateWebLlmChatPrompt } from '../../shared.js';
+import {
+    escapeAttr,
+    escapeHtml,
+    parseMemories,
+    splitMultiTagBullets,
+    countMemories,
+    mergeMemoryBlocks,
+    migrateMemoriesIfNeeded,
+    convertHeuristic,
+    formatChatMessages,
+    substitutePromptTemplate,
+    truncateText,
+    getTimestamp,
+    countMatchesInBlocks,
+    replaceInBlocks,
+    cloneMemoryBlocks,
+} from './lib.js';
+import { createMemoryEditor } from './editor.js';
 
 const MODULE_NAME = 'charMemory';
+const MODULE_VERSION = '2.1.4';
 const DEFAULT_FILE_NAME = 'char-memories.md';
 const LOG_PREFIX = '[CharMemory]';
 
@@ -56,6 +78,7 @@ function getMemoryFileName() {
 let inApiCall = false;
 let lastExtractionResult = null;
 let consolidationBackup = null;
+let reformatBackup = null;
 // convertPreviewResult removed — conversion state now lives in the dialog closure
 let lastExtractionTime = 0; // session-only, resets on page load
 
@@ -67,35 +90,29 @@ let activityLog = [];
 function logActivity(message, type = 'info') {
     const now = new Date();
     const timestamp = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
-    activityLog.unshift({ timestamp, message, type });
+    const entry = { timestamp, message, type };
+    activityLog.unshift(entry);
     if (activityLog.length > MAX_LOG_ENTRIES) activityLog.pop();
     updateActivityLogDisplay();
+    updateLogDrawer(entry);
+}
+
+function renderLogEntryHtml(entry) {
+    const typeClass = `charMemory_log_${entry.type}`;
+    const isVerbose = entry.message.includes('\n');
+    const msgHtml = isVerbose
+        ? `<details><summary>${escapeHtml(entry.message.split('\n')[0])}</summary><pre class="charMemory_logVerbose">${escapeHtml(entry.message)}</pre></details>`
+        : escapeHtml(entry.message);
+    return `<div class="charMemory_logEntry ${typeClass}"><span class="charMemory_logTime">${entry.timestamp}</span> ${msgHtml}</div>`;
 }
 
 function updateActivityLogDisplay() {
-    const $container = $('#charMemory_activityLog');
-    if ($container.length) {
-        if (activityLog.length === 0) {
-            $container.html('<div class="charMemory_diagEmpty">No activity yet.</div>');
-        } else {
-            const html = activityLog.map(entry => {
-                const typeClass = `charMemory_log_${entry.type}`;
-                const isVerbose = entry.message.includes('\n');
-                const msgHtml = isVerbose
-                    ? `<details><summary>${escapeHtml(entry.message.split('\n')[0])}</summary><pre class="charMemory_logVerbose">${escapeHtml(entry.message)}</pre></details>`
-                    : escapeHtml(entry.message);
-                return `<div class="charMemory_logEntry ${typeClass}"><span class="charMemory_logTime">${entry.timestamp}</span> ${msgHtml}</div>`;
-            }).join('');
-            $container.html(html);
-        }
-    }
-
-    // Update mini-log (last 3 entries, first line only)
-    const $miniLog = $('#charMemory_miniLogContent');
-    if (!$miniLog.length) return;
+    // Update dashboard activity (last 3 entries, first line only)
+    const $dashActivity = $('#charMemory_dashActivity');
+    if (!$dashActivity.length) return;
 
     if (activityLog.length === 0) {
-        $miniLog.html('<div class="charMemory_diagEmpty charMemory_miniLogEmpty">No activity yet.</div>');
+        $dashActivity.html('<div class="charMemory_diagEmpty charMemory_miniLogEmpty">No activity yet.</div>');
         return;
     }
 
@@ -105,7 +122,7 @@ function updateActivityLogDisplay() {
         const msgText = entry.message.split('\n')[0];
         return `<div class="charMemory_logEntry ${typeClass}"><span class="charMemory_logTime">${entry.timestamp}</span> ${escapeHtml(msgText)}</div>`;
     }).join('');
-    $miniLog.html(miniHtml);
+    $dashActivity.html(miniHtml);
 }
 
 const defaultExtractionPrompt = `You are a memory extraction assistant. Read the recent chat messages and identify the most significant facts, events, and developments worth remembering long-term.
@@ -128,13 +145,14 @@ CRITICAL: Only extract memories from the RECENT CHAT MESSAGES section above. The
 
 INSTRUCTIONS:
 1. Extract only NEW facts, events, relationships, or character developments NOT already covered by the character card or existing memories.
-2. Write in past tense, third person. Do NOT quote dialogue verbatim.
+2. Write in past tense, third person. Always refer to {{charName}} by name, not "she/he/they". Do NOT quote dialogue verbatim.
 3. Do NOT use emojis.
 4. Wrap output in <memory></memory> tags with a markdown bulleted list (lines starting with "- ").
-5. Use ONE <memory> block per encounter or event. Everything in the same scene = one block.
-6. HARD LIMIT: No more than 8 bullet points TOTAL. If you have more, you are being too granular — cut the least significant ones.
-7. If nothing genuinely new or significant, respond with exactly: NO_NEW_MEMORIES
-8. Write about WHAT HAPPENED, not about the conversation itself. Never write "she told him about X" or "she described her X" or "she admitted Y" — instead write the actual fact: "X happened" or "she did Y."
+5. Use ONE <memory> block per encounter or event. Everything in the same scene = one block. If events happen in the same evening or outing, that is ONE block — do not split by location or sub-event.
+6. Start each block with a topic tag as the first bullet: "- [{{charName}}, OtherNames — short description]". ALWAYS include {{charName}} first, then other key participants. This aids later retrieval.
+7. HARD LIMIT: No more than 5 bullet points per block (not counting the topic tag). If you have more, you are being too granular — keep only the most significant outcomes.
+8. If nothing genuinely new or significant, respond with exactly: NO_NEW_MEMORIES
+9. Write about WHAT HAPPENED, not about the conversation itself. Never write "she told him about X" or "she described her X" or "she admitted Y" — instead write the actual fact: "X happened" or "she did Y."
 
 WHAT TO EXTRACT — ask for each item: "Would {{char}} bring this up unprompted weeks or months later?"
 - Backstory reveals, personal history, goals, fears (only if NOT already in the character card)
@@ -143,10 +161,11 @@ WHAT TO EXTRACT — ask for each item: "Would {{char}} bring this up unprompted 
 - Skills, possessions, or status changes
 - Emotional turning points
 - Dates and times when mentioned or clearly implied in the conversation
+- Always name specific people involved — use their name, not "a friend" or "someone"
 
 DO NOT EXTRACT:
-- Anything already described in the CHARACTER CARD above — traits, profession, appearance, personality, habits, preferences, or abilities that are baseline knowledge. This includes rephrasing card traits as discoveries (e.g. if the card says "exhibitionist", do not write "she admitted that being watched turns her on")
-- Routine behaviors that simply confirm what the card already says (e.g. if the card says "smoker", don't extract "she smoked a cigarette"; if the card implies safe sex practices, don't extract "she insisted on a condom")
+- Anything already described in the CHARACTER CARD above — traits, profession, appearance, personality, habits, preferences, or abilities that are baseline knowledge. This includes rephrasing card traits as discoveries (e.g. if the card says "competitive", do not write "she felt proud when she won again")
+- Routine behaviors that simply confirm what the card already says (e.g. if the card says "smoker", don't extract "she smoked a cigarette"; if the card says "meticulous", don't extract "she organized her bag again")
 - Meta-narration about the conversation itself — do not write "she told him about X", "she described her past", "she discussed her career". Write the actual facts revealed, not the act of revealing them
 - Preferences, opinions, or values that are already expressed or clearly implied by the character card
 - Step-by-step accounts of what happened (this is the most common mistake — summarize outcomes, not processes)
@@ -158,25 +177,27 @@ DO NOT EXTRACT:
 
 NEGATIVE EXAMPLE — do NOT write memories like this:
 <bad_example>
-- She picked the lock on the warehouse side door using a tension wrench.
-- She crept through the dark corridor and disabled the security camera.
-- She found the safe behind a false panel in the office.
-- She cracked the combination and retrieved the sealed envelope inside.
-- She climbed out through a ventilation shaft to avoid the front entrance.
-- She crossed two blocks on foot before reaching her getaway vehicle.
-- She handed the envelope to her contact in the parking garage.
-- Her contact opened it, confirmed the contents, and gave her a nod.
+- Alex set the carrier down on the hardwood floor and opened the metal door.
+- Flux emerged from the carrier and walked toward the Gundam Roomba by the window.
+- Alex poured premium salmon pâté into a ceramic bowl and placed it near the kitchen island.
+- Flux ate the salmon and began purring for the first time.
+- Alex had a video conference with Mr. Henderson about the Q1 marketing budget.
+- Flux rode the Roomba around the apartment, inspecting a floor lamp and a bookshelf.
+- Alex assembled a cat tree in the corner and Flux climbed to the top perch.
+- Alex ordered sushi for lunch and ate it on the balcony.
 </bad_example>
-This is a play-by-play scene summary. It narrates every step of the operation instead of capturing what matters.
+This is a play-by-play scene summary. It narrates every step instead of capturing what matters.
 
 POSITIVE EXAMPLE — the same scene extracted well:
 <good_example>
-- She broke into a warehouse and stole a sealed envelope from a hidden safe.
-- She delivered the envelope to her contact, who confirmed it contained what they needed.
+- [Alex, Flux — adoption day and settling into the apartment]
+- Alex adopted Flux and brought him to his penthouse apartment, where Flux immediately bonded with his custom Gundam-styled Roomba.
+- Flux's first meal of premium salmon pâté triggered his first purr in the new home.
+- Alex assembled a cat tree that Flux claimed as a second perch, alternating between it and the Roomba.
 </good_example>
-Two bullets capture the full encounter: what she accomplished and the outcome. No step-by-step process, no scene-setting.
+A topic tag plus three bullets capture the full encounter: who was involved, what happened, and the key bonding moments. No step-by-step process, no scene-setting.
 
-NOTE: When content is explicit or violent, name the specific outcome — do not sanitize it into vague language. "She killed him with two shots to the chest" is a memory. "Violence occurred" is not. But this does NOT mean narrate each step leading up to it — summarize the outcome, not the process.
+NOTE: When significant events occur, name the specific outcome clearly — do not sanitize into vague language. "She confronted him and left" is a memory. "Something happened between them" is not. But this does NOT mean narrate each step leading up to it — summarize the outcome, not the process.
 
 Each memory block should answer: "What from this encounter would stick with {{char}} — things they'd tell someone about months later, or that would surface unbidden in their own mind?"
 
@@ -206,15 +227,16 @@ CRITICAL: Only extract memories from the RECENT GROUP CHAT MESSAGES section abov
 
 INSTRUCTIONS:
 1. Extract only NEW facts, events, relationships, or character developments about {{charName}} NOT already covered by the character card or existing memories.
-2. Write in past tense, third person. Do NOT quote dialogue verbatim.
+2. Write in past tense, third person. Always refer to {{charName}} by name, not "she/he/they". Do NOT quote dialogue verbatim.
 3. Do NOT use emojis.
 4. Wrap output in <memory></memory> tags with a markdown bulleted list (lines starting with "- ").
-5. Use ONE <memory> block per encounter or event. Everything in the same scene = one block.
-6. HARD LIMIT: No more than 8 bullet points TOTAL. If you have more, you are being too granular — cut the least significant ones.
-7. If nothing genuinely new or significant about {{charName}}, respond with exactly: NO_NEW_MEMORIES
-8. Write about WHAT HAPPENED, not about the conversation itself. Never write "she told him about X" — instead write the actual fact: "X happened" or "she did Y."
-9. IMPORTANT: Reference other participants by name. Include who was involved in events, who said what to whom, who was present. Names matter for group memory.
-10. When possible, note approximate timeframes or sequencing of events mentioned in conversation.
+5. Use ONE <memory> block per encounter or event. Everything in the same scene = one block. If events happen in the same evening or outing, that is ONE block — do not split by location or sub-event.
+6. Start each block with a topic tag as the first bullet: "- [{{charName}}, OtherNames — short description]". ALWAYS include {{charName}} first, then other key participants. This aids later retrieval.
+7. HARD LIMIT: No more than 5 bullet points per block (not counting the topic tag). If you have more, you are being too granular — keep only the most significant outcomes.
+8. If nothing genuinely new or significant about {{charName}}, respond with exactly: NO_NEW_MEMORIES
+9. Write about WHAT HAPPENED, not about the conversation itself. Never write "she told him about X" — instead write the actual fact: "X happened" or "she did Y."
+10. IMPORTANT: Reference other participants by name. Include who was involved in events, who said what to whom, who was present. Names matter for group memory.
+11. When possible, note approximate timeframes or sequencing of events mentioned in conversation.
 
 WHAT TO EXTRACT — ask for each item: "Would {{charName}} remember this weeks or months later?"
 - Backstory reveals, personal history, goals, fears (only if NOT already in the character card)
@@ -223,34 +245,69 @@ WHAT TO EXTRACT — ask for each item: "Would {{charName}} remember this weeks o
 - Skills, possessions, or status changes
 - Emotional turning points
 - Group dynamics: who allied with whom, who disagreed, power shifts
+- Always name specific people involved — use their name, not "a participant" or "someone"
 
 DO NOT EXTRACT:
-- Anything already described in the CHARACTER CARD above
-- Routine behaviors that simply confirm what the card already says
-- Meta-narration about the conversation itself
-- Step-by-step accounts (summarize outcomes, not processes)
-- Scene-setting details, temporary physical states
+- Anything already described in the CHARACTER CARD above — traits, profession, appearance, personality, habits, preferences, or abilities that are baseline knowledge. This includes rephrasing card traits as discoveries (e.g. if the card says "competitive", do not write "she felt proud when she won again")
+- Routine behaviors that simply confirm what the card already says (e.g. if the card says "smoker", don't extract "she smoked a cigarette"; if the card says "workaholic", don't extract "she stayed late at the office again")
+- Meta-narration about the conversation itself — do not write "she told him about X", "she described her past", "she discussed her career". Write the actual facts revealed, not the act of revealing them
+- Preferences, opinions, or values that are already expressed or clearly implied by the character card
+- Step-by-step accounts of what happened (this is the most common mistake — summarize outcomes, not processes)
+- Individual actions, movements, or position changes during a scene
+- Scene-setting details (room descriptions, weather, clothing, atmosphere)
+- Temporary physical states ("leaned against him", "felt his warmth")
 - Paraphrased dialogue or conversation filler
-- Anything with no lasting significance
+- Anything with no lasting significance beyond the immediate moment
 
-Each memory block should answer: "What from this encounter would {{charName}} remember — things involving them or affecting them that they'd think about later?"
+NEGATIVE EXAMPLE — do NOT write memories like this:
+<bad_example>
+- [Alex, Flux, Sarah — game night at the apartment]
+- Sarah arrived at Alex's apartment carrying a board game and a bottle of wine.
+- Flux jumped onto Sarah's lap and purred when she scratched behind his ears.
+- Alex opened the wine and poured three glasses while Sarah set up the game.
+- Sarah won the first round and did a victory dance that startled Flux off the couch.
+- Flux knocked over Sarah's wine glass while chasing his toy mouse across the table.
+- Alex cleaned up the spill while Sarah held Flux and called him a "little menace."
+- They ordered pizza and played two more rounds before Sarah left around midnight.
+- Sarah said she'd come back next week for a rematch.
+</bad_example>
+This is a play-by-play scene summary. It narrates every step instead of capturing what matters. It also splits naturally connected events into too many bullets.
+
+POSITIVE EXAMPLE — the same scene extracted well:
+<good_example>
+- [Flux, Alex, Sarah — first game night and Sarah bonding with Flux]
+- Sarah visited Alex's apartment for game night, where Flux immediately bonded with her — sitting in her lap and purring, though he later knocked over her wine chasing a toy.
+- Sarah won the game and plans to return weekly for rematches, calling Flux a "little menace" as a term of endearment.
+</good_example>
+A topic tag plus two bullets capture the full encounter: who was involved, the key relationship development (Sarah bonding with Flux), and the lasting outcome (weekly visits planned). No step-by-step process, no scene-setting.
+
+NOTE: When significant events occur, name the specific outcome clearly — do not sanitize into vague language. "She confronted him and left" is a memory. "Something happened between them" is not. But this does NOT mean narrate each step leading up to it — summarize the outcome, not the process.
+
+Each memory block should answer: "What from this encounter would {{charName}} remember — things involving them or affecting them that they'd tell someone about months later, or that would surface unbidden in their own mind?"
 
 Output ONLY <memory> blocks (or NO_NEW_MEMORIES). No headers, no commentary, no extra text.`;
 
-const defaultConversionPrompt = `You are converting a text file into a structured memory format for {{charName}}.
+const defaultConversionPrompt = `You are reformatting character memories into a standardized format for {{charName}}. The input may be unstructured text, partially formatted memory blocks, or already-formatted blocks that need updating.
 
-The input contains facts, memories, or notes in an unstructured format. Your task is to restructure this into clean, organized memory blocks.
+Character name: {{charName}}
 
-Rules:
-1. Extract every distinct fact or piece of information as a bullet point starting with "- ".
-2. Group related facts into <memory chat="[Topic Name]" date="[today]"> blocks where Topic Name is a short descriptive label (e.g. "Appearance", "Relationships", "Key Events").
-3. Preserve ALL information — do not summarize, combine, or omit anything from the source.
-4. Do not add facts, inferences, or details not explicitly stated in the source.
-5. Clean up grammar and formatting, but do not change the meaning.
-6. Skip formatting artifacts, HTML tags, and metadata that aren't actual memories.
+RULES:
+1. Every memory block must be wrapped in <memory chat="Topic Name" date="YYYY-MM-DD HH:MM"></memory> tags.
+2. The chat attribute should be a short, specific encounter label (e.g., "First day at the apartment", "Game night with Sarah"). Use existing chat attributes if they already contain a descriptive name.
+3. The first bullet in each block must be a topic tag: "- [{{charName}}, OtherNames — short description]". ALWAYS include {{charName}} first, then other key participants.
+4. No more than 5 bullets per block (not counting the topic tag). Combine related facts into single bullets rather than deleting information.
+5. Always use specific names — never "a friend", "a client", "someone", or "a stranger".
+6. Write in past tense, third person.
+7. Do NOT add, infer, or invent any facts not present in the original.
+8. Do NOT merge events from different times or encounters into one block — keep them separate.
+9. If the input is unstructured text, group related facts by encounter or topic into separate blocks.
+10. If the input already has well-formatted blocks with topic tags and 5 or fewer bullets, output them unchanged.
+11. Preserve dates from existing blocks. For unstructured text without dates, use "{{today}}" as the date.
 
-Source text to restructure:
-{{sourceText}}`;
+INPUT:
+{{sourceText}}
+
+Output ONLY <memory> blocks. No headers, no commentary, no extra text.`;
 
 const EXTRACTION_SOURCE = {
     MAIN_LLM: 'main_llm',
@@ -359,7 +416,7 @@ const PROVIDER_PRESETS = {
         modelsEndpoint: 'standard',
         requiresApiKey: true,
         extraHeaders: {},
-        defaultModel: '',
+        defaultModel: 'meta/llama-3.3-70b-instruct',
         helpUrl: 'https://build.nvidia.com/',
         useProxy: true,
     },
@@ -417,6 +474,40 @@ const defaultSettings = {
     chunkMetadata: false,
     conversionPrompt: '',
     injectionDrawerOpen: false,
+    displayMode: 'auto',
+    protectRecentMessages: false,
+    protectRecentMessagesCount: 4,
+};
+
+const PROMPT_CONFIG = {
+    extraction: {
+        title: 'Extraction Prompt (1:1)',
+        navLabel: 'Extract (1:1)',
+        settingsKey: 'extractionPrompt',
+        defaultValue: defaultExtractionPrompt,
+        version: '2.0.1',
+    },
+    groupExtraction: {
+        title: 'Extraction Prompt (Group)',
+        navLabel: 'Extract (Group)',
+        settingsKey: 'groupExtractionPrompt',
+        defaultValue: defaultGroupExtractionPrompt,
+        version: '2.0.1',
+    },
+    consolidation: {
+        title: 'Consolidation Prompt',
+        navLabel: 'Consolidation',
+        settingsKey: 'consolidationPrompt',
+        defaultValue: null, // depends on strategy — resolved at runtime
+        version: '2.0.1',
+    },
+    conversion: {
+        title: 'Conversion Prompt',
+        navLabel: 'Convert',
+        settingsKey: 'conversionPrompt',
+        defaultValue: defaultConversionPrompt,
+        version: '2.0.1',
+    },
 };
 
 /**
@@ -440,70 +531,6 @@ function getProviderSettings(providerKey) {
 }
 
 // ============ Structured Memory Helpers ============
-
-/**
- * Parse <memory> tag blocks into an array of memory objects.
- * @param {string} content Raw file content.
- * @returns {{chat: string, date: string, bullets: string[]}[]}
- */
-function parseMemories(content) {
-    if (!content || !content.trim()) return [];
-
-    const blocks = [];
-    const regex = /<memory\b([^>]*)>([\s\S]*?)<\/memory>/gi;
-    let match;
-
-    while ((match = regex.exec(content)) !== null) {
-        const attrs = match[1];
-        const body = match[2];
-
-        // Extract chat and date attributes
-        const chatMatch = attrs.match(/chat="([^"]*)"/);
-        const dateMatch = attrs.match(/date="([^"]*)"/);
-        const chat = chatMatch ? unescapeAttr(chatMatch[1]) : 'unknown';
-        const date = dateMatch ? unescapeAttr(dateMatch[1]) : '';
-
-        // Extract bullets (lines starting with "- " or metadata-prefixed "[...] - ")
-        const bullets = body.split('\n')
-            .map(line => line.trim())
-            .filter(line => line.startsWith('- ') || /^\[.*?\]\s*-\s/.test(line))
-            .map(line => {
-                // Strip metadata prefix if present: "[date | chat] - text" → "text"
-                const metaMatch = line.match(/^\[.*?\]\s*-\s+(.+)/);
-                if (metaMatch) return metaMatch[1].trim();
-                return line.slice(2).trim();
-            })
-            .filter(Boolean);
-
-        if (bullets.length > 0) {
-            blocks.push({ chat, date, bullets });
-        }
-    }
-
-    return blocks;
-}
-
-/**
- * Count total individual memories (bullets) across all blocks.
- * @param {{bullets: string[]}[]} blocks Parsed memory blocks.
- * @returns {number}
- */
-function countMemories(blocks) {
-    return blocks.reduce((sum, b) => sum + b.bullets.length, 0);
-}
-
-/**
- * Serialize an array of memory blocks back to <memory> tag format.
- * @param {{chat: string, date: string, bullets: string[]}[]} blocks
- * @returns {string}
- */
-function escapeAttr(text) {
-    return String(text).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
-}
-
-function unescapeAttr(text) {
-    return String(text).replace(/&quot;/g, '"').replace(/&amp;/g, '&');
-}
 
 /**
  * Get the current memory format options from settings.
@@ -610,85 +637,6 @@ async function offerReformat() {
 }
 
 /**
- * Merge memory blocks that share the same chat ID and date into single blocks.
- * Preserves ordering — merged block appears at the position of the first occurrence.
- * @param {{chat: string, date: string, bullets: string[]}[]} blocks
- * @returns {{chat: string, date: string, bullets: string[]}[]}
- */
-function mergeMemoryBlocks(blocks) {
-    const merged = [];
-    const seen = new Map();
-    for (const block of blocks) {
-        const key = block.chat;
-        if (seen.has(key)) {
-            seen.get(key).bullets.push(...block.bullets);
-        } else {
-            const copy = { chat: block.chat, date: block.date, bullets: [...block.bullets] };
-            seen.set(key, copy);
-            merged.push(copy);
-        }
-    }
-    return merged;
-}
-
-/**
- * Migrate old memory formats to <memory> tag format if needed.
- * @param {string} content Existing file content.
- * @returns {string} Content in <memory> tag format.
- */
-function migrateMemoriesIfNeeded(content) {
-    if (!content || !content.trim()) return content;
-
-    // Already in <memory> tag format?
-    if (/<memory\b[^>]*>/i.test(content)) return content;
-
-    const now = new Date();
-    const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-
-    // Old ## Memory N format?
-    if (/^## Memory \d+/m.test(content)) {
-        const parts = content.split(/^## Memory \d+\s*$/m);
-        const blocks = [];
-
-        for (let i = 1; i < parts.length; i++) {
-            const part = parts[i].trim();
-            if (!part) continue;
-
-            let date = timestamp;
-            let text = part;
-
-            // Extract old timestamp: _Extracted: ..._
-            const tsMatch = part.match(/^_Extracted:\s*(.+?)_\s*\n/);
-            if (tsMatch) {
-                date = tsMatch[1].trim();
-                text = part.slice(tsMatch[0].length).trim();
-            }
-
-            // Extract bullets or wrap plain text as a single bullet
-            const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-            const bullets = lines.filter(l => l.startsWith('- ')).map(l => l.slice(2).trim());
-            if (bullets.length === 0 && text.trim()) {
-                bullets.push(text.trim());
-            }
-
-            if (bullets.length > 0) {
-                blocks.push({ chat: 'unknown', date, bullets });
-            }
-        }
-
-        return serializeMemories(blocks);
-    }
-
-    // Completely flat text — wrap as a single block
-    const lines = content.trim().split('\n').map(l => l.trim()).filter(Boolean);
-    const bullets = lines.filter(l => l.startsWith('- ')).map(l => l.slice(2).trim());
-    if (bullets.length === 0) {
-        bullets.push(content.trim());
-    }
-    return serializeMemories([{ chat: 'unknown', date: timestamp, bullets }]);
-}
-
-/**
  * Detect the format of a Data Bank file's content.
  * @param {string} content Raw file content.
  * @returns {'memory_tags'|'memory_headings'|'bullets'|'numbered'|'markdown_headings'|'freeform'}
@@ -707,93 +655,6 @@ function detectFileFormat(content) {
 }
 
 /**
- * Convert file content to <memory> tag format using heuristic parsing.
- * @param {string} content Raw file content.
- * @param {string} format Detected format from detectFileFormat().
- * @returns {{blocks: {chat: string, date: string, bullets: string[]}[], warnings: string[]}}
- */
-function convertHeuristic(content, format) {
-    const now = new Date();
-    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-    const warnings = [];
-
-    if (format === 'memory_tags') {
-        warnings.push('Already in CharMemory format — no conversion needed.');
-        return { blocks: parseMemories(content), warnings };
-    }
-
-    if (format === 'memory_headings') {
-        const migrated = migrateMemoriesIfNeeded(content);
-        return { blocks: parseMemories(migrated), warnings };
-    }
-
-    if (format === 'bullets') {
-        const lines = content.split('\n');
-        const bullets = [];
-        for (const line of lines) {
-            const match = line.match(/^\s*[-*]\s+(.+)/);
-            if (match) bullets.push(match[1].trim());
-        }
-        return {
-            blocks: [{ chat: 'imported', date: today, bullets }],
-            warnings,
-        };
-    }
-
-    if (format === 'numbered') {
-        const lines = content.split('\n');
-        const bullets = [];
-        for (const line of lines) {
-            const match = line.match(/^\s*\d+[\.\)]\s+(.+)/);
-            if (match) bullets.push(match[1].trim());
-        }
-        return {
-            blocks: [{ chat: 'imported', date: today, bullets }],
-            warnings,
-        };
-    }
-
-    if (format === 'markdown_headings') {
-        const blocks = [];
-        let currentHeading = 'imported';
-        let currentBullets = [];
-        for (const line of content.split('\n')) {
-            const headingMatch = line.match(/^#{1,3}\s+(.+)/);
-            if (headingMatch) {
-                if (currentBullets.length > 0) {
-                    blocks.push({ chat: currentHeading, date: today, bullets: currentBullets });
-                    currentBullets = [];
-                }
-                currentHeading = headingMatch[1].trim();
-                continue;
-            }
-            const bulletMatch = line.match(/^\s*[-*]\s+(.+)/);
-            if (bulletMatch) {
-                currentBullets.push(bulletMatch[1].trim());
-            } else if (line.trim()) {
-                currentBullets.push(line.trim());
-            }
-        }
-        if (currentBullets.length > 0) {
-            blocks.push({ chat: currentHeading, date: today, bullets: currentBullets });
-        }
-        return { blocks, warnings };
-    }
-
-    // Freeform: split on sentences
-    const sentences = content.replace(/\n/g, ' ').split(/(?<=[.!?])\s+/).map(s => s.trim()).filter(Boolean);
-    if (sentences.length === 0) {
-        warnings.push('File appears empty.');
-        return { blocks: [], warnings };
-    }
-    warnings.push('Freeform text detected — results may be rough. Consider using LLM restructuring for better quality.');
-    return {
-        blocks: [{ chat: 'imported', date: today, bullets: sentences }],
-        warnings,
-    };
-}
-
-/**
  * Convert file content to <memory> tag format using LLM.
  * @param {string} content Raw file content.
  * @param {string} charName Character name for prompt.
@@ -803,7 +664,8 @@ async function convertWithLLM(content, charName) {
     const warnings = [];
     const prompt = (extension_settings[MODULE_NAME].conversionPrompt || defaultConversionPrompt)
         .replace(/\{\{charName\}\}/g, charName)
-        .replace(/\{\{sourceText\}\}/g, content);
+        .replace(/\{\{sourceText\}\}/g, content)
+        .replace(/\{\{today\}\}/g, new Date().toISOString().slice(0, 10));
 
     let response;
     try {
@@ -823,10 +685,8 @@ async function convertWithLLM(content, charName) {
         // LLM may have returned plain bullets without <memory> tags — wrap them
         const lines = response.split('\n').map(l => l.trim()).filter(l => l.startsWith('- '));
         if (lines.length > 0) {
-            const now = new Date();
-            const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
             return {
-                blocks: [{ chat: 'imported', date: today, bullets: lines.map(l => l.slice(2).trim()) }],
+                blocks: [{ chat: 'imported', date: getTimestamp(), bullets: lines.map(l => l.slice(2).trim()) }],
                 warnings: ['LLM did not use <memory> tags — bullets wrapped automatically.'],
             };
         }
@@ -857,6 +717,7 @@ function buildConversionDialog(sourceContent, formatLabel, method, convertedBloc
             <input type="button" id="charMemory_undoConvRerun" class="menu_button" value="Undo" title="Revert to previous version" disabled />
             <span id="charMemory_convRerunSpinner" style="display:none;">Working...</span>
         </div>
+        ${buildFindReplaceBar('charMemory_convFR')}
         <div class="charMemory_consolidationPanes">
             <div class="charMemory_consolidationPane">
                 <h4>Original File</h4>
@@ -887,6 +748,18 @@ function buildConversionDialog(sourceContent, formatLabel, method, convertedBloc
             </div>
         </div>
     </div>`;
+}
+
+/**
+ * Unified Convert tool dispatcher — routes to file conversion or memory reformat based on source picker.
+ */
+async function previewConvert() {
+    const source = $('input[name="charMemory_formatSource"]:checked').val();
+    if (source === 'databank') {
+        await previewConversion();
+    } else {
+        await reformatMemories();
+    }
 }
 
 /**
@@ -963,82 +836,68 @@ async function previewConversion() {
     }
 
     // === Editor state (lives in closure, survives popup DOM lifecycle) ===
-    let editorBlocks = result.blocks.map(b => ({ ...b, bullets: [...b.bullets] }));
-    const versionStack = [];
-    const editingSet = new Set();
+    const editor = createMemoryEditor({ blocks: result.blocks });
+    const rerunBackups = []; // separate stack for re-run undo (editor.replaceAll clears internal undo)
     let destType = 'auto';
     let destCustomName = '';
     let dialogClosed = false; // cancellation flag for in-flight re-run callbacks
-    const cloneBlocks = (blocks) => blocks.map(b => ({ ...b, bullets: [...b.bullets] }));
+    let convFindPattern = null;
 
-    const refreshEditor = () => {
-        $('#charMemory_convEditorPane').html(renderConsolidatedCards(editorBlocks, editingSet));
-        $('#charMemory_convAfterCount').text(countMemories(editorBlocks));
-        $('#charMemory_convBlockCount').text(editorBlocks.length);
-        $('#charMemory_convAddBlock').toggleClass('charMemory_editorAddBlock--hidden', editingSet.size === 0);
+    const refreshEditor = (highlightPattern) => {
+        if (highlightPattern !== undefined) convFindPattern = highlightPattern;
+        const blocks = editor.getBlocks();
+        const editing = editor.getEditingSet();
+        $('#charMemory_convEditorPane').html(renderConsolidatedCards(blocks, editing, convFindPattern));
+        $('#charMemory_convAfterCount').text(countMemories(blocks));
+        $('#charMemory_convBlockCount').text(blocks.length);
+        $('#charMemory_convAddBlock').toggleClass('charMemory_editorAddBlock--hidden', editing.size === 0);
     };
 
     // Build and show dialog
     const formatLabel = formatLabels[format] || format;
     const method = useLLM && format !== 'memory_tags' ? 'LLM' : 'Heuristic';
-    const dialogHtml = buildConversionDialog(sourceContent, formatLabel, method, editorBlocks, editingSet, useLLM && format !== 'memory_tags');
+    const initBlocks = editor.getBlocks();
+    const initEditing = editor.getEditingSet();
+    const dialogHtml = buildConversionDialog(sourceContent, formatLabel, method, initBlocks, initEditing, useLLM && format !== 'memory_tags');
     const popup = callGenericPopup(dialogHtml, POPUP_TYPE.CONFIRM, '', { wide: true, allowVerticalScrolling: true, okButton: 'Save', cancelButton: 'Cancel' });
+
+    // === Find/Replace bar ===
+    const cleanupConvFR = wireFindReplaceEvents(editor, refreshEditor, 'charMemory_convFR', '.charMemoryConvFR');
 
     // === Editor event delegation (same card classes as consolidation, different namespaces) ===
 
     $(document).off('click.charMemoryConvToggle').on('click.charMemoryConvToggle', '.charMemory_editorToggleEdit', function () {
-        const bi = Number($(this).data('block'));
-        if (editingSet.has(bi)) editingSet.delete(bi);
-        else editingSet.add(bi);
+        editor.toggleEdit(Number($(this).data('block')));
         refreshEditor();
     });
 
     $(document).off('input.charMemoryConvBullet').on('input.charMemoryConvBullet', '.charMemory_editorBulletInput', function () {
-        const bi = Number($(this).data('block'));
-        const bui = Number($(this).data('bullet'));
-        if (editorBlocks[bi]) editorBlocks[bi].bullets[bui] = $(this).val();
+        editor.updateBullet(Number($(this).data('block')), Number($(this).data('bullet')), $(this).val());
     });
 
     $(document).off('input.charMemoryConvTheme').on('input.charMemoryConvTheme', '.charMemory_editorThemeInput', function () {
-        const bi = Number($(this).data('block'));
-        if (editorBlocks[bi]) editorBlocks[bi].chat = $(this).val();
+        editor.updateTheme(Number($(this).data('block')), $(this).val());
     });
 
     $(document).off('click.charMemoryConvDelBullet').on('click.charMemoryConvDelBullet', '.charMemory_editorDeleteBullet', function () {
-        const bi = Number($(this).data('block'));
-        const bui = Number($(this).data('bullet'));
-        if (editorBlocks[bi]) {
-            editorBlocks[bi].bullets.splice(bui, 1);
-            if (editorBlocks[bi].bullets.length === 0) {
-                editorBlocks.splice(bi, 1);
-                reindexEditingSet(editingSet, bi);
-            }
-            refreshEditor();
-        }
+        editor.deleteBullet(Number($(this).data('block')), Number($(this).data('bullet')));
+        refreshEditor();
     });
 
     $(document).off('click.charMemoryConvDelBlock').on('click.charMemoryConvDelBlock', '.charMemory_editorDeleteBlock', function () {
-        const bi = Number($(this).data('block'));
-        editorBlocks.splice(bi, 1);
-        reindexEditingSet(editingSet, bi);
+        editor.deleteBlock(Number($(this).data('block')));
         refreshEditor();
     });
 
     $(document).off('click.charMemoryConvAddBullet').on('click.charMemoryConvAddBullet', '.charMemory_editorAddBullet', function () {
         const bi = Number($(this).data('block'));
-        if (editorBlocks[bi]) {
-            editorBlocks[bi].bullets.push('');
-            refreshEditor();
-            $(`#charMemory_convEditorPane .charMemory_editorCard[data-block="${bi}"] .charMemory_editorBulletInput:last`).focus();
-        }
+        editor.addBullet(bi);
+        refreshEditor();
+        $(`#charMemory_convEditorPane .charMemory_editorCard[data-block="${bi}"] .charMemory_editorBulletInput:last`).focus();
     });
 
     $(document).off('click.charMemoryConvAddBlock').on('click.charMemoryConvAddBlock', '#charMemory_convAddBlock', function () {
-        const now = new Date();
-        const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-        const newIdx = editorBlocks.length;
-        editorBlocks.push({ chat: 'New Group', date: timestamp, bullets: [''] });
-        editingSet.add(newIdx);
+        editor.addBlock();
         refreshEditor();
         $('#charMemory_convEditorPane .charMemory_editorCard:last .charMemory_editorBulletInput:last').focus();
     });
@@ -1058,7 +917,7 @@ async function previewConversion() {
 
     $('#charMemory_rerunConversion').off('click').on('click', async () => {
         if (inApiCall) return;
-        const currentBlocks = cloneBlocks(editorBlocks);
+        const backupBlocks = editor.getBlocks();
         const llmChecked = $('#charMemory_convDialogLLM').prop('checked');
 
         $('#charMemory_convRerunSpinner').show();
@@ -1090,10 +949,9 @@ async function previewConversion() {
         $('#charMemory_convEditorPane').removeClass('charMemory_editorDisabled');
 
         if (newResult && newResult.blocks.length > 0) {
-            versionStack.push(currentBlocks);
+            rerunBackups.push(backupBlocks);
             $('#charMemory_undoConvRerun').prop('disabled', false);
-            editorBlocks = newResult.blocks.map(b => ({ ...b, bullets: [...b.bullets] }));
-            editingSet.clear();
+            editor.replaceAll(newResult.blocks);
             refreshEditor();
             for (const w of newResult.warnings) {
                 toastr.warning(w, 'CharMemory');
@@ -1106,11 +964,10 @@ async function previewConversion() {
     // === Undo ===
 
     $('#charMemory_undoConvRerun').off('click').on('click', () => {
-        if (versionStack.length === 0) return;
-        editorBlocks = versionStack.pop();
-        editingSet.clear();
+        if (rerunBackups.length === 0) return;
+        editor.replaceAll(rerunBackups.pop());
         refreshEditor();
-        if (versionStack.length === 0) $('#charMemory_undoConvRerun').prop('disabled', true);
+        if (rerunBackups.length === 0) $('#charMemory_undoConvRerun').prop('disabled', true);
     });
 
     // === Wait for dialog Accept/Cancel ===
@@ -1119,6 +976,7 @@ async function previewConversion() {
     dialogClosed = true;
 
     // Clean up all event delegation
+    cleanupConvFR();
     $(document).off('click.charMemoryConvToggle');
     $(document).off('input.charMemoryConvBullet');
     $(document).off('input.charMemoryConvTheme');
@@ -1136,7 +994,7 @@ async function previewConversion() {
 
     // === Save converted memories ===
 
-    const cleanBlocks = editorBlocks
+    const cleanBlocks = editor.getBlocks()
         .map(b => ({ ...b, bullets: b.bullets.filter(bullet => bullet.trim() !== '') }))
         .filter(b => b.bullets.length > 0);
 
@@ -1191,6 +1049,8 @@ let lastDiagnostics = {
 };
 let diagnosticsHistory = [];
 let pendingDiagnosticsMessageIndex = null;
+let healthRecheckTimer = null; // delayed re-check after vectorization (race condition guard)
+let healthPollInterval = null; // periodic background health poll
 
 /**
  * Toggle provider settings panel visibility.
@@ -1501,7 +1361,7 @@ function renderModelDropdown(filter) {
 
         const selectedClass = model.id === selectedId ? ' selected' : '';
         $dropdown.append(
-            `<div class="charMemory_modelOption${selectedClass}" data-model-id="${escapeHtml(model.id)}">${escapeHtml(model.name)}</div>`
+            `<div class="charMemory_modelOption${selectedClass}" data-model-id="${escapeAttr(model.id)}">${escapeHtml(model.name)}</div>`
         );
         hasResults = true;
     }
@@ -1614,37 +1474,81 @@ function loadSettings() {
         saveSettingsDebounced();
     }
 
-    // Bind UI elements to settings
-    $('#charMemory_enabled').prop('checked', extension_settings[MODULE_NAME].enabled);
-    $('#charMemory_mergeChunks').prop('checked', extension_settings[MODULE_NAME].mergeChunks);
-    $('#charMemory_perChat').prop('checked', extension_settings[MODULE_NAME].perChat);
-    $('#charMemory_interval').val(extension_settings[MODULE_NAME].interval);
-    $('#charMemory_intervalCounter').val(extension_settings[MODULE_NAME].interval);
-    $('#charMemory_maxMessages').val(extension_settings[MODULE_NAME].maxMessagesPerExtraction);
-    $('#charMemory_maxMessagesCounter').val(extension_settings[MODULE_NAME].maxMessagesPerExtraction);
-    $('#charMemory_responseLength').val(extension_settings[MODULE_NAME].responseLength);
-    $('#charMemory_responseLengthCounter').val(extension_settings[MODULE_NAME].responseLength);
-    $('#charMemory_minCooldown').val(extension_settings[MODULE_NAME].minCooldownMinutes);
-    $('#charMemory_minCooldownCounter').val(extension_settings[MODULE_NAME].minCooldownMinutes);
-    $('#charMemory_extractionPrompt').val(extension_settings[MODULE_NAME].extractionPrompt);
-$('#charMemory_groupExtractionPrompt').val(extension_settings[MODULE_NAME].groupExtractionPrompt);
-    $('#charMemory_consolidationStrategy').val(extension_settings[MODULE_NAME].consolidationStrategy || 'balanced');
-    updateConsolidationStrategyUI();
-    $('#charMemory_source').val(extension_settings[MODULE_NAME].source);
-    $('#charMemory_fileName').val(extension_settings[MODULE_NAME].fileName);
-    $('#charMemory_verboseLog').prop('checked', extension_settings[MODULE_NAME].verboseLogging);
-    $('#charMemory_chunkBoundary').val(extension_settings[MODULE_NAME].chunkBoundary || 'block');
-    $('#charMemory_customSeparator').val(extension_settings[MODULE_NAME].customSeparator || '\\n\\n');
-    $('#charMemory_chunkMetadata').prop('checked', !!extension_settings[MODULE_NAME].chunkMetadata);
-    toggleChunkBoundaryUI(extension_settings[MODULE_NAME].chunkBoundary || 'block');
-    $('#charMemory_convertPrompt').val(extension_settings[MODULE_NAME].conversionPrompt || defaultConversionPrompt);
+    // Check prompt versions for update notifications
+    checkPromptVersions();
+    const pendingPromptUpdates = Object.keys(PROMPT_CONFIG).filter(k => hasPromptUpdate(k));
+    if (pendingPromptUpdates.length > 0) {
+        setTimeout(() => toastr.info(
+            'Some CharMemory prompts have been updated. Open <b>Settings → Prompts</b> to review.',
+            'CharMemory',
+            { timeOut: 10000, escapeHtml: false },
+        ), 2000);
+    }
 
-    // Provider settings
-    populateProviderDropdown();
-    toggleProviderSettings(extension_settings[MODULE_NAME].source);
+    // Bind dashboard UI elements to settings
+    $('#charMemory_autoExtractPill').toggleClass('active', !!extension_settings[MODULE_NAME].enabled);
 
     updateStatusDisplay();
     updateHealthIndicator();
+
+    // Periodic health re-check — catches manual vectorization, VS setting changes,
+    // and any other state changes not covered by event listeners.
+    startHealthPoll();
+}
+
+function startHealthPoll() {
+    clearInterval(healthPollInterval);
+    healthPollInterval = setInterval(() => updateHealthIndicator(), 60_000);
+}
+
+// Pause the poll when the page is hidden (background tab / screen locked),
+// resume and immediately re-check when it becomes visible again.
+// Registered once at module load — safe to call multiple times via loadSettings.
+if (!window._charMemoryVisibilityBound) {
+    window._charMemoryVisibilityBound = true;
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            clearInterval(healthPollInterval);
+        } else {
+            startHealthPoll();
+            updateHealthIndicator();
+        }
+    });
+}
+
+/**
+ * Resolve the effective display mode from the user setting.
+ * 'auto' detects: touch + narrow viewport → phone, touch → tablet, else desktop.
+ * @returns {'desktop'|'tablet'|'phone'}
+ */
+function getEffectiveDisplayMode() {
+    const setting = extension_settings[MODULE_NAME].displayMode
+        || extension_settings[MODULE_NAME].tabletMode // legacy migration
+        || 'auto';
+    if (setting === 'desktop' || setting === 'off') return 'desktop';
+    if (setting === 'tablet' || setting === 'on') return 'tablet';
+    if (setting === 'phone') return 'phone';
+    // 'auto' — detect at runtime
+    const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+    if (!hasTouch) return 'desktop';
+    return window.innerWidth <= 600 ? 'phone' : 'tablet';
+}
+
+/**
+ * Whether the floating tablet panel should be used (tablet or phone mode).
+ * @returns {boolean}
+ */
+function isTabletMode() {
+    const mode = getEffectiveDisplayMode();
+    return mode === 'tablet' || mode === 'phone';
+}
+
+/**
+ * Apply/remove the body class for phone-mode CSS overrides.
+ * Called on init, setting change, and viewport resize.
+ */
+function applyDisplayModeClass() {
+    document.body.classList.toggle('charMemory-phone-mode', getEffectiveDisplayMode() === 'phone');
 }
 
 function ensureMetadata() {
@@ -1706,8 +1610,6 @@ function updateStatusDisplay() {
     // Stats bar: cooldown timer
     updateCooldownDisplay();
     startCooldownTimer();
-    updateChatTypeVisibility();
-    updateGroupMembersList();
 
     // Show resolved filename for 1:1 chats
     if (!isGroupChat()) {
@@ -1717,42 +1619,43 @@ function updateStatusDisplay() {
 }
 
 /**
- * Show/hide the 1:1 and Group Chat settings sections based on current chat type.
+ * Update the dashboard diagnostics summary with current health status.
  */
-function updateChatTypeVisibility() {
-    const group = isGroupChat();
-    $('#charMemory_section1v1').toggle(!group);
-    $('#charMemory_sectionGroup').toggle(group);
-}
+function updateDashboardDiagSummary() {
+    const $summary = $('#charMemory_dashDiagSummary');
+    if (!$summary.length) return;
 
-/**
- * Populate the group members filename list in settings UI.
- * Shows each group member with their resolved memory filename (editable).
- */
-function updateGroupMembersList() {
-    const $container = $('#charMemory_groupMembersList');
-    if (!$container.length) return;
+    computeHealthScore().then(result => {
+        if (result.level === 'unknown') {
+            $summary.html('<div class="charMemory_diagEmpty">No character selected.</div>');
+            return;
+        }
 
-    const targets = getMemoryTargets();
-    if (targets.length <= 1) {
-        $container.html('<small class="charMemory_helperText">Open a group chat to see members.</small>');
-        return;
-    }
+        const icons = { green: 'fa-check-circle', yellow: 'fa-exclamation-triangle', red: 'fa-times-circle' };
+        const colors = { green: '#4a4', yellow: '#e8a33d', red: '#c44' };
+        const icon = icons[result.level] || 'fa-question-circle';
+        const color = colors[result.level] || '';
+        const label = result.level === 'green' ? 'Healthy' : result.level === 'yellow' ? 'Warnings' : 'Issues detected';
 
-    const rows = targets.map(target => {
-        const override = extension_settings[MODULE_NAME]?.characterFileNames?.[target.avatar] || '';
-        return `<div class="charMemory_groupMemberRow">
-            <span class="charMemory_groupMemberName">${escapeHtml(target.name)}</span>
-            <input type="text" class="text_pole charMemory_groupMemberFile"
-                   data-avatar="${escapeHtml(target.avatar)}"
-                   data-charname="${escapeHtml(target.name)}"
-                   value="${escapeHtml(override)}"
-                   placeholder="${escapeHtml(target.fileName)}"
-                   title="Current file: ${escapeHtml(target.fileName)}" />
-        </div>`;
-    }).join('');
+        let html = `<div style="display:flex;align-items:center;gap:6px;font-size:0.9em;">`;
+        html += `<i class="fa-solid ${icon}" style="color:${color};"></i>`;
+        html += `<span>${label}</span>`;
+        html += `</div>`;
 
-    $container.html(rows);
+        if (result.checks) {
+            const issues = result.checks.filter(c => c.status !== 'pass');
+            if (issues.length > 0) {
+                html += `<div style="font-size:0.8em;opacity:0.7;margin-top:2px;">`;
+                html += issues.slice(0, 2).map(c => `${c.label}: ${c.detail || c.status}`).join('<br>');
+                if (issues.length > 2) html += `<br>...and ${issues.length - 2} more`;
+                html += `</div>`;
+            }
+        }
+
+        $summary.html(html);
+    }).catch(() => {
+        $summary.html('<div class="charMemory_diagEmpty">Health check failed.</div>');
+    });
 }
 
 function updateCooldownDisplay() {
@@ -1808,12 +1711,22 @@ function getGroupMembers() {
     const context = getContext();
     if (!context.groupId) return [];
     const group = context.groups?.find(g => g.id === context.groupId);
-    if (!group) return [];
-    return group.members
-        .filter(avatar => !group.disabled_members?.includes(avatar))
+    if (!group) {
+        console.warn(LOG_PREFIX, `Group not found: groupId="${context.groupId}", available groups:`, context.groups?.map(g => g.id));
+        return [];
+    }
+    const activeMembers = group.members
+        .filter(avatar => !group.disabled_members?.includes(avatar));
+    if (activeMembers.length === 0) {
+        console.warn(LOG_PREFIX, `Group "${group.name}" has no active members. members=${group.members?.length}, disabled=${group.disabled_members?.length}, mode=${group.generation_mode}`);
+    }
+    return activeMembers
         .map(avatar => {
             const charIndex = characters.findIndex(c => c.avatar === avatar);
             const char = characters[charIndex];
+            if (!char) {
+                console.warn(LOG_PREFIX, `Group member avatar "${avatar}" not found in characters array (${characters.length} characters loaded)`);
+            }
             return char ? { name: char.name, avatar, charIndex } : null;
         })
         .filter(Boolean);
@@ -2020,26 +1933,11 @@ function collectRecentMessages({ endIndex = null, chatArray = null, lastExtracte
 
     // Take a chunk of maxMessages starting from startIndex (NOT from end)
     const sliceEnd = Math.min(startIndex + maxMessages, end);
-    const slice = chat.slice(startIndex, sliceEnd);
 
-    const lines = [];
-    for (const msg of slice) {
-        if (!msg.mes) continue;
-        // Skip true system messages (narrator/UI messages with no real content)
-        if (msg.is_system && !msg.is_user && !msg.name) continue;
-        // Strip non-diegetic content: markdown tables, code blocks (image prompts), HTML tags
-        let text = msg.mes;
-        text = text.replace(/```[\s\S]*?```/g, '');                    // code blocks (image prompts)
-        text = text.replace(/<details[\s\S]*?<\/details>/gi, '');      // collapsed details sections
-        text = text.replace(/\|[^\n]*\|(?:\n\|[^\n]*\|)*/g, '');       // markdown tables
-        text = text.replace(/<[^>]*>/g, '');                           // HTML tags
-        text = text.replace(/\n{3,}/g, '\n\n').trim();                 // collapse whitespace
-        if (!text) continue;
-        lines.push(`${msg.name}: ${text}`);
-    }
+    const result = formatChatMessages(chat, startIndex, sliceEnd);
 
-    logActivity(`Collected ${lines.length} messages (indices ${startIndex}-${sliceEnd - 1})`);
-    return { text: lines.join('\n\n'), startIndex, endIndex: sliceEnd - 1 };
+    logActivity(`Collected ${result.messageCount} messages (indices ${startIndex}-${sliceEnd - 1})`);
+    return { text: result.text, startIndex, endIndex: sliceEnd - 1 };
 }
 
 // ============ Server API Helpers ============
@@ -2539,7 +2437,9 @@ function clearModelCache(providerKey) {
 async function testProviderConnection() {
     const providerKey = extension_settings[MODULE_NAME].selectedProvider;
     const preset = PROVIDER_PRESETS[providerKey];
-    const $status = $('#charMemory_providerTestStatus');
+    // Target the Settings Modal elements (sidebar provider panel was removed in v2.0)
+    const $status = $('#cm_modal_testStatus');
+    const $btn = $('#cm_modal_testModel');
 
     if (!preset) {
         $status.text('Unknown provider selected.').css('color', '#e74c3c').show();
@@ -2552,7 +2452,6 @@ async function testProviderConnection() {
         return;
     }
 
-    const $btn = $('#charMemory_providerTest');
     $btn.prop('disabled', true).val('Testing...');
     $status.text('Testing model...').css('color', '').show();
 
@@ -2595,19 +2494,6 @@ async function testProviderConnection() {
 const WEBLLM_MAX_PROMPT_CHARS = 6000;
 
 /**
- * Truncate a string to a maximum character count, breaking at a newline boundary.
- * @param {string} text The text to truncate.
- * @param {number} maxChars Maximum characters.
- * @returns {string}
- */
-function truncateText(text, maxChars) {
-    if (!text || text.length <= maxChars) return text;
-    const truncated = text.slice(0, maxChars);
-    const lastNewline = truncated.lastIndexOf('\n');
-    return (lastNewline > maxChars * 0.5 ? truncated.slice(0, lastNewline) : truncated) + '\n[...truncated]';
-}
-
-/**
  * Build the extraction prompt with substitutions.
  * @param {string} existingMemories Current memories content.
  * @param {string} recentMessages Formatted recent messages.
@@ -2647,12 +2533,8 @@ function buildExtractionPrompt(target, existingMemories, recentMessages, allTarg
         messages = truncateText(messages, messagesBudget);
     }
 
-    prompt = prompt.replace(/\{\{charName\}\}/g, charName);
-    prompt = prompt.replace(/\{\{charCard\}\}/g, charCard);
-    prompt = prompt.replace(/\{\{existingMemories\}\}/g, memories);
-    prompt = prompt.replace(/\{\{recentMessages\}\}/g, messages);
-
-    // Group-only: inject participants list (everyone except the target character)
+    // Build participants string for group chats
+    let participants = undefined;
     if (isGroup) {
         const context = getContext();
         const userName = context.name1 || 'User';
@@ -2660,8 +2542,16 @@ function buildExtractionPrompt(target, existingMemories, recentMessages, allTarg
             .filter(t => t.name !== charName)
             .map(t => t.name);
         otherNames.unshift(`${userName} (user)`);
-        prompt = prompt.replace(/\{\{participants\}\}/g, otherNames.join(', '));
+        participants = otherNames.join(', ');
     }
+
+    prompt = substitutePromptTemplate(prompt, {
+        charName,
+        charCard,
+        existingMemories: memories,
+        recentMessages: messages,
+        participants,
+    });
 
     // Let ST handle {{char}}, {{user}}, etc.
     prompt = substituteParamsExtended(prompt);
@@ -2723,7 +2613,19 @@ async function extractMemories({
     // Determine extraction targets
     const targets = getMemoryTargets();
     if (targets.length === 0) {
-        logActivity('Extraction: no targets found', 'warning');
+        if (isGroupChat()) {
+            const _ctx = getContext();
+            const _group = _ctx.groups?.find(g => g.id === _ctx.groupId);
+            const _total = _group?.members?.length ?? 0;
+            const _active = (_group?.members || []).filter(a => !_group?.disabled_members?.includes(a)).length;
+            if (_total > 0 && _active === 0) {
+                logActivity('Extraction: all group members are disabled in SillyTavern — re-enable at least one in the group settings', 'warning');
+            } else {
+                logActivity('Extraction: no targets found', 'warning');
+            }
+        } else {
+            logActivity('Extraction: no targets found', 'warning');
+        }
         return noopResult;
     }
     const isMultiTarget = targets.length > 1;
@@ -2739,7 +2641,15 @@ async function extractMemories({
 
     // Calculate total unprocessed messages and chunks
     const chat = chatArray || context.chat;
-    const effectiveEnd = endIndex !== null ? endIndex + 1 : chat.length;
+    let effectiveEnd = endIndex !== null ? endIndex + 1 : chat.length;
+
+    // Protect recent messages: for auto-extraction, skip the most recent N messages
+    // so swipes/regenerations aren't constrained by just-extracted memories
+    if (!force && endIndex === null && extension_settings[MODULE_NAME].protectRecentMessages) {
+        const buffer = extension_settings[MODULE_NAME].protectRecentMessagesCount || 4;
+        effectiveEnd = Math.max(currentLastExtracted + 1, effectiveEnd - buffer);
+    }
+
     const totalUnprocessed = effectiveEnd - (currentLastExtracted + 1);
 
     if (totalUnprocessed <= 0) {
@@ -2787,6 +2697,10 @@ async function extractMemories({
     let totalMemories = 0;
     let chunksProcessed = 0;
     let stepsCompleted = 0;
+
+    // Per-target accumulator: holds raw extracted text from prior chunks so chunk N+1
+    // sees chunk N's output in the EXISTING MEMORIES section, preventing cross-chunk duplicates.
+    const chunkExtractedByTarget = {};
 
     try {
         inApiCall = true;
@@ -2836,8 +2750,12 @@ async function extractMemories({
                     onProgress({ chunk: chunk + 1, totalChunks, chunksProcessed, totalMemories, character: target.name, step: stepsCompleted, totalSteps });
                 }
 
-                // Read this target's existing memories
-                const existingMemories = await readMemoriesForCharacter(target.avatar, target.fileName);
+                // Read this target's existing memories + any accumulated from prior chunks
+                let existingMemories = await readMemoriesForCharacter(target.avatar, target.fileName);
+                const accumulated = chunkExtractedByTarget[target.avatar] || '';
+                if (accumulated) {
+                    existingMemories += '\n' + accumulated;
+                }
 
                 // Build prompt
                 const prompt = buildExtractionPrompt(target, existingMemories, recentMessages, targets);
@@ -2871,11 +2789,15 @@ async function extractMemories({
                     logActivity(`${logLabel} Raw response:\n${result}`);
                 }
 
-                // For active chats: verify context hasn't changed
+                // For active chats: verify context hasn't changed mid-extraction.
+                // In group chats we only check chatId — characterId legitimately flips
+                // between members as they reply and is not a signal of a context switch.
                 if (isActiveChat) {
                     const newContext = getContext();
-                    if (newContext.characterId !== savedCharId || newContext.chatId !== savedChatId) {
-                        console.log(LOG_PREFIX, 'Context changed during extraction, discarding result');
+                    const chatChanged = newContext.chatId !== savedChatId;
+                    const charChanged = !isMultiTarget && newContext.characterId !== savedCharId;
+                    if (chatChanged || charChanged) {
+                        logActivity('Context changed during extraction — discarding result', 'warning');
                         return { totalMemories, chunksProcessed, lastExtractedIndex: currentLastExtracted };
                     }
                 }
@@ -2893,14 +2815,25 @@ async function extractMemories({
                 // Parse and save memories to this target's Data Bank
                 const currentMemories = await readMemoriesForCharacter(target.avatar, target.fileName);
                 const existing = parseMemories(currentMemories);
-                const now = new Date();
-                const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+                const timestamp = getTimestamp();
 
-                const memoryRegex = /<memory>([\s\S]*?)<\/memory>/gi;
+                const memoryRegex = /<memory[^>]*>([\s\S]*?)<\/memory>/gi;
                 const matches = [...cleanResult.matchAll(memoryRegex)];
-                const rawEntries = matches.length > 0
+                let rawEntries = matches.length > 0
                     ? matches.map(m => m[1].trim()).filter(Boolean)
-                    : [cleanResult.trim()].filter(Boolean);
+                    : [];
+
+                // Handle LLMs that produce self-closing <memory></memory> with bullets after the tag
+                if (rawEntries.length === 0 && matches.length > 0) {
+                    const altRegex = /<memory[^>]*>\s*<\/memory>([\s\S]*?)(?=<memory|$)/gi;
+                    const altEntries = [...cleanResult.matchAll(altRegex)];
+                    rawEntries = altEntries.map(m => m[1].trim()).filter(Boolean);
+                }
+
+                // Final fallback: treat entire response as one block
+                if (rawEntries.length === 0) {
+                    rawEntries = [cleanResult.trim()].filter(Boolean);
+                }
 
                 let newBulletCount = 0;
                 for (const entry of rawEntries) {
@@ -2909,14 +2842,26 @@ async function extractMemories({
                         .filter(l => l.startsWith('- '))
                         .map(l => l.slice(2).trim())
                         .filter(Boolean);
-                    const finalBullets = bullets.length > 0 ? bullets : [entry];
-                    existing.push({ chat: effectiveChatId, date: timestamp, bullets: finalBullets });
-                    newBulletCount += finalBullets.length;
+
+                    // Split blocks with multiple topic tags into separate blocks
+                    const bulletGroups = splitMultiTagBullets(bullets);
+                    if (bulletGroups.length > 1) {
+                        console.log(LOG_PREFIX, `Split multi-tag block into ${bulletGroups.length} separate blocks`);
+                    }
+                    for (const group of bulletGroups) {
+                        const finalBullets = group.length > 0 ? group : [entry];
+                        existing.push({ chat: effectiveChatId, date: timestamp, bullets: finalBullets });
+                        newBulletCount += finalBullets.length;
+                    }
                 }
 
                 await writeMemoriesForCharacter(serializeMemories(existing), target.avatar, target.fileName);
                 totalMemories += newBulletCount;
                 logActivity(`${logLabel} Saved ${newBulletCount} new memor${newBulletCount === 1 ? 'y' : 'ies'}`, 'success');
+
+                // Accumulate raw extracted text for subsequent chunks' dedup
+                if (!chunkExtractedByTarget[target.avatar]) chunkExtractedByTarget[target.avatar] = '';
+                chunkExtractedByTarget[target.avatar] += '\n' + cleanResult;
             }
 
             // Don't advance index if abort interrupted the target loop
@@ -2964,6 +2909,11 @@ async function extractMemories({
         if (totalMemories > 0) {
             const suffix = isMultiTarget ? ` across ${targets.length} characters` : '';
             toastr.success(`${totalMemories} memor${totalMemories === 1 ? 'y' : 'ies'} saved${suffix} from ${chunksProcessed} chunk(s).`, 'CharMemory');
+
+            // Post-first-extraction verification nudge
+            if (!extension_settings[MODULE_NAME].verificationSeen) {
+                showVerificationStep();
+            }
         } else if (chunksProcessed > 0) {
             toastr.info('No new memories found.', 'CharMemory');
         }
@@ -3034,25 +2984,29 @@ async function onChatChanged() {
     const meta = chat_metadata[MODULE_NAME];
     const lastIdx = meta.lastExtractedIndex ?? -1;
 
-    // Detect stale metadata: lastExtractedIndex is set but no memories exist
-    // for this chat. This happens when old code advanced the index even on
-    // NO_NEW_MEMORIES. Auto-reset so extraction can run.
+    // Detect stale metadata: lastExtractedIndex is set but the memory file is empty.
+    // This happens when old code advanced the index even on NO_NEW_MEMORIES, or when
+    // the user clears memories after extraction. Auto-reset so extraction can run.
+    //
+    // We check for ANY blocks (not chat-specific), because consolidation replaces the
+    // original chatId labels with thematic labels (e.g. "First Meeting"). Requiring a
+    // chatId match would falsely reset the index every session after consolidation.
     if (lastIdx >= 0) {
         try {
-            let hasMemoriesForChat = false;
+            let hasAnyMemories = false;
             const targets = getMemoryTargets();
             for (const target of targets) {
                 const content = await readMemoriesForCharacter(target.avatar, target.fileName);
                 const blocks = parseMemories(content);
-                if (blocks.some(b => b.chat === chatId || b.chat === 'consolidated' || b.chat === 'unknown')) {
-                    hasMemoriesForChat = true;
+                if (blocks.length > 0) {
+                    hasAnyMemories = true;
                     break;
                 }
             }
-            if (!hasMemoriesForChat) {
+            if (!hasAnyMemories) {
                 meta.lastExtractedIndex = -1;
                 saveMetadataDebounced();
-                logActivity(`Auto-reset lastExtractedIndex: was ${lastIdx} but no memories found for chat="${chatId}" — stale metadata`, 'warning');
+                logActivity(`Auto-reset lastExtractedIndex: was ${lastIdx} but memory file is empty — stale metadata`, 'warning');
             }
         } catch { /* ignore read errors */ }
     }
@@ -3080,6 +3034,23 @@ async function onChatChanged() {
 }
 
 // ============ Diagnostics ============
+
+/**
+ * Return the usable context window size (max context minus reserved response tokens).
+ * Delegates to ST's getMaxContextSize() which handles all API backends correctly.
+ */
+function getMainContextMaxTokens() {
+    try {
+        const size = getMaxContextSize();
+        if (typeof size === 'number' && size > 0) return size;
+    } catch { /* ignore */ }
+    return null;
+}
+
+/** Estimate token count from character count (~4 chars per token for Latin text). */
+function estimateTokens(chars) {
+    return Math.round(chars / 4);
+}
 
 /**
  * Capture diagnostics data from WORLD_INFO_ACTIVATED event.
@@ -3139,6 +3110,31 @@ function captureDiagnostics(messageIndex) {
             }
         }
 
+        // Capture char counts for token estimation before truncation
+        const dbCharCount = fullDbContent
+            ? (typeof fullDbContent === 'string' ? fullDbContent.length : String(fullDbContent).length)
+            : 0;
+        // Use itemizedPrompts for accurate char counts (actual injected strings, not truncated entry content)
+        const itemIdx = itemizedPrompts.findIndex(x => Number(x.mesId) === messageIndex);
+        let wiTotalChars = 0;
+        let dbCharsAccurate = dbCharCount;
+        if (itemIdx !== -1) {
+            const ip = itemizedPrompts[itemIdx];
+            if (typeof ip.worldInfoString === 'string') wiTotalChars = ip.worldInfoString.length;
+            if (typeof ip.dataBankVectorsString === 'string') dbCharsAccurate = ip.dataBankVectorsString.length;
+        } else {
+            // Fall back to summing entry content (may be inaccurate for multi-entry lorebooks)
+            wiTotalChars = lastDiagnostics.worldInfoEntries.reduce((sum, e) => sum + (e.content?.length || 0), 0);
+        }
+        const epCharCounts = {};
+        for (const [key, value] of Object.entries(context.extensionPrompts || {})) {
+            if (value?.value) {
+                epCharCounts[key] = typeof value.value === 'string'
+                    ? value.value.length
+                    : String(value.value).length;
+            }
+        }
+
         const snapshot = {
             memories,
             worldInfo: lastDiagnostics.worldInfoEntries.map(e => ({
@@ -3150,7 +3146,14 @@ function captureDiagnostics(messageIndex) {
                 label: p.label,
                 content: p.label === '4_vectors_data_bank' ? p.content : p.content.substring(0, 500),
                 position: p.position,
+                depth: p.depth,
             })),
+            tokenData: {
+                charMemoryChars: dbCharsAccurate,
+                wiChars: wiTotalChars,
+                epCharCounts,
+                contextMaxTokens: getMainContextMaxTokens(),
+            },
             timestamp: lastDiagnostics.timestamp,
         };
 
@@ -3164,12 +3167,49 @@ function captureDiagnostics(messageIndex) {
         }
     }
 
-    updateDiagnosticsDisplay();
     updateHealthIndicator();
+
+    // Vector Storage may finish vectorizing the file shortly after the message renders.
+    // Schedule a follow-up health re-check to catch that (debounced to avoid hammering).
+    clearTimeout(healthRecheckTimer);
+    healthRecheckTimer = setTimeout(() => updateHealthIndicator(), 4000);
 
     // Auto-update injection drawer if open
     if ($('#charMemory_injectionDrawer').hasClass('open') && typeof messageIndex === 'number' && messageIndex >= 0) {
         showInjectionDrawer(messageIndex);
+    }
+}
+
+/**
+ * Discover the KoboldCPP embedding model name by querying the server.
+ * KoboldCPP doesn't store its model name in Vector Storage settings — it's
+ * discovered dynamically from the API response during embedding creation.
+ * This mirrors what the VS extension itself does for its list operations.
+ * @returns {Promise<string|null>} The model name, or null if unavailable.
+ */
+async function discoverKoboldCppModel() {
+    try {
+        const vecSettings = extension_settings.vectors;
+        let serverUrl;
+        if (vecSettings?.use_alt_endpoint) {
+            serverUrl = vecSettings.alt_endpoint_url;
+        } else {
+            const tgSettings = getContext().textCompletionSettings;
+            serverUrl = tgSettings?.server_urls?.koboldcpp;
+        }
+        if (!serverUrl) return null;
+
+        const response = await fetch('/api/backends/kobold/embed', {
+            method: 'POST',
+            headers: getRequestHeaders(),
+            body: JSON.stringify({ items: [], server: serverUrl }),
+        });
+        if (!response.ok) return null;
+
+        const data = await response.json();
+        return data.model || null;
+    } catch {
+        return null;
     }
 }
 
@@ -3185,7 +3225,12 @@ async function checkVectorizationStatus(fileUrl) {
 
         const source = vecSettings.source || 'transformers';
         const modelKey = `${source === 'palm' || source === 'vertexai' ? 'google' : source}_model`;
-        const model = vecSettings[modelKey] || '';
+        let model = vecSettings[modelKey] || '';
+
+        // KoboldCPP doesn't store its model in VS settings — discover it from the API
+        if (!model && source === 'koboldcpp') {
+            model = await discoverKoboldCppModel() || '';
+        }
 
         const collectionId = `file_${getStringHash(fileUrl)}`;
         const body = { collectionId, source };
@@ -3220,7 +3265,10 @@ async function computeHealthScore() {
     const vecSettings = extension_settings.vectors;
 
     // Check 1: Vector Storage enabled for files
-    const filesEnabled = vecSettings?.enabled_files;
+    // Also verify VS extension is actually loaded — extension_settings.vectors persists
+    // even when the VS extension is disabled, so we need both checks.
+    const vsExtLoaded = !!document.querySelector('#vectors_enabled_files');
+    const filesEnabled = vsExtLoaded && !!vecSettings?.enabled_files;
     checks.push({
         id: 'vec_files_enabled',
         level: filesEnabled ? 'green' : 'red',
@@ -3236,11 +3284,11 @@ async function computeHealthScore() {
     const attachment = findMemoryAttachmentForCharacter(target.avatar, target.fileName);
     checks.push({
         id: 'memory_file_exists',
-        level: attachment ? 'green' : 'red',
+        level: attachment ? 'green' : 'yellow',
         label: 'Memory file in Data Bank',
         detail: attachment
             ? `Found: ${target.fileName}`
-            : `Not found: ${target.fileName}. Extract memories first.`,
+            : `Not found: ${target.fileName}. Extract memories first to create it.`,
     });
 
     if (!attachment) {
@@ -3255,8 +3303,8 @@ async function computeHealthScore() {
         checks.push({ id: 'file_vectorized', level: 'red', label: 'File vectorization',
             detail: 'Could not check vectorization status. Vector Storage may not be enabled for files.' });
     } else if (vecStatus === false) {
-        checks.push({ id: 'file_vectorized', level: 'red', label: 'File vectorization',
-            detail: 'File exists but has 0 vector chunks. It has not been vectorized yet.' });
+        checks.push({ id: 'file_vectorized', level: 'yellow', label: 'File vectorization',
+            detail: 'File not yet indexed by Vector Storage. This usually resolves automatically when the next message is sent.' });
     } else {
         const via = vecStatus.model ? `${vecStatus.source}/${vecStatus.model}` : vecStatus.source;
         checks.push({ id: 'file_vectorized', level: 'green', label: 'File vectorization',
@@ -3289,10 +3337,10 @@ async function computeHealthScore() {
 
             if (chunkSizeDb > 0 && chunkSizeDb < avgBlockSize) {
                 checks.push({ id: 'chunk_size', level: 'yellow', label: 'Chunk size',
-                    detail: `Chunk size (${chunkSizeDb}) is smaller than average memory block (${avgBlockSize} chars). Blocks will be split across chunks. Consider increasing chunk size.` });
+                    detail: `Chunk size (${chunkSizeDb} chars) is smaller than the average memory block (${avgBlockSize} chars). This may split blocks mid-content. Recommended: 800-1000 chars for CharMemory.` });
             } else if (chunkSizeDb > 0 && chunkSizeDb > avgBlockSize * 4) {
                 checks.push({ id: 'chunk_size', level: 'yellow', label: 'Chunk size',
-                    detail: `Chunk size (${chunkSizeDb}) is much larger than average memory block (${avgBlockSize} chars). Retrieval may be less selective as chunks grow.` });
+                    detail: `Chunk size (${chunkSizeDb} chars) is much larger than the average memory block (${avgBlockSize} chars). Multiple blocks may be packed into single chunks, reducing retrieval precision. Recommended: 800-1000 chars for CharMemory.` });
             } else {
                 checks.push({ id: 'chunk_size', level: 'green', label: 'Chunk size',
                     detail: `Chunk size (${chunkSizeDb}) is appropriate for average memory block size (${avgBlockSize} chars).` });
@@ -3300,7 +3348,45 @@ async function computeHealthScore() {
         }
     } catch { /* file read failed, skip */ }
 
-    // Checks 6-7: Only run after a generation has been captured
+    // Check 6: Retrieve chunks — warn if too high for CharMemory
+    const retrieveChunks = vecSettings?.chunk_count_db;
+    if (retrieveChunks !== undefined) {
+        if (retrieveChunks > 5) {
+            checks.push({
+                id: 'retrieve_chunks',
+                level: 'yellow',
+                label: 'Retrieve chunks is high',
+                detail: `Retrieve chunks is set to ${retrieveChunks}. For CharMemory, 2-3 is recommended. Higher values inject more memories per message, which can flood the prompt with irrelevant content.`,
+            });
+        } else {
+            checks.push({
+                id: 'retrieve_chunks',
+                level: 'green',
+                label: `Retrieve chunks: ${retrieveChunks}`,
+                detail: 'Retrieve chunks is in the recommended range for CharMemory.',
+            });
+        }
+    }
+
+    // Check 7: Score threshold — warn if not set or too low
+    const scoreThreshold = vecSettings?.score_threshold;
+    if (scoreThreshold !== undefined && scoreThreshold < 0.1) {
+        checks.push({
+            id: 'score_threshold',
+            level: 'yellow',
+            label: 'No score threshold set',
+            detail: 'Without a score threshold, low-relevance memories may be injected. Recommended: 0.2-0.3 for most embedding models.',
+        });
+    } else if (scoreThreshold !== undefined) {
+        checks.push({
+            id: 'score_threshold',
+            level: 'green',
+            label: `Score threshold: ${scoreThreshold}`,
+            detail: 'Score threshold is set — low-relevance results will be filtered out.',
+        });
+    }
+
+    // Checks 8-9: Only run after a generation has been captured
     const dbPrompt = lastDiagnostics.extensionPrompts?.['4_vectors_data_bank'];
     if (dbPrompt && dbPrompt.content) {
         const injectedBullets = dbPrompt.content.split('\n')
@@ -3309,7 +3395,7 @@ async function computeHealthScore() {
             .map(line => line.slice(2).trim())
             .filter(Boolean);
 
-        // Check 6: Memories actually injected
+        // Check 8: Memories actually injected
         if (injectedBullets.length === 0) {
             checks.push({ id: 'memories_injected', level: 'yellow', label: 'Memories in injection',
                 detail: 'Vector data was injected but no memory bullets found. The content may be from other Data Bank files.' });
@@ -3317,7 +3403,7 @@ async function computeHealthScore() {
             checks.push({ id: 'memories_injected', level: 'green', label: 'Memories in injection',
                 detail: `${injectedBullets.length} memor${injectedBullets.length === 1 ? 'y' : 'ies'} found in last injection.` });
 
-            // Check 7: Duplicate detection
+            // Check 9: Duplicate detection
             const uniqueBullets = new Set(injectedBullets);
             const dupeCount = injectedBullets.length - uniqueBullets.size;
             if (dupeCount > 0) {
@@ -3329,8 +3415,11 @@ async function computeHealthScore() {
             }
         }
     } else if (lastDiagnostics.timestamp) {
-        checks.push({ id: 'memories_injected', level: 'red', label: 'Memories in injection',
-            detail: 'No memory content was injected in the last generation. Check that Vector Storage is enabled and the file is vectorized.' });
+        // No data bank content in the last generation. Earlier checks already flag VS-disabled
+        // and file-not-vectorized separately, so the most common cause here is that no memories
+        // were relevant enough to pass the score threshold — which is working as intended.
+        checks.push({ id: 'memories_injected', level: 'yellow', label: 'Memories in injection',
+            detail: 'No memories were injected in the last generation. This is normal if the conversation topic doesn\'t match any stored memories. If this persists, check that Vector Storage is enabled and the file is vectorized.' });
     }
 
     const level = checks.some(c => c.level === 'red') ? 'red'
@@ -3426,6 +3515,8 @@ async function updateHealthIndicator() {
         const result = await computeHealthScore();
         renderHealthStatusBarItem(result);
         renderHealthDiagnosticsCard(result);
+        updateDashboardDiagSummary();
+        updateNudgeBanner(result);
     } catch (err) {
         console.warn(LOG_PREFIX, 'Health check failed:', err);
     }
@@ -3470,195 +3561,2665 @@ async function fetchCharacterLorebooks() {
     return results;
 }
 
-function updateDiagnosticsDisplay() {
-    const container = $('#charMemory_diagnosticsContent');
-    if (!container.length) return;
+// ============ Settings Modal ============
 
-    let html = '';
+/**
+ * Build and show the Settings modal with left-nav layout.
+ * All form controls are built dynamically to avoid ID conflicts with the sidebar.
+ * Uses callGenericPopup for center-screen display.
+ */
+async function showSettingsModal() {
+    const s = extension_settings[MODULE_NAME];
+    const providerKey = s.selectedProvider || 'openrouter';
+    const providerSettings = getProviderSettings(providerKey);
+    const preset = PROVIDER_PRESETS[providerKey] || {};
 
-    // Health score placeholder — populated async by updateHealthIndicator()
-    html += '<div id="charMemory_healthCard" class="charMemory_diagSection"></div>';
+    // Build provider options — sorted alphabetically, custom last
+    const providerOptions = Object.entries(PROVIDER_PRESETS)
+        .sort(([ka, a], [kb, b]) => {
+            if (ka === 'custom') return 1;
+            if (kb === 'custom') return -1;
+            return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+        })
+        .map(([key, p]) => `<option value="${escapeHtml(key)}" ${key === providerKey ? 'selected' : ''}>${escapeHtml(p.name)}</option>`)
+        .join('');
 
-    // Timestamp
-    if (lastDiagnostics.timestamp) {
-        html += `<div class="charMemory_diagTimestamp">Last capture: ${lastDiagnostics.timestamp}</div>`;
-    }
+    // Build source options
+    const sourceOptions = [
+        { value: 'provider', label: 'Dedicated API (recommended)' },
+        { value: 'webllm', label: 'WebLLM (browser-local)' },
+        { value: 'main_llm', label: 'Main LLM' },
+    ].map(o => `<option value="${o.value}" ${o.value === s.source ? 'selected' : ''}>${o.label}</option>`).join('');
 
-    // Memory Info
-    html += '<div class="charMemory_diagSection"><strong>Memories</strong>';
-    const diagTargets = getMemoryTargets();
-    const diagTarget = diagTargets[0]; // Show first target (1:1) or primary target (group)
-    const memFileName = diagTarget?.fileName || '(none)';
-    const memAttachment = diagTarget ? findMemoryAttachmentForCharacter(diagTarget.avatar, diagTarget.fileName) : null;
-    html += `<div class="charMemory_diagCard">
-        <div class="charMemory_diagCardTitle">Active file name${diagTargets.length > 1 ? ` (${diagTarget.name})` : ''}</div>
-        <div class="charMemory_diagCardContent">${escapeHtml(memFileName)}</div>
+    // Build chunk boundary options
+    const chunkOptions = [
+        { value: 'block', label: 'Block-level (default)' },
+        { value: 'bullet', label: 'Bullet-level' },
+        { value: 'custom', label: 'Custom' },
+    ].map(o => `<option value="${o.value}" ${o.value === (s.chunkBoundary || 'block') ? 'selected' : ''}>${o.label}</option>`).join('');
+
+    // Connection section HTML
+    const connectionHtml = `
+        <h4 class="charMemory_modalSectionTitle">LLM Connection</h4>
+        <div class="charMemory_modalFieldGroup">
+            <label for="cm_modal_source"><small>LLM Used for Extraction</small></label>
+            <select id="cm_modal_source" class="text_pole">${sourceOptions}</select>
+            <small class="charMemory_helperText"><b>Dedicated API is recommended.</b> Main LLM pollutes the extraction prompt with chat context.</small>
+        </div>
+        <div id="cm_modal_providerSettings" style="${s.source === 'provider' ? '' : 'display:none;'}">
+            <div class="charMemory_modalFieldGroup">
+                <label><small>Provider</small></label>
+                <select id="cm_modal_providerSelect" class="text_pole">${providerOptions}</select>
+            </div>
+            <div class="charMemory_modalFieldGroup" id="cm_modal_apiKeyRow" style="${preset.requiresApiKey ? '' : 'display:none;'}">
+                <label><small>API Key <a id="cm_modal_helpLink" href="${escapeAttr(preset.helpUrl || '#')}" target="_blank" style="font-size:0.85em;${preset.helpUrl ? '' : 'display:none;'}">(get key)</a></small></label>
+                <div style="display:flex;gap:5px;align-items:center;">
+                    <input type="password" id="cm_modal_apiKey" class="text_pole" placeholder="Enter API key" style="flex:1;" value="${escapeAttr(providerSettings.apiKey || '')}" />
+                    <button type="button" id="cm_modal_apiKeyReveal" class="menu_button" title="Show/hide API key" style="padding:3px 8px;">
+                        <i class="fa-solid fa-eye fa-sm"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="charMemory_modalFieldGroup" id="cm_modal_baseUrlRow" style="${preset.allowCustomUrl ? '' : 'display:none;'}">
+                <label><small>Base URL</small></label>
+                <input type="text" id="cm_modal_baseUrl" class="text_pole" placeholder="${preset.authStyle === 'none' ? 'http://127.0.0.1:1234/v1' : 'https://your-server.com/v1'}" value="${escapeAttr(providerSettings.customBaseUrl || preset.baseUrl || '')}" />
+                <small id="cm_modal_baseUrlHint" class="charMemory_helperText">${preset.allowCustomUrl ? (preset.authStyle === 'none' ? 'http://IP:port/v1 — the /v1 suffix is required' : 'OpenAI-compatible base URL ending in /v1') : ''}</small>
+            </div>
+            <div class="charMemory_modalFieldGroup" id="cm_modal_connectRow" style="${preset.modelsEndpoint === 'standard' || preset.modelsEndpoint === 'custom' ? '' : 'display:none;'}">
+                <input type="button" id="cm_modal_connect" class="menu_button" value="Connect" title="Fetch available models from the server" />
+            </div>
+            <small id="cm_modal_connectStatus" class="charMemory_helperText" style="display:none;"></small>
+            <div class="charMemory_modalFieldGroup" id="cm_modal_modelDropdownRow" style="${preset.modelsEndpoint === 'standard' || preset.modelsEndpoint === 'custom' ? '' : 'display:none;'}">
+                <label><small>Model</small></label>
+                <div id="cm_modal_nanogptFilters" style="${providerKey === 'nanogpt' ? '' : 'display:none;'}">
+                    <div class="charMemory_filterRow" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:4px;">
+                        <label class="checkbox_label"><input type="checkbox" id="cm_modal_nanogptFilterSub" ${providerSettings.nanogptFilterSubscription ? 'checked' : ''} /> <small>Subscription</small></label>
+                        <label class="checkbox_label"><input type="checkbox" id="cm_modal_nanogptFilterOS" ${providerSettings.nanogptFilterOpenSource ? 'checked' : ''} /> <small>Open Source</small></label>
+                        <label class="checkbox_label"><input type="checkbox" id="cm_modal_nanogptFilterRP" ${providerSettings.nanogptFilterRoleplay ? 'checked' : ''} /> <small>Roleplay</small></label>
+                        <label class="checkbox_label"><input type="checkbox" id="cm_modal_nanogptFilterReasoning" ${providerSettings.nanogptFilterReasoning ? 'checked' : ''} /> <small>Reasoning</small></label>
+                    </div>
+                </div>
+                <div class="charMemory_wizModelPicker">
+                    <div style="display:flex;gap:5px;align-items:center;">
+                        <input type="text" id="cm_modal_modelSearch" class="charMemory_wizModelSearch" style="flex:1;" placeholder="${providerSettings.model ? 'Search models...' : 'Click Connect to fetch models'}" autocomplete="off" value="${escapeAttr(providerSettings.model || '')}" />
+                        <input type="hidden" id="cm_modal_providerModel" value="${escapeAttr(providerSettings.model || '')}" />
+                        <input type="button" id="cm_modal_refreshModels" class="menu_button" value="&#x21bb;" title="Refresh model list" />
+                    </div>
+                    <div id="cm_modal_modelList" class="charMemory_wizModelList" style="${currentModelList.length > 0 ? '' : 'display:none;'}"></div>
+                </div>
+                <small id="cm_modal_modelInfo" class="charMemory_helperText"></small>
+            </div>
+            <div class="charMemory_modalFieldGroup" id="cm_modal_testRow">
+                <div style="display:flex;gap:5px;align-items:center;">
+                    <input type="button" id="cm_modal_testModel" class="menu_button" value="Test Model" title="Send a test prompt and verify it responds correctly" />
+                </div>
+                <small id="cm_modal_testStatus" class="charMemory_helperText" style="display:none;"></small>
+            </div>
+            <div class="charMemory_modalFieldGroup" id="cm_modal_modelInputRow" style="${preset.modelsEndpoint === 'standard' || preset.modelsEndpoint === 'custom' ? 'display:none;' : ''}">
+                <label><small>Model ID</small></label>
+                <input type="text" id="cm_modal_modelInput" class="text_pole" placeholder="Enter model identifier" value="${escapeAttr(providerSettings.model || '')}" />
+                <small class="charMemory_helperText">Enter the model ID manually (e.g. claude-sonnet-4-5-20250929).</small>
+            </div>
+            <div class="charMemory_modalFieldGroup">
+                <label><small>System prompt (optional)</small></label>
+                <textarea id="cm_modal_systemPrompt" class="text_pole" rows="3" placeholder="Override the default system prompt. Leave blank for default.">${escapeHtml(providerSettings.systemPrompt || '')}</textarea>
+                <small class="charMemory_helperText">Prepended to extraction/consolidation calls. Use for jailbreaks or custom instructions.</small>
+            </div>
+        </div>
+        <hr class="charMemory_separator" />
+        <a id="cm_modal_runWizard" class="charMemory_link">Run Setup Wizard</a>
+    `;
+
+    // Extraction section HTML
+    const extractionHtml = `
+        <h4 class="charMemory_modalSectionTitle">Auto-Extraction</h4>
+        <div class="charMemory_sliderRow">
+            <label title="How many new messages trigger an automatic extraction.">
+                <small>Extract after every N messages</small>
+            </label>
+            <input class="neo-range-slider" type="range" id="cm_modal_interval" min="3" max="100" step="1" value="${s.interval}" />
+            <div class="wide100p">
+                <input class="neo-range-input" type="number" min="3" max="100" step="1"
+                       data-for="cm_modal_interval" id="cm_modal_intervalCounter" value="${s.interval}" />
+            </div>
+        </div>
+        <div class="charMemory_sliderRow">
+            <label title="Minimum time between auto-extractions.">
+                <small>Minimum wait between extractions (min)</small>
+            </label>
+            <input class="neo-range-slider" type="range" id="cm_modal_minCooldown" min="0" max="30" step="1" value="${s.minCooldownMinutes}" />
+            <div class="wide100p">
+                <input class="neo-range-input" type="number" min="0" max="30" step="1"
+                       data-for="cm_modal_minCooldown" id="cm_modal_minCooldownCounter" value="${s.minCooldownMinutes}" />
+            </div>
+        </div>
+        <small class="charMemory_helperText">These settings only affect automatic extraction. Manual and batch extraction ignore them.</small>
+        <div class="charMemory_statusRow" style="margin-top: 12px;">
+            <label class="checkbox_label" for="cm_modal_protectRecent" title="Excludes the most recent messages from auto-extraction so swipes and regenerations aren't constrained by just-extracted memories.">
+                <input type="checkbox" id="cm_modal_protectRecent" ${s.protectRecentMessages ? 'checked' : ''} />
+                <span>Protect recent messages</span>
+            </label>
+            <small class="charMemory_helperText">Excludes the most recent messages from auto-extraction, so swipes and regenerations aren't constrained by just-extracted memories. Skipped messages are picked up on the next cycle.</small>
+        </div>
+        <div class="charMemory_sliderRow" id="cm_modal_protectRecentCountRow" style="display: ${s.protectRecentMessages ? 'flex' : 'none'};">
+            <label title="How many recent messages to skip during auto-extraction.">
+                <small>Messages to protect</small>
+            </label>
+            <input class="neo-range-slider" type="range" id="cm_modal_protectRecentCount" min="1" max="20" step="1" value="${s.protectRecentMessagesCount}" />
+            <div class="wide100p">
+                <input class="neo-range-input" type="number" min="1" max="20" step="1"
+                       data-for="cm_modal_protectRecentCount" id="cm_modal_protectRecentCountCounter" value="${s.protectRecentMessagesCount}" />
+            </div>
+        </div>
+
+        <hr class="charMemory_separator" />
+        <h4 class="charMemory_modalSectionTitle">Extraction Settings</h4>
+        <div class="charMemory_sliderRow">
+            <label title="How many messages to include in each LLM call.">
+                <small>Messages per LLM call</small>
+            </label>
+            <input class="neo-range-slider" type="range" id="cm_modal_maxMessages" min="10" max="200" step="1" value="${s.maxMessagesPerExtraction}" />
+            <div class="wide100p">
+                <input class="neo-range-input" type="number" min="10" max="200" step="1"
+                       data-for="cm_modal_maxMessages" id="cm_modal_maxMessagesCounter" value="${s.maxMessagesPerExtraction}" />
+            </div>
+        </div>
+        <div class="charMemory_sliderRow">
+            <label title="Maximum tokens the LLM can use for its response.">
+                <small>Max response length</small>
+            </label>
+            <input class="neo-range-slider" type="range" id="cm_modal_responseLength" min="100" max="4000" step="50" value="${s.responseLength}" />
+            <div class="wide100p">
+                <input class="neo-range-input" type="number" min="100" max="4000" step="50"
+                       data-for="cm_modal_responseLength" id="cm_modal_responseLengthCounter" value="${s.responseLength}" />
+            </div>
+        </div>
+        <div class="charMemory_statusRow">
+            <label class="checkbox_label" for="cm_modal_mergeChunks" title="When enabled, extraction results from the same chat are merged into a single block.">
+                <input type="checkbox" id="cm_modal_mergeChunks" ${s.mergeChunks ? 'checked' : ''} />
+                <span>Merge extraction chunks</span>
+            </label>
+            <small class="charMemory_helperText">When enabled, multiple LLM calls from one extraction session are merged into a single memory block. Keep off for long chats — separate blocks give Vector Storage better retrieval granularity.</small>
+        </div>
+
+    `;
+
+    // Storage section HTML
+    const storageHtml = `
+        <h4 class="charMemory_modalSectionTitle">Storage</h4>
+        <div class="charMemory_statusRow">
+            <label class="checkbox_label" for="cm_modal_perChat" title="Store memories in separate files per chat.">
+                <input type="checkbox" id="cm_modal_perChat" ${s.perChat ? 'checked' : ''} />
+                <span>Separate memory files per chat</span>
+            </label>
+            <small class="charMemory_helperText">Each conversation stores memories in its own file. The character still sees all memories during generation.</small>
+        </div>
+        <div id="cm_modal_section1v1" style="${isGroupChat() ? 'display:none;' : ''}">
+            <div class="charMemory_statusRow">
+                <label for="cm_modal_fileName">
+                    <small>File name override</small>
+                </label>
+                <input type="text" id="cm_modal_fileName" class="text_pole" placeholder="(auto-generated from character name)" value="${escapeAttr(s.fileName || '')}" />
+                <small class="charMemory_helperText">Current file: <span id="cm_modal_resolvedFileName">${escapeHtml(getCharacterName() ? getMemoryFileName() : '—')}</span></small>
+            </div>
+        </div>
+        <div id="cm_modal_sectionGroup" style="${isGroupChat() ? '' : 'display:none;'}">
+            <div id="cm_modal_groupMembersSection">
+                <label><small>Member memory files</small></label>
+                <div id="cm_modal_groupMembersList" class="charMemory_groupMembersList">
+                    <small class="charMemory_helperText">Open a group chat to see members.</small>
+                </div>
+                <small class="charMemory_helperText">Each character's memories are stored in their own Data Bank. Leave blank for auto-naming.</small>
+            </div>
+        </div>
+    `;
+
+    // Prompts overview section HTML
+    const promptsHtml = `
+        <h4 class="charMemory_modalSectionTitle">Prompts</h4>
+        <small class="charMemory_helperText" style="margin-bottom:12px;display:block;">CharMemory uses four separate prompts. Click View / Edit to customize any of them.</small>
+        <div class="charMemory_modalPromptEntry">
+            <div class="charMemory_modalPromptRow">
+                <span class="charMemory_modalPromptLabel">Extraction — 1:1 chats</span>
+                <input type="button" class="menu_button charMemory_modalPromptBtn" id="cm_modal_promptsViewExtraction" value="View / Edit" />
+            </div>
+            <small class="charMemory_helperText">Used every time CharMemory reads messages from a 1:1 chat. Sent to the LLM along with recent messages, existing memories, and the character card. Controls what gets extracted and the memory bullet format.</small>
+        </div>
+        <div class="charMemory_modalPromptEntry">
+            <div class="charMemory_modalPromptRow">
+                <span class="charMemory_modalPromptLabel">Extraction — group chats</span>
+                <input type="button" class="menu_button charMemory_modalPromptBtn" id="cm_modal_promptsViewGroup" value="View / Edit" />
+            </div>
+            <small class="charMemory_helperText">Same as above, but used in group chats where multiple characters are present. Includes context about all active characters.</small>
+        </div>
+        <div class="charMemory_modalPromptEntry">
+            <div class="charMemory_modalPromptRow">
+                <span class="charMemory_modalPromptLabel">Consolidation</span>
+                <input type="button" class="menu_button charMemory_modalPromptBtn" id="cm_modal_promptsViewConsolidation" value="View / Edit" />
+            </div>
+            <small class="charMemory_helperText">Used by the Consolidate tool (Data Bank Tools). Instructs the LLM to merge duplicate or near-duplicate memories into fewer entries. Has two presets (Balanced / Aggressive) in the Consolidate tool.</small>
+        </div>
+        <div class="charMemory_modalPromptEntry">
+            <div class="charMemory_modalPromptRow">
+                <span class="charMemory_modalPromptLabel">Conversion</span>
+                <input type="button" class="menu_button charMemory_modalPromptBtn" id="cm_modal_promptsViewConversion" value="View / Edit" />
+            </div>
+            <small class="charMemory_helperText">Used by the Reformat tool (Data Bank Tools). Converts memories in non-standard formats (e.g., plain prose) into CharMemory's structured bullet-point format with topic tags.</small>
+        </div>
+    `;
+
+    // Advanced section HTML
+    const displayModeVal = s.displayMode || s.tabletMode || 'auto';
+    // Normalize legacy values for the dropdown
+    const normalizedMode = { on: 'tablet', off: 'desktop' }[displayModeVal] || displayModeVal;
+    const displayModeOptions = [
+        { val: 'auto', label: 'Auto (detect)' },
+        { val: 'desktop', label: 'Desktop (sidebar)' },
+        { val: 'tablet', label: 'Tablet (floating panel)' },
+        { val: 'phone', label: 'Phone (panel + wide drawers)' },
+    ].map(o => `<option value="${o.val}" ${normalizedMode === o.val ? 'selected' : ''}>${o.label}</option>`).join('');
+
+    const advancedHtml = `
+        <h4 class="charMemory_modalSectionTitle">Display</h4>
+        <div class="charMemory_statusRow">
+            <label for="cm_modal_displayMode">
+                <small>Display Mode</small>
+            </label>
+            <select id="cm_modal_displayMode" class="text_pole">${displayModeOptions}</select>
+            <small class="charMemory_helperText">Controls dashboard layout. "Auto" detects your device. Desktop uses the sidebar; Tablet uses a floating panel; Phone adds wider drawers on top.</small>
+        </div>
+        <hr class="charMemory_separator" />
+        <h4 class="charMemory_modalSectionTitle">Memory File Format</h4>
+        <div class="charMemory_statusRow">
+            <label for="cm_modal_chunkBoundary">
+                <small>Chunk boundary</small>
+            </label>
+            <select id="cm_modal_chunkBoundary" class="text_pole">${chunkOptions}</select>
+            <small class="charMemory_helperText">Controls how memories are separated in the file. Vector Storage splits on the separator to create retrievable chunks.</small>
+        </div>
+        <div class="charMemory_statusRow" id="cm_modal_customSeparatorRow" style="${(s.chunkBoundary || 'block') === 'custom' ? '' : 'display:none;'}">
+            <label for="cm_modal_customSeparator">
+                <small>Custom separator</small>
+            </label>
+            <input type="text" id="cm_modal_customSeparator" class="text_pole" placeholder="\\n\\n" value="${escapeAttr(s.customSeparator || '\\n\\n')}" />
+            <small class="charMemory_helperText">Characters inserted between chunks. Use \\n for newlines.</small>
+        </div>
+        <div id="cm_modal_chunkMetadataRow" style="${(s.chunkBoundary || 'block') === 'bullet' || (s.chunkBoundary || 'block') === 'custom' ? '' : 'display:none;'}">
+            <label class="checkbox_label" for="cm_modal_chunkMetadata">
+                <input type="checkbox" id="cm_modal_chunkMetadata" ${s.chunkMetadata ? 'checked' : ''} />
+                <span>Include metadata in chunks</span>
+            </label>
+            <small class="charMemory_helperText">Prefix each bullet with [date | chat_id] so standalone chunks retain their provenance.</small>
+        </div>
+
+        <hr class="charMemory_separator" />
+        <h4 class="charMemory_modalSectionTitle">Reset</h4>
+        <div class="charMemory_statusRow">
+            <input type="button" id="cm_modal_resetThisChat" class="menu_button" value="Reset This Chat"
+                title="Resets the extraction pointer for the active chat — next 'Extract Now' re-reads from the first message. In group chats all characters share one pointer, so all are reset together." />
+            <small class="charMemory_helperText">
+                Resets the extraction pointer for the active chat. Next "Extract Now" will re-read all messages in this chat from the first.
+                ${isGroupChat() ? '<br><i class="fa-solid fa-people-group fa-xs"></i> <em>Group chat:</em> all members share one extraction pointer, so this resets all of them at once.' : ''}
+            </small>
+            <input type="button" id="cm_modal_resetBatchProgress" class="menu_button" value="Reset Batch Progress"
+                title="Clears batch extraction records for all of this character's chats. Use before re-running Batch Extract to start fresh. Does not affect regular (non-batch) extraction for non-active chats." />
+            <small class="charMemory_helperText">
+                The Batch tool remembers the last message it processed in each chat file so future runs only extract new messages. Reset this to make Batch treat all of ${escapeHtml(getCharacterName() || 'this character')}'s chats as unprocessed — for example, after changing the extraction prompt. Does not affect Extract Now or auto-extraction.
+            </small>
+            <input type="button" id="cm_modal_resetExtraction" class="menu_button charMemory_dangerBtn" value="Clear All Memories" title="Delete this character's memory file and reset extraction tracking — cannot be undone" />
+            <small class="charMemory_helperText">Deletes this character's memory file (contains memories from all their chats) and resets extraction tracking. Cannot be undone.</small>
+        </div>
+    `;
+
+    // Assemble modal HTML
+    const html = `<div class="charMemory_modal">
+        <div class="charMemory_modalNav">
+            <button class="charMemory_modalNavItem active" data-section="connection">Connection</button>
+            <button class="charMemory_modalNavItem" data-section="extraction">Extraction</button>
+            <button class="charMemory_modalNavItem" data-section="storage">Storage</button>
+            <button class="charMemory_modalNavItem" data-section="prompts">Prompts</button>
+            <button class="charMemory_modalNavItem" data-section="advanced">Advanced</button>
+        </div>
+        <div class="charMemory_modalContent">
+            <div class="charMemory_modalSection active" data-section="connection">${connectionHtml}</div>
+            <div class="charMemory_modalSection" data-section="extraction">${extractionHtml}</div>
+            <div class="charMemory_modalSection" data-section="storage">${storageHtml}</div>
+            <div class="charMemory_modalSection" data-section="prompts">${promptsHtml}</div>
+            <div class="charMemory_modalSection" data-section="advanced">${advancedHtml}</div>
+        </div>
     </div>`;
-    html += `<div class="charMemory_diagCard">
-        <div class="charMemory_diagCardTitle">File status</div>
-        <div class="charMemory_diagCardContent">${memAttachment ? 'Exists in Data Bank' : 'Not found in Data Bank'}</div>
-    </div>`;
 
-    if (memAttachment) {
-        // Async read and update when available
-        getFileAttachment(memAttachment.url).then(content => {
-            const blocks = parseMemories(content || '');
-            const count = countMemories(blocks);
-            const countEl = document.getElementById('charMemory_diagMemoryCount');
-            if (countEl) countEl.textContent = `${count} (in ${blocks.length} block${blocks.length === 1 ? '' : 's'})`;
-        }).catch(() => {});
+    // Open popup
+    const popup = callGenericPopup(html, POPUP_TYPE.TEXT, '', { wide: true, allowVerticalScrolling: true });
 
-        // Vectorization status (async)
-        checkVectorizationStatus(memAttachment.url).then(result => {
-            const vecEl = document.getElementById('charMemory_diagVectorization');
-            if (!vecEl) return;
-            if (result === null) {
-                vecEl.textContent = 'N/A (vectors not enabled for files)';
-            } else if (result === false) {
-                vecEl.textContent = 'No';
-            } else {
-                const via = result.model ? `${result.source}/${result.model}` : result.source;
-                vecEl.textContent = `Yes (${result.chunks} chunk${result.chunks === 1 ? '' : 's'}) via ${via}`;
-            }
-        }).catch(() => {});
-    }
-    const countDisplay = memAttachment ? '...' : '0';
-    html += `<div class="charMemory_diagCard">
-        <div class="charMemory_diagCardTitle">Memory count</div>
-        <div class="charMemory_diagCardContent" id="charMemory_diagMemoryCount">${countDisplay}</div>
-    </div>`;
-    html += `<div class="charMemory_diagCard">
-        <div class="charMemory_diagCardTitle">Vectorization</div>
-        <div class="charMemory_diagCardContent" id="charMemory_diagVectorization">${memAttachment ? '...' : 'N/A'}</div>
-    </div>`;
+    // Wire nav switching (scoped to this modal's container)
+    const $settingsModal = $('.charMemory_modal').last();
+    $settingsModal.on('click', '.charMemory_modalNavItem', function () {
+        const section = $(this).data('section');
+        $settingsModal.find('.charMemory_modalNavItem').removeClass('active');
+        $(this).addClass('active');
+        $settingsModal.find('.charMemory_modalSection').removeClass('active');
+        $settingsModal.find(`.charMemory_modalSection[data-section="${section}"]`).addClass('active');
+    });
 
-    if (lastExtractionResult) {
-        const truncated = lastExtractionResult.length > 500
-            ? lastExtractionResult.substring(0, 500) + '...'
-            : lastExtractionResult;
-        html += `<div class="charMemory_diagCard">
-            <div class="charMemory_diagCardTitle">Last extraction result</div>
-            <div class="charMemory_diagCardContent">${escapeHtml(truncated)}</div>
-        </div>`;
-    }
-    html += '</div>';
+    // === Connection handlers ===
+    $('#cm_modal_source').off('change').on('change', function () {
+        const val = String($(this).val());
+        extension_settings[MODULE_NAME].source = val;
+        saveSettingsDebounced();
+        $('#cm_modal_providerSettings').toggle(val === 'provider');
+        // Sync sidebar
+        $('#charMemory_source').val(val);
+        toggleProviderSettings(val);
+    });
 
-    // Injected Memories — last generation
-    const dbPrompt = lastDiagnostics.extensionPrompts?.['4_vectors_data_bank'];
-    html += '<div class="charMemory_diagSection"><strong>Injected Memories — Last Generation</strong>';
-    if (dbPrompt && dbPrompt.content) {
-        html += '<div id="charMemory_diagInjected"><div class="charMemory_diagEmpty">Matching...</div></div></div>';
-    } else {
-        html += '<div class="charMemory_diagEmpty">No memory chunks injected yet (generate a message first)</div></div>';
-    }
+    $('#cm_modal_providerSelect').off('change').on('change', function () {
+        const key = String($(this).val());
+        extension_settings[MODULE_NAME].selectedProvider = key;
+        saveSettingsDebounced();
+        // Sync sidebar
+        $('#charMemory_providerSelect').val(key);
+        // Update modal provider UI
+        updateModalProviderUI();
+    });
 
-    if (dbPrompt && dbPrompt.content) {
-        // Extract bullet lines directly from injected text — works regardless of
-        // chunk boundaries splitting <memory> tags or Injection Template wrappers
-        const bullets = dbPrompt.content.split('\n')
-            .map(line => line.trim())
-            .filter(line => line.startsWith('- '))
-            .map(line => line.slice(2).trim())
-            .filter(Boolean);
+    $('#cm_modal_apiKey').off('input').on('input', function () {
+        const pk = extension_settings[MODULE_NAME].selectedProvider;
+        const ps = getProviderSettings(pk);
+        ps.apiKey = String($(this).val());
+        saveSettingsDebounced();
+        // Sync sidebar
+        $('#charMemory_providerApiKey').val(ps.apiKey);
+    });
 
-        setTimeout(() => {
-            const el = document.getElementById('charMemory_diagInjected');
-            if (!el) return;
-
-            if (bullets.length > 0) {
-                let bulletHtml = `<div class="charMemory_diagCard"><div class="charMemory_diagCardTitle">${bullets.length} memor${bullets.length === 1 ? 'y' : 'ies'} injected</div>`;
-                for (const bullet of bullets) {
-                    bulletHtml += `<div class="charMemory_diagCardContent">- ${escapeHtml(bullet)}</div>`;
-                }
-                bulletHtml += '</div>';
-                el.innerHTML = bulletHtml;
-            } else {
-                const preview = dbPrompt.content.length > 800 ? dbPrompt.content.substring(0, 800) + '...' : dbPrompt.content;
-                let fallbackHtml = '<div class="charMemory_diagCard">';
-                fallbackHtml += '<div class="charMemory_diagCardTitle">Injected text (no memory bullets found):</div>';
-                fallbackHtml += `<div class="charMemory_diagCardContent" style="white-space:pre-wrap;">${escapeHtml(preview)}</div>`;
-                fallbackHtml += '</div>';
-                el.innerHTML = fallbackHtml;
-            }
-        }, 0);
-    }
-
-    // Character Lorebooks (static)
-    html += '<div class="charMemory_diagSection"><strong>Character Lorebooks</strong>';
-    html += '<div id="charMemory_diagLorebooks"><div class="charMemory_diagEmpty">Loading...</div></div></div>';
-
-    fetchCharacterLorebooks().then(books => {
-        const el = document.getElementById('charMemory_diagLorebooks');
-        if (!el) return;
-        if (books.length === 0) {
-            el.textContent = 'No lorebooks bound to this character';
-            el.classList.add('charMemory_diagEmpty');
-            return;
-        }
-        let booksHtml = '';
-        for (const book of books) {
-            booksHtml += `<div class="charMemory_diagCard">
-                <div class="charMemory_diagCardTitle">${escapeHtml(book.name)} (${book.entries.length} entries)</div>`;
-            for (const entry of book.entries) {
-                const keysStr = entry.keys.length > 0 ? entry.keys.join(', ') : '(no keys)';
-                booksHtml += `<div class="charMemory_diagCardKeys">Keys: ${escapeHtml(keysStr)}</div>`;
-            }
-            booksHtml += '</div>';
-        }
-        el.innerHTML = booksHtml;
-    }).catch(() => {
-        const el = document.getElementById('charMemory_diagLorebooks');
-        if (el) {
-            el.textContent = 'Failed to load lorebooks';
-            el.classList.add('charMemory_diagEmpty');
+    $('#cm_modal_apiKeyReveal').off('click').on('click', function () {
+        const $input = $('#cm_modal_apiKey');
+        const $icon = $(this).find('i');
+        const $btn = $(this);
+        clearTimeout($btn.data('revealTimer'));
+        if ($input.attr('type') === 'password') {
+            $input.attr('type', 'text');
+            $icon.removeClass('fa-eye').addClass('fa-eye-slash');
+            $btn.data('revealTimer', setTimeout(() => {
+                $input.attr('type', 'password');
+                $icon.removeClass('fa-eye-slash').addClass('fa-eye');
+            }, 10000));
+        } else {
+            $input.attr('type', 'password');
+            $icon.removeClass('fa-eye-slash').addClass('fa-eye');
         }
     });
 
-    // Activated Lorebook Entries (runtime)
-    const wiEntries = lastDiagnostics.worldInfoEntries;
-    html += `<div class="charMemory_diagSection"><strong>Activated Entries — Last Generation (${wiEntries.length})</strong>`;
-    if (wiEntries.length > 0) {
-        for (const entry of wiEntries) {
-            const keysStr = entry.keys.length > 0 ? entry.keys.join(', ') : '(no keys)';
-            html += `<div class="charMemory_diagCard">
-                <div class="charMemory_diagCardTitle">${escapeHtml(entry.comment)}</div>
-                <div class="charMemory_diagCardKeys">Keys: ${escapeHtml(keysStr)}</div>
-                <div class="charMemory_diagCardContent">${escapeHtml(entry.content)}${entry.content.length >= 200 ? '...' : ''}</div>
-            </div>`;
-        }
-    } else {
-        html += '<div class="charMemory_diagEmpty">No entries activated yet (generate a message first)</div>';
-    }
-    html += '</div>';
+    $('#cm_modal_baseUrl').off('input').on('input', function () {
+        const ps = getProviderSettings(extension_settings[MODULE_NAME].selectedProvider);
+        ps.customBaseUrl = String($(this).val());
+        saveSettingsDebounced();
+        // Sync sidebar
+        $('#charMemory_providerBaseUrl').val(ps.customBaseUrl);
+    });
 
-    // Extension Prompts
-    const prompts = lastDiagnostics.extensionPrompts;
-    const promptKeys = Object.keys(prompts);
-    html += `<div class="charMemory_diagSection"><strong>Extension Prompts (${promptKeys.length})</strong>`;
-    if (promptKeys.length > 0) {
-        for (const key of promptKeys) {
-            const p = prompts[key];
-            const isTruncated = key !== '4_vectors_data_bank' && p.content.length >= 300;
-            html += `<div class="charMemory_diagCard">
-                <div class="charMemory_diagCardTitle">${escapeHtml(p.label)}</div>
-                <div class="charMemory_diagCardContent" style="white-space:pre-wrap;">${escapeHtml(p.content)}${isTruncated ? '...' : ''}</div>
-            </div>`;
-        }
-    } else {
-        html += '<div class="charMemory_diagEmpty">No extension prompts active</div>';
-    }
-    html += '</div>';
+    $('#cm_modal_connect').off('click').on('click', async function () {
+        const pk = extension_settings[MODULE_NAME].selectedProvider;
+        const p = PROVIDER_PRESETS[pk];
+        const ps = getProviderSettings(pk);
+        const $btn = $(this);
+        const $status = $('#cm_modal_connectStatus');
 
-    container.html(html);
+        if (p?.requiresApiKey && !ps.apiKey) {
+            $status.text('Enter an API key first.').css('color', '#e74c3c').show();
+            return;
+        }
+
+        $btn.prop('disabled', true).val('Connecting...');
+        $status.text('Fetching models...').css('color', '').show();
+
+        try {
+            await populateProviderModels(pk, true);
+            const modelCount = currentModelList.length;
+            if (modelCount > 0) {
+                $status.text(`Connected — ${modelCount} model${modelCount !== 1 ? 's' : ''} available.`).css('color', '#27ae60').show();
+            } else {
+                $status.text('Connected, but no models returned.').css('color', '#e67e22').show();
+            }
+            // Update modal model list
+            const savedModel = ps.model || '';
+            const match = currentModelList.find(m => m.id === savedModel);
+            $('#cm_modal_providerModel').val(savedModel);
+            $('#cm_modal_modelSearch').val(match ? match.name : savedModel).attr('placeholder', 'Search models...');
+            const rawModels = pk === 'nanogpt' ? (cachedNanoGptModels || []) : [];
+            $('#cm_modal_modelList').show();
+            renderModalModelList('', rawModels);
+        } catch (err) {
+            $status.text(`Connection failed: ${err.message}`).css('color', '#e74c3c').show();
+        } finally {
+            $btn.prop('disabled', false).val('Connect');
+        }
+    });
+
+    // Model search — filter always-visible list
+    $('#cm_modal_modelSearch').off('input').on('input', function () {
+        const rawModels = extension_settings[MODULE_NAME].selectedProvider === 'nanogpt' ? (cachedNanoGptModels || []) : [];
+        renderModalModelList($(this).val(), rawModels);
+    });
+
+    // Model list click — select model
+    $('#cm_modal_modelList').off('click').on('click', '.charMemory_modelOption', function () {
+        const modelId = $(this).data('model-id');
+        const model = currentModelList.find(m => m.id === modelId);
+        if (!model) return;
+
+        $('#cm_modal_providerModel').val(modelId);
+        $('#cm_modal_modelSearch').val(model.name);
+        $('#cm_modal_modelList .charMemory_modelOption').removeClass('selected');
+        $(this).addClass('selected');
+
+        const pk = extension_settings[MODULE_NAME].selectedProvider;
+        const ps = getProviderSettings(pk);
+        ps.model = modelId;
+        saveSettingsDebounced();
+
+        // Sync sidebar
+        $('#charMemory_providerModel').val(modelId);
+        $('#charMemory_modelSearch').val(model.name);
+
+        if (pk === 'nanogpt' && cachedNanoGptModels) {
+            updateProviderModelInfo(cachedNanoGptModels, modelId);
+        }
+    });
+
+    // NanoGPT filter checkboxes — re-render list
+    $('#cm_modal_nanogptFilterSub, #cm_modal_nanogptFilterOS, #cm_modal_nanogptFilterRP, #cm_modal_nanogptFilterReasoning').off('change').on('change', function () {
+        const pk = extension_settings[MODULE_NAME].selectedProvider;
+        const ps = getProviderSettings(pk);
+        ps.nanogptFilterSubscription = $('#cm_modal_nanogptFilterSub').is(':checked');
+        ps.nanogptFilterOpenSource = $('#cm_modal_nanogptFilterOS').is(':checked');
+        ps.nanogptFilterRoleplay = $('#cm_modal_nanogptFilterRP').is(':checked');
+        ps.nanogptFilterReasoning = $('#cm_modal_nanogptFilterReasoning').is(':checked');
+        saveSettingsDebounced();
+        renderModalModelList($('#cm_modal_modelSearch').val(), cachedNanoGptModels || []);
+    });
+
+    $('#cm_modal_refreshModels').off('click').on('click', function () {
+        const pk = extension_settings[MODULE_NAME].selectedProvider;
+        populateProviderModels(pk, true).then(async () => {
+            const ps = getProviderSettings(pk);
+            const match = currentModelList.find(m => m.id === ps.model);
+            $('#cm_modal_providerModel').val(ps.model || '');
+            $('#cm_modal_modelSearch').val(match ? match.name : ps.model || '').attr('placeholder', 'Search models...');
+            const rawModels = pk === 'nanogpt' ? (cachedNanoGptModels || []) : [];
+            $('#cm_modal_modelList').show();
+            renderModalModelList('', rawModels);
+        });
+    });
+
+    $('#cm_modal_modelInput').off('input').on('input', function () {
+        const ps = getProviderSettings(extension_settings[MODULE_NAME].selectedProvider);
+        ps.model = String($(this).val());
+        saveSettingsDebounced();
+    });
+
+    $('#cm_modal_systemPrompt').off('input').on('input', function () {
+        const ps = getProviderSettings(extension_settings[MODULE_NAME].selectedProvider);
+        ps.systemPrompt = String($(this).val());
+        saveSettingsDebounced();
+    });
+
+    $('#cm_modal_testModel').off('click').on('click', async function () {
+        await testProviderConnection();
+    });
+
+    // Run Setup Wizard link — close settings and open wizard
+    $('#cm_modal_runWizard').off('click').on('click', function () {
+        // Close the settings modal
+        const $dialog = $settingsModal.closest('.popup');
+        if ($dialog.length) {
+            $dialog.find('.popup-button-ok, .popup-button-close').first().trigger('click');
+        }
+        // Open wizard after a brief delay to let the popup close
+        setTimeout(() => showSetupWizard(1), 200);
+    });
+
+    // === Extraction handlers ===
+    const sliderHandler = (sliderId, counterId, settingKey, syncSliderId, syncCounterId) => {
+        $(`#${sliderId}`).off('input').on('input', function () {
+            const val = Number($(this).val());
+            extension_settings[MODULE_NAME][settingKey] = val;
+            $(`#${counterId}`).val(val);
+            saveSettingsDebounced();
+            if (syncSliderId) $(`#${syncSliderId}`).val(val);
+            if (syncCounterId) $(`#${syncCounterId}`).val(val);
+            if (settingKey === 'interval') updateStatusDisplay();
+        });
+        $(`#${counterId}`).off('input').on('input', function () {
+            const val = Number($(this).val());
+            extension_settings[MODULE_NAME][settingKey] = val;
+            $(`#${sliderId}`).val(val);
+            saveSettingsDebounced();
+            if (syncSliderId) $(`#${syncSliderId}`).val(val);
+            if (syncCounterId) $(`#${syncCounterId}`).val(val);
+            if (settingKey === 'interval') updateStatusDisplay();
+        });
+    };
+
+    sliderHandler('cm_modal_interval', 'cm_modal_intervalCounter', 'interval', 'charMemory_interval', 'charMemory_intervalCounter');
+    sliderHandler('cm_modal_minCooldown', 'cm_modal_minCooldownCounter', 'minCooldownMinutes', 'charMemory_minCooldown', 'charMemory_minCooldownCounter');
+    sliderHandler('cm_modal_maxMessages', 'cm_modal_maxMessagesCounter', 'maxMessagesPerExtraction', 'charMemory_maxMessages', 'charMemory_maxMessagesCounter');
+    sliderHandler('cm_modal_responseLength', 'cm_modal_responseLengthCounter', 'responseLength', 'charMemory_responseLength', 'charMemory_responseLengthCounter');
+
+    $('#cm_modal_mergeChunks').off('change').on('change', function () {
+        extension_settings[MODULE_NAME].mergeChunks = !!$(this).prop('checked');
+        saveSettingsDebounced();
+        // Sync sidebar
+        $('#charMemory_mergeChunks').prop('checked', extension_settings[MODULE_NAME].mergeChunks);
+    });
+
+    $('#cm_modal_protectRecent').off('change').on('change', function () {
+        extension_settings[MODULE_NAME].protectRecentMessages = !!$(this).prop('checked');
+        saveSettingsDebounced();
+        $('#cm_modal_protectRecentCountRow').toggle(extension_settings[MODULE_NAME].protectRecentMessages);
+    });
+
+    sliderHandler('cm_modal_protectRecentCount', 'cm_modal_protectRecentCountCounter', 'protectRecentMessagesCount');
+
+    // Prompt view/edit buttons — open the Prompts modal
+    $('#cm_modal_promptsViewExtraction').off('click').on('click', () => showPromptsModal('extraction'));
+    $('#cm_modal_promptsViewGroup').off('click').on('click', () => showPromptsModal('groupExtraction'));
+    $('#cm_modal_promptsViewConsolidation').off('click').on('click', () => showPromptsModal('consolidation'));
+    $('#cm_modal_promptsViewConversion').off('click').on('click', () => showPromptsModal('conversion'));
+
+    // === Storage handlers ===
+    $('#cm_modal_perChat').off('change').on('change', function () {
+        extension_settings[MODULE_NAME].perChat = !!$(this).prop('checked');
+        saveSettingsDebounced();
+        // Sync sidebar
+        $('#charMemory_perChat').prop('checked', extension_settings[MODULE_NAME].perChat);
+    });
+
+    $('#cm_modal_fileName').off('input').on('input', function () {
+        const val = String($(this).val()).trim();
+        extension_settings[MODULE_NAME].fileName = val;
+        saveSettingsDebounced();
+        // Sync sidebar
+        $('#charMemory_fileName').val(val);
+    });
+
+    // === Advanced handlers ===
+    $('#cm_modal_displayMode').off('change').on('change', function () {
+        const val = $(this).val();
+        extension_settings[MODULE_NAME].displayMode = val;
+        delete extension_settings[MODULE_NAME].tabletMode; // clean up legacy key
+        saveSettingsDebounced();
+        applyDisplayModeClass();
+        // If switched to desktop while tablet panel is open, close it and restore sidebar
+        if (!isTabletMode() && isTabletPanelOpen()) {
+            toggleTabletPanel(false);
+        }
+    });
+
+    $('#cm_modal_chunkBoundary').off('change').on('change', async function () {
+        const val = $(this).val();
+        extension_settings[MODULE_NAME].chunkBoundary = val;
+        saveSettingsDebounced();
+        $('#cm_modal_customSeparatorRow').toggle(val === 'custom');
+        $('#cm_modal_chunkMetadataRow').toggle(val === 'bullet' || val === 'custom');
+        // Sync sidebar
+        $('#charMemory_chunkBoundary').val(val);
+        toggleChunkBoundaryUI(val);
+        await offerReformat();
+    });
+
+    $('#cm_modal_customSeparator').off('input').on('input', function () {
+        extension_settings[MODULE_NAME].customSeparator = $(this).val();
+        saveSettingsDebounced();
+        // Sync sidebar
+        $('#charMemory_customSeparator').val(extension_settings[MODULE_NAME].customSeparator);
+    });
+
+    $('#cm_modal_chunkMetadata').off('change').on('change', function () {
+        extension_settings[MODULE_NAME].chunkMetadata = $(this).prop('checked');
+        saveSettingsDebounced();
+        // Sync sidebar
+        $('#charMemory_chunkMetadata').prop('checked', extension_settings[MODULE_NAME].chunkMetadata);
+    });
+
+    // Reset / Clear handlers
+    $('#cm_modal_resetThisChat').off('click').on('click', async function () {
+        const charName = getCharacterName() || 'this character';
+        const isGroup = isGroupChat();
+        const scopeNote = isGroup
+            ? `<br><small>This is a group chat — all members share one extraction pointer and will all be reset together.</small>`
+            : '';
+        const confirmed = await callGenericPopup(
+            `The extraction pointer for the active chat will be reset for <strong>${escapeHtml(charName)}</strong>. Next "Extract Now" will re-read all messages in this chat from the first.${scopeNote}`,
+            POPUP_TYPE.CONFIRM, 'Reset This Chat',
+        );
+        if (!confirmed) return;
+        resetCurrentChatTracking();
+    });
+
+    $('#cm_modal_resetBatchProgress').off('click').on('click', async function () {
+        const charName = getCharacterName() || 'this character';
+        const confirmed = await callGenericPopup(
+            `The Batch tool's record of which messages it has already processed will be cleared for all of <strong>${escapeHtml(charName)}</strong>'s chats. The next Batch run will re-read every message from the start, which may create duplicate memories unless you clear existing memories first. Extract Now and auto-extraction are not affected.`,
+            POPUP_TYPE.CONFIRM, 'Reset Batch Progress',
+        );
+        if (!confirmed) return;
+        resetBatchProgress();
+    });
+
+    $('#cm_modal_resetExtraction').off('click').on('click', async function () {
+        const charName = getCharacterName() || 'this character';
+        const sLocal = extension_settings[MODULE_NAME];
+        const scopeNote = sLocal.perChat
+            ? `This will delete memories for the current chat only.`
+            : `This includes memories from all of ${escapeHtml(charName)}'s chats.`;
+        const confirmed = await callGenericPopup(
+            `<strong>${escapeHtml(charName)}'s</strong> memory file will be deleted and extraction tracking will be reset. This cannot be undone.<br><br>${scopeNote}`,
+            POPUP_TYPE.CONFIRM, 'Clear All Memories',
+        );
+        if (!confirmed) return;
+        await clearAllMemories();
+    });
+
+    // Populate group members list if in a group chat
+    if (isGroupChat()) {
+        const targets = getMemoryTargets();
+        if (targets.length > 0) {
+            const memberHtml = targets.map(t => {
+                const override = extension_settings[MODULE_NAME].characterFileNames?.[t.avatar] || '';
+                return `<div class="charMemory_groupMemberRow">
+                    <img class="charMemory_groupAvatar" src="/thumbnail?type=avatar&file=${encodeURIComponent(t.avatar)}" alt="${escapeHtml(t.name)}" onerror="this.style.display='none'" />
+                    <span class="charMemory_groupMemberName">${escapeHtml(t.name)}</span>
+                    <input type="text" class="text_pole charMemory_groupMemberFile cm_modal_groupMemberFile" data-avatar="${escapeAttr(t.avatar)}" placeholder="${escapeAttr(t.fileName)}" value="${escapeAttr(override)}" style="flex:1;" />
+                </div>`;
+            }).join('');
+            $('#cm_modal_groupMembersList').html(memberHtml);
+
+            $(document).off('input.cmModalGroupMember').on('input.cmModalGroupMember', '.cm_modal_groupMemberFile', function () {
+                const avatar = $(this).data('avatar');
+                const value = String($(this).val()).trim();
+                if (!extension_settings[MODULE_NAME].characterFileNames) {
+                    extension_settings[MODULE_NAME].characterFileNames = {};
+                }
+                if (value) {
+                    extension_settings[MODULE_NAME].characterFileNames[avatar] = value;
+                } else {
+                    delete extension_settings[MODULE_NAME].characterFileNames[avatar];
+                }
+                saveSettingsDebounced();
+            });
+        }
+    }
+
+    // Clean up delegated handlers when popup closes
+    popup.then(() => {
+        $(document).off('click.cmModalModelPicker');
+        $(document).off('input.cmModalGroupMember');
+    });
 }
 
-function escapeHtml(text) {
-    return String(text)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
+// ============ Prompts Modal ============
+
+/**
+ * Get the current prompt text for a given prompt key.
+ * Handles the consolidation prompt's per-strategy special case.
+ * @param {string} promptKey Key from PROMPT_CONFIG
+ * @returns {string}
+ */
+function getPromptText(promptKey) {
+    const s = extension_settings[MODULE_NAME];
+    if (promptKey === 'consolidation') {
+        const strategy = s.consolidationStrategy || 'balanced';
+        const overrides = s.consolidationPrompts || {};
+        return overrides[strategy] || CONSOLIDATION_PRESETS[strategy]?.prompt || '';
+    }
+    const config = PROMPT_CONFIG[promptKey];
+    return s[config.settingsKey] || config.defaultValue || '';
+}
+
+/**
+ * Get the default prompt text for a given prompt key.
+ * @param {string} promptKey Key from PROMPT_CONFIG
+ * @returns {string}
+ */
+function getDefaultPromptText(promptKey) {
+    if (promptKey === 'consolidation') {
+        const strategy = extension_settings[MODULE_NAME].consolidationStrategy || 'balanced';
+        return CONSOLIDATION_PRESETS[strategy]?.prompt || '';
+    }
+    return PROMPT_CONFIG[promptKey].defaultValue || '';
+}
+
+/**
+ * Save a prompt's text to extension_settings.
+ * Handles consolidation's per-strategy storage.
+ * @param {string} promptKey Key from PROMPT_CONFIG
+ * @param {string} text The prompt text to save
+ */
+function savePromptText(promptKey, text) {
+    const s = extension_settings[MODULE_NAME];
+    if (promptKey === 'consolidation') {
+        const strategy = s.consolidationStrategy || 'balanced';
+        if (!s.consolidationPrompts) s.consolidationPrompts = {};
+        s.consolidationPrompts[strategy] = text;
+    } else {
+        s[PROMPT_CONFIG[promptKey].settingsKey] = text;
+    }
+    saveSettingsDebounced();
+}
+
+/**
+ * Check whether the current prompt is customized (differs from default).
+ * @param {string} promptKey Key from PROMPT_CONFIG
+ * @returns {boolean}
+ */
+function isPromptCustomized(promptKey) {
+    return getPromptText(promptKey) !== getDefaultPromptText(promptKey);
+}
+
+/**
+ * Check whether a prompt has an update available.
+ * An update is available when the user has a custom prompt AND the stored
+ * version for that prompt is older than the current PROMPT_CONFIG version.
+ * @param {string} promptKey Key from PROMPT_CONFIG
+ * @returns {boolean}
+ */
+function hasPromptUpdate(promptKey) {
+    const s = extension_settings[MODULE_NAME];
+    const stored = (s.promptVersions || {})[promptKey];
+    const current = PROMPT_CONFIG[promptKey]?.version;
+    if (!stored || !current) return false;
+    return isPromptCustomized(promptKey) && stored !== current;
+}
+
+/**
+ * Check all prompt versions on load. For each prompt:
+ * - If no stored version yet, initialize to current (no notification).
+ * - If the user has the default prompt and a version mismatch, silently update
+ *   the stored version (they already have the latest text).
+ * - If the user has a custom prompt and a version mismatch, leave the mismatch
+ *   in place so hasPromptUpdate() returns true and the banner is shown.
+ */
+function checkPromptVersions() {
+    const s = extension_settings[MODULE_NAME];
+    if (!s.promptVersions) s.promptVersions = {};
+    let changed = false;
+
+    for (const [key, config] of Object.entries(PROMPT_CONFIG)) {
+        const stored = s.promptVersions[key];
+        const current = config.version;
+
+        if (!stored) {
+            if (isPromptCustomized(key)) {
+                // Upgrading from pre-2.0 (no promptVersions stored) with a custom prompt
+                // — use a sentinel so hasPromptUpdate() fires and the banner is shown
+                s.promptVersions[key] = 'pre-2.0';
+            } else {
+                // First time with default prompt — silently initialize to current
+                s.promptVersions[key] = current;
+            }
+            changed = true;
+        } else if (stored !== current && !isPromptCustomized(key)) {
+            // User has the default prompt text — silently update stored version
+            s.promptVersions[key] = current;
+            changed = true;
+        }
+        // If stored !== current AND prompt is customized → leave mismatch for banner
+    }
+
+    if (changed) saveSettingsDebounced();
+}
+
+/**
+ * Acknowledge a prompt version update — sets the stored version to current.
+ * @param {string} promptKey Key from PROMPT_CONFIG
+ */
+function acknowledgePromptVersion(promptKey) {
+    const s = extension_settings[MODULE_NAME];
+    if (!s.promptVersions) s.promptVersions = {};
+    s.promptVersions[promptKey] = PROMPT_CONFIG[promptKey].version;
+    saveSettingsDebounced();
+}
+
+/**
+ * Build and show the Prompts modal with left-nav layout.
+ * @param {string} activePrompt Which prompt to show initially: 'extraction', 'groupExtraction', 'consolidation', 'conversion'
+ */
+async function showPromptsModal(activePrompt = 'extraction') {
+    const s = extension_settings[MODULE_NAME];
+
+    // Helper: build badge text for a prompt
+    function getBadgeText(key) {
+        const config = PROMPT_CONFIG[key];
+        const customized = isPromptCustomized(key);
+        return customized ? `v${config.version} \u2022 Customized` : `v${config.version} \u2022 Default`;
+    }
+
+    // Helper: build update banner HTML (only shown when an update is available)
+    function buildUpdateBanner(key) {
+        if (!hasPromptUpdate(key)) return '';
+        const storedVersion = (s.promptVersions || {})[key] || '?';
+        const currentVersion = PROMPT_CONFIG[key].version;
+        return `<div class="charMemory_promptUpdateBanner" data-prompt="${escapeAttr(key)}">
+            <span>The default prompt was updated (v${escapeHtml(storedVersion)} &rarr; v${escapeHtml(currentVersion)}). Your custom version is unchanged.</span>
+            <div class="charMemory_promptUpdateActions">
+                <input type="button" class="menu_button charMemory_promptKeepMine" value="Keep mine" />
+                <input type="button" class="menu_button charMemory_promptUseNew" value="Use new default" />
+                <input type="button" class="menu_button charMemory_promptCompare" value="Compare &amp; Edit" />
+            </div>
+        </div>`;
+    }
+
+    // Build nav items (with update dot indicator)
+    const navItems = Object.entries(PROMPT_CONFIG).map(([key, config]) => {
+        const updateDot = hasPromptUpdate(key) ? '<span class="charMemory_navUpdateDot"></span>' : '';
+        return `<button class="charMemory_modalNavItem${key === activePrompt ? ' active' : ''}" data-prompt="${escapeAttr(key)}">${escapeHtml(config.navLabel)}${updateDot}</button>`;
+    }).join('');
+
+    // Build content sections — one per prompt
+    const sections = Object.entries(PROMPT_CONFIG).map(([key, config]) => {
+        const current = getPromptText(key);
+        const badgeText = getBadgeText(key);
+        const strategyNote = key === 'consolidation'
+            ? `<small class="charMemory_helperText" style="margin-bottom:8px;display:block;">Strategy: <b>${escapeHtml(CONSOLIDATION_PRESETS[s.consolidationStrategy || 'balanced']?.name || 'balanced')}</b></small>`
+            : '';
+
+        return `<div class="charMemory_modalSection${key === activePrompt ? ' active' : ''}" data-prompt="${escapeAttr(key)}">
+            <div class="charMemory_promptHeader">
+                <h3>${escapeHtml(config.title)}</h3>
+                <span class="charMemory_promptBadge">${badgeText}</span>
+            </div>
+            ${strategyNote}
+            ${buildUpdateBanner(key)}
+            <div class="charMemory_promptEditorWrap">
+                <textarea class="text_pole charMemory_promptEditor" data-prompt="${escapeAttr(key)}">${escapeHtml(current)}</textarea>
+            </div>
+            <div class="charMemory_promptCompareWrap" style="display:none;">
+                <div class="charMemory_comparePane">
+                    <label>Your prompt (editable)</label>
+                    <textarea class="text_pole charMemory_compareUser" data-prompt="${escapeAttr(key)}">${escapeHtml(current)}</textarea>
+                </div>
+                <div class="charMemory_comparePane">
+                    <label>New default (read-only)</label>
+                    <textarea class="text_pole charMemory_compareDefault" readonly>${escapeHtml(getDefaultPromptText(key))}</textarea>
+                </div>
+            </div>
+            <div class="charMemory_buttonRow" style="margin-top:8px;">
+                <input type="button" class="menu_button charMemory_promptRestore" value="Restore Default" />
+                <input type="button" class="menu_button charMemory_promptSave" value="Save" />
+                <input type="button" class="menu_button charMemory_promptDoneCompare" value="Done comparing" style="display:none;" />
+            </div>
+        </div>`;
+    }).join('');
+
+    const html = `<div class="charMemory_modal charMemory_promptsModal">
+        <div class="charMemory_modalNav">${navItems}</div>
+        <div class="charMemory_modalContent">${sections}</div>
+    </div>`;
+
+    const popup = callGenericPopup(html, POPUP_TYPE.TEXT, '', { wide: true, allowVerticalScrolling: true });
+
+    // Scope all handlers to this modal instance
+    const $modal = $('.charMemory_promptsModal').last();
+
+    // Helper: refresh badge and banner for a given section
+    function refreshSectionUI($section, key) {
+        $section.find('.charMemory_promptBadge').text(getBadgeText(key));
+        // Hide/show update banner
+        if (!hasPromptUpdate(key)) {
+            $section.find('.charMemory_promptUpdateBanner').slideUp(200);
+            // Also remove nav dot
+            $modal.find(`.charMemory_modalNavItem[data-prompt="${key}"] .charMemory_navUpdateDot`).remove();
+        }
+    }
+
+    // Nav switching — save current textarea before switching
+    $modal.on('click', '.charMemory_modalNavItem', function () {
+        // Save current section's textarea before switching
+        const $currentSection = $modal.find('.charMemory_modalSection.active');
+        const $currentEditor = $currentSection.find('.charMemory_promptEditor:visible, .charMemory_compareUser:visible').first();
+        if ($currentEditor.length) {
+            const currentKey = $currentEditor.data('prompt');
+            savePromptText(currentKey, $currentEditor.val());
+            syncSidebarPrompt(currentKey);
+        }
+
+        // Switch nav
+        const targetKey = $(this).data('prompt');
+        $modal.find('.charMemory_modalNavItem').removeClass('active');
+        $(this).addClass('active');
+
+        // Switch section
+        $modal.find('.charMemory_modalSection').removeClass('active');
+        const $targetSection = $modal.find(`.charMemory_modalSection[data-prompt="${targetKey}"]`);
+        $targetSection.addClass('active');
+
+        // Reload the prompt text (in case it was changed externally)
+        const freshText = getPromptText(targetKey);
+        $targetSection.find('.charMemory_promptEditor').val(freshText);
+        $targetSection.find('.charMemory_compareUser').val(freshText);
+
+        // Update badge
+        refreshSectionUI($targetSection, targetKey);
+    });
+
+    // Save button
+    $modal.on('click', '.charMemory_promptSave', function () {
+        const $section = $(this).closest('.charMemory_modalSection');
+        const key = $section.data('prompt');
+        // Save from whichever editor is visible (normal or compare)
+        const $editor = $section.find('.charMemory_promptEditor:visible, .charMemory_compareUser:visible').first();
+        if ($editor.length) {
+            savePromptText(key, $editor.val());
+            // Sync the other editor too
+            $section.find('.charMemory_promptEditor').val($editor.val());
+            $section.find('.charMemory_compareUser').val($editor.val());
+        }
+        syncSidebarPrompt(key);
+        refreshSectionUI($section, key);
+        toastr.success('Prompt saved.');
+    });
+
+    // Restore Default button
+    $modal.on('click', '.charMemory_promptRestore', async function () {
+        const $section = $(this).closest('.charMemory_modalSection');
+        const key = $section.data('prompt');
+
+        const confirmed = await callGenericPopup(
+            'Restore this prompt to its default text? Your customizations will be lost.',
+            POPUP_TYPE.CONFIRM,
+            'Restore Default Prompt',
+        );
+        if (!confirmed) return;
+
+        const defaultText = getDefaultPromptText(key);
+        $section.find('.charMemory_promptEditor').val(defaultText);
+        $section.find('.charMemory_compareUser').val(defaultText);
+        savePromptText(key, defaultText);
+        acknowledgePromptVersion(key);
+        syncSidebarPrompt(key);
+        refreshSectionUI($section, key);
+        toastr.success('Prompt restored to default.');
+    });
+
+    // "Keep mine" — dismiss notification, acknowledge the new version
+    $modal.on('click', '.charMemory_promptKeepMine', function () {
+        const $section = $(this).closest('.charMemory_modalSection');
+        const key = $section.data('prompt');
+        acknowledgePromptVersion(key);
+        refreshSectionUI($section, key);
+        $section.find('.charMemory_promptCompareWrap').hide();
+        $section.find('.charMemory_promptEditorWrap').show();
+        $section.find('.charMemory_promptDoneCompare').hide();
+        toastr.info('Notification dismissed. Your custom prompt is unchanged.');
+    });
+
+    // "Use new default" — replace prompt with new default, acknowledge version
+    $modal.on('click', '.charMemory_promptUseNew', function () {
+        const $section = $(this).closest('.charMemory_modalSection');
+        const key = $section.data('prompt');
+        const defaultText = getDefaultPromptText(key);
+        $section.find('.charMemory_promptEditor').val(defaultText);
+        $section.find('.charMemory_compareUser').val(defaultText);
+        savePromptText(key, defaultText);
+        acknowledgePromptVersion(key);
+        syncSidebarPrompt(key);
+        refreshSectionUI($section, key);
+        $section.find('.charMemory_promptCompareWrap').hide();
+        $section.find('.charMemory_promptEditorWrap').show();
+        $section.find('.charMemory_promptDoneCompare').hide();
+        toastr.success('Prompt updated to new default.');
+    });
+
+    // "Compare & Edit" — show side-by-side panes
+    $modal.on('click', '.charMemory_promptCompare', function () {
+        const $section = $(this).closest('.charMemory_modalSection');
+        const key = $section.data('prompt');
+        // Copy current editor text to compare pane
+        $section.find('.charMemory_compareUser').val($section.find('.charMemory_promptEditor').val());
+        $section.find('.charMemory_compareDefault').val(getDefaultPromptText(key));
+        // Toggle visibility
+        $section.find('.charMemory_promptEditorWrap').hide();
+        $section.find('.charMemory_promptCompareWrap').show();
+        $section.find('.charMemory_promptDoneCompare').show();
+    });
+
+    // "Done comparing" — return to single editor
+    $modal.on('click', '.charMemory_promptDoneCompare', function () {
+        const $section = $(this).closest('.charMemory_modalSection');
+        // Copy the user pane text back to the main editor
+        $section.find('.charMemory_promptEditor').val($section.find('.charMemory_compareUser').val());
+        // Toggle visibility
+        $section.find('.charMemory_promptCompareWrap').hide();
+        $section.find('.charMemory_promptEditorWrap').show();
+        $(this).hide();
+    });
+
+    await popup;
+}
+
+/**
+ * Sync a prompt change back to the sidebar controls (if they exist).
+ * @param {string} promptKey Key from PROMPT_CONFIG
+ */
+function syncSidebarPrompt(promptKey) {
+    switch (promptKey) {
+        case 'extraction':
+            $('#charMemory_extractionPrompt').val(extension_settings[MODULE_NAME].extractionPrompt);
+            break;
+        case 'groupExtraction':
+            $('#charMemory_groupExtractionPrompt').val(extension_settings[MODULE_NAME].groupExtractionPrompt);
+            break;
+        case 'consolidation':
+            updateConsolidationStrategyUI();
+            break;
+        case 'conversion':
+            $('#charMemory_convertPrompt').val(extension_settings[MODULE_NAME].conversionPrompt || defaultConversionPrompt);
+            break;
+    }
+}
+
+/**
+ * Render the always-visible model list in the Settings modal.
+ * @param {string} filter Search filter string
+ * @param {object[]} [rawModels=[]] Raw NanoGPT model objects for badge rendering
+ */
+function renderModalModelList(filter, rawModels = []) {
+    const $list = $('#cm_modal_modelList');
+    $list.empty();
+
+    const lowerFilter = (filter || '').toLowerCase();
+    const selectedId = $('#cm_modal_providerModel').val();
+    const providerKey = extension_settings[MODULE_NAME].selectedProvider;
+    const isNanoGpt = providerKey === 'nanogpt';
+    const ps = getProviderSettings(providerKey);
+
+    // Build raw model lookup for badge data
+    const rawById = {};
+    if (isNanoGpt && rawModels.length > 0) {
+        for (const m of rawModels) rawById[m.id] = m;
+    }
+
+    // Apply NanoGPT filters if active
+    let models = currentModelList;
+    if (isNanoGpt && rawModels.length > 0) {
+        const filteredRaw = getFilteredNanoGptModels(rawModels, ps);
+        const filteredIds = new Set(filteredRaw.map(m => m.id));
+        models = currentModelList.filter(m => filteredIds.has(m.id));
+    }
+
+    if (models.length === 0) {
+        $list.append('<div class="charMemory_modelEmpty">No models \u2014 click Connect to fetch</div>');
+        return;
+    }
+
+    let hasResults = false;
+    let lastGroup = null;
+
+    for (const model of models) {
+        if (lowerFilter && !model.id.toLowerCase().includes(lowerFilter) && !model.name.toLowerCase().includes(lowerFilter)) {
+            continue;
+        }
+        if (model.group && model.group !== lastGroup) {
+            $list.append(`<div class="charMemory_modelGroup">${escapeHtml(model.group)}</div>`);
+            lastGroup = model.group;
+        }
+
+        let badgesHtml = '';
+        if (isNanoGpt) {
+            const raw = rawById[model.id];
+            if (raw) {
+                if (raw.subscription) badgesHtml += '<span class="charMemory_modelBadge charMemory_modelBadge--sub">sub</span>';
+                if (raw.isOpenSource) badgesHtml += '<span class="charMemory_modelBadge charMemory_modelBadge--open">open</span>';
+                if (raw.category === 'Roleplay/storytelling models') badgesHtml += '<span class="charMemory_modelBadge charMemory_modelBadge--rp">rp</span>';
+                if (raw.capabilities && raw.capabilities.includes('reasoning')) badgesHtml += '<span class="charMemory_modelBadge charMemory_modelBadge--reason">reason</span>';
+            }
+        }
+
+        const selectedClass = model.id === selectedId ? ' selected' : '';
+        $list.append(
+            `<div class="charMemory_modelOption${selectedClass}" data-model-id="${escapeAttr(model.id)}"><span class="charMemory_modelOptionName">${escapeHtml(model.name)}</span>${badgesHtml}</div>`
+        );
+        hasResults = true;
+    }
+
+    if (!hasResults) {
+        $list.append('<div class="charMemory_modelEmpty">No matching models</div>');
+    }
+}
+
+/**
+ * Update the modal provider UI after switching providers.
+ * Re-renders provider-specific fields (API key, base URL, model picker, etc.).
+ */
+function updateModalProviderUI() {
+    const providerKey = extension_settings[MODULE_NAME].selectedProvider;
+    const preset = PROVIDER_PRESETS[providerKey];
+    if (!preset) return;
+
+    const providerSettings = getProviderSettings(providerKey);
+
+    // API Key row
+    $('#cm_modal_apiKeyRow').toggle(!!preset.requiresApiKey);
+    $('#cm_modal_apiKey').val(providerSettings.apiKey || '');
+
+    // Help link
+    if (preset.helpUrl) {
+        $('#cm_modal_helpLink').attr('href', preset.helpUrl).show();
+    } else {
+        $('#cm_modal_helpLink').hide();
+    }
+
+    // Base URL row
+    $('#cm_modal_baseUrlRow').toggle(!!preset.allowCustomUrl);
+    if (preset.allowCustomUrl) {
+        const isLocal = preset.authStyle === 'none' && !preset.requiresApiKey;
+        $('#cm_modal_baseUrl')
+            .attr('placeholder', isLocal ? 'http://127.0.0.1:1234/v1' : 'https://your-server.com/v1')
+            .val(providerSettings.customBaseUrl || preset.baseUrl || '');
+        $('#cm_modal_baseUrlHint').text(
+            isLocal ? 'http://IP:port/v1 — the /v1 suffix is required' : 'OpenAI-compatible base URL ending in /v1'
+        ).show();
+    } else {
+        $('#cm_modal_baseUrl').val('');
+        $('#cm_modal_baseUrlHint').hide();
+    }
+
+    // Connect button row
+    const hasModelsEndpoint = preset.modelsEndpoint === 'standard' || preset.modelsEndpoint === 'custom';
+    $('#cm_modal_connectRow').toggle(hasModelsEndpoint);
+
+    // Model: dropdown vs text input
+    $('#cm_modal_modelDropdownRow').toggle(hasModelsEndpoint);
+    $('#cm_modal_modelInputRow').toggle(!hasModelsEndpoint);
+
+    // NanoGPT filters
+    const isNano = providerKey === 'nanogpt';
+    $('#cm_modal_nanogptFilters').toggle(isNano);
+    if (isNano) {
+        $('#cm_modal_nanogptFilterSub').prop('checked', !!providerSettings.nanogptFilterSubscription);
+        $('#cm_modal_nanogptFilterOS').prop('checked', !!providerSettings.nanogptFilterOpenSource);
+        $('#cm_modal_nanogptFilterRP').prop('checked', !!providerSettings.nanogptFilterRoleplay);
+        $('#cm_modal_nanogptFilterReasoning').prop('checked', !!providerSettings.nanogptFilterReasoning);
+    }
+
+    if (hasModelsEndpoint) {
+        const savedModel = providerSettings.model || '';
+        $('#cm_modal_providerModel').val(savedModel);
+        $('#cm_modal_modelSearch').val(savedModel || '').attr('placeholder', 'Click Connect to fetch models');
+        currentModelList = [];
+        $('#cm_modal_modelList').hide().empty();
+    } else {
+        $('#cm_modal_modelInput').val(providerSettings.model || '');
+    }
+
+    // System prompt
+    $('#cm_modal_systemPrompt').val(providerSettings.systemPrompt || '');
+
+    // Clear status messages
+    $('#cm_modal_connectStatus').hide().text('');
+    $('#cm_modal_testStatus').hide().text('');
+
+    // Also update sidebar UI
+    updateProviderUI();
+}
+
+// ============ Setup Wizard ============
+
+/**
+ * Build and display the 3-step Setup Wizard modal.
+ * Steps: 1) LLM Connection  2) Vector Storage  3) Ready
+ * @param {number} [startStep=1] Step to start on (1, 2, or 3)
+ */
+async function showSetupWizard(startStep = 1) {
+    const s = extension_settings[MODULE_NAME];
+    const providerKey = s.selectedProvider || '';
+    const providerSettings = providerKey ? getProviderSettings(providerKey) : {};
+    const preset = providerKey ? (PROVIDER_PRESETS[providerKey] || {}) : {};
+
+    // Build provider options — sorted alphabetically, custom last, Pollinations highlighted
+    const providerOptions = Object.entries(PROVIDER_PRESETS)
+        .sort(([ka, a], [kb, b]) => {
+            if (ka === 'custom') return 1;
+            if (kb === 'custom') return -1;
+            return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+        })
+        .map(([key, p]) => {
+            const label = key === 'pollinations' ? `${p.name} \u2014 free, no API key` : p.name;
+            return `<option value="${escapeHtml(key)}" ${key === providerKey ? 'selected' : ''}>${escapeHtml(label)}</option>`;
+        }).join('');
+
+    // Step indicator
+    const stepIndicatorHtml = `
+        <div class="charMemory_wizardStepIndicator">
+            <span class="charMemory_wizardDot" data-step="1"></span>
+            <span style="opacity:0.3;">\u2014</span>
+            <span class="charMemory_wizardDot" data-step="2"></span>
+            <span style="opacity:0.3;">\u2014</span>
+            <span class="charMemory_wizardDot" data-step="3"></span>
+        </div>`;
+
+    // Step 1: LLM Connection
+    const noChatWarnStyle = getCharacterName() ? 'display:none;' : '';
+    const step1Html = `
+        <div class="charMemory_wizardStep" data-step="1">
+            <div id="cm_wiz_noChatWarn" class="charMemory_wizardCallout charMemory_wizardCallout--warn" style="${noChatWarnStyle}">
+                <i class="fa-solid fa-triangle-exclamation fa-sm"></i>
+                <span><strong>Not in a chat.</strong> CharMemory needs an active character to extract memories. You can configure it now \u2014 just open a chat before clicking Extract Now.</span>
+            </div>
+            <div class="charMemory_wizardExplanation">
+                <strong>CharMemory</strong> automatically extracts structured memories from your roleplay chats and stores them so your characters can recall past events.
+                It needs access to an LLM to read your messages and create memory summaries. This can be any OpenAI-compatible provider.
+            </div>
+            <div class="charMemory_modalFieldGroup">
+                <label><small>Provider</small></label>
+                <select id="cm_wiz_provider" class="text_pole">${providerOptions}</select>
+                <small id="cm_wiz_providerHint" class="charMemory_helperText"></small>
+            </div>
+            <div class="charMemory_modalFieldGroup" id="cm_wiz_baseUrlRow" style="${preset.allowCustomUrl ? '' : 'display:none;'}">
+                <label><small>Base URL</small></label>
+                <input type="text" id="cm_wiz_baseUrl" class="text_pole" placeholder="${preset.authStyle === 'none' ? 'http://127.0.0.1:1234/v1' : 'https://your-server.com/v1'}" value="${escapeAttr(providerSettings.customBaseUrl || preset.baseUrl || '')}" />
+            </div>
+            <div class="charMemory_wizConnectRow">
+                <div class="charMemory_wizApiKeyGroup" id="cm_wiz_apiKeyRow" style="${preset.requiresApiKey ? '' : 'display:none;'}">
+                    <label><small>API Key <a id="cm_wiz_helpLink" href="${escapeAttr(preset.helpUrl || '#')}" target="_blank" style="font-size:0.85em;${preset.helpUrl ? '' : 'display:none;'}">(get key)</a></small></label>
+                    <div style="display:flex;gap:5px;align-items:center;">
+                        <input type="password" id="cm_wiz_apiKey" class="text_pole" placeholder="Enter API key" value="${escapeAttr(providerSettings.apiKey || '')}" style="flex:1;" />
+                        <button type="button" id="cm_wiz_apiKeyReveal" class="menu_button" title="Show/hide API key" style="padding:3px 8px;flex-shrink:0;"><i class="fa-solid fa-eye fa-sm"></i></button>
+                    </div>
+                </div>
+                <input type="button" id="cm_wiz_connect" class="menu_button${preset.requiresApiKey ? '' : ' charMemory_fullWidth'}" value="Connect &amp; Test" />
+            </div>
+            <small id="cm_wiz_connectStatus" class="charMemory_helperText" style="display:none;margin-bottom:6px;"></small>
+            <div class="charMemory_modalFieldGroup" id="cm_wiz_modelRow" style="display:none;">
+                <label><small>Model</small></label>
+                <div id="cm_wiz_nanogptFilters" style="display:none;">
+                    <div class="charMemory_filterRow">
+                        <label class="checkbox_label"><input type="checkbox" id="cm_wiz_nanogptFilterSub" /> <small>Subscription</small></label>
+                        <label class="checkbox_label"><input type="checkbox" id="cm_wiz_nanogptFilterOS" /> <small>Open Source</small></label>
+                        <label class="checkbox_label"><input type="checkbox" id="cm_wiz_nanogptFilterRP" /> <small>Roleplay</small></label>
+                        <label class="checkbox_label"><input type="checkbox" id="cm_wiz_nanogptFilterReasoning" /> <small>Reasoning</small></label>
+                    </div>
+                </div>
+                <div class="charMemory_wizModelPicker">
+                    <input type="text" id="cm_wiz_modelSearch" class="charMemory_wizModelSearch" placeholder="Search models..." autocomplete="off" value="" />
+                    <input type="hidden" id="cm_wiz_modelValue" value="" />
+                    <div id="cm_wiz_modelList" class="charMemory_wizModelList"></div>
+                </div>
+                <small id="cm_wiz_modelStatus" class="charMemory_helperText" style="display:none;"></small>
+            </div>
+            <div class="charMemory_wizardNav">
+                <input type="button" id="cm_wiz_next1" class="menu_button" value="Next \u2192" disabled />
+            </div>
+        </div>`;
+
+    // Step 2: Configure
+    const step2Html = `
+        <div class="charMemory_wizardStep" data-step="2">
+            <div class="charMemory_wizardSection">
+                <div class="charMemory_wizardSectionTitle">Memory Storage</div>
+                <div class="charMemory_wizardExplanation" style="margin-top:0;">
+                    Each character gets their own memory file in their Data Bank
+                    (e.g., <code>Flux_the_Cat-memories.md</code>). Memories from all of that character's chats are
+                    stored together. You can change storage options in Settings later.
+                </div>
+            </div>
+            <div class="charMemory_wizardSection">
+                <div class="charMemory_wizardSectionTitle">Extraction Frequency</div>
+                <div class="charMemory_wizardIntervalRow">
+                    <span>Extract memories every</span>
+                    <input type="number" id="cm_wiz_interval" class="charMemory_wizIntervalInput" min="3" max="200" step="1" value="${s.interval || 20}" />
+                    <span>messages.</span>
+                </div>
+                <small class="charMemory_helperText">Lower = more frequent, more API calls. Higher = less frequent, bigger batches. 20 is a good starting point.</small>
+            </div>
+            <div class="charMemory_wizardSection">
+                <div class="charMemory_wizardSectionTitle">Retrieval (Vector Storage)</div>
+                <div class="charMemory_wizardExplanation" style="margin-top:0;">
+                    Vector Storage finds the right memories at the right time and injects them into the prompt
+                    when your character speaks. Without it, memories are stored but never used.
+                </div>
+                <div id="cm_wiz_vsStatus"></div>
+            </div>
+            <div id="cm_wiz_vsAdvisory" style="display:none;">
+                <small class="charMemory_helperText" style="color:#e8a33d;">
+                    <i class="fa-solid fa-triangle-exclamation fa-xs"></i>
+                    You can continue without fixing these \u2014 memories will be stored but not retrieved until Vector Storage is configured.
+                </small>
+            </div>
+            <div class="charMemory_wizardNav">
+                <input type="button" id="cm_wiz_back2" class="menu_button" value="\u2190 Back" />
+                <input type="button" id="cm_wiz_next2" class="menu_button" value="Next \u2192" />
+            </div>
+        </div>`;
+
+    // Step 3: Review & Go
+    const step3Html = `
+        <div class="charMemory_wizardStep" data-step="3">
+            <div id="cm_wiz_summary" class="charMemory_wizardSummary"></div>
+            <div id="cm_wiz_nextSteps"></div>
+            <div class="charMemory_wizardCallout">
+                <i class="fa-solid fa-circle-info fa-sm"></i>
+                <span>Once you have memories, open the <strong>Injection Sidebar</strong> (<i class="fa-solid fa-syringe fa-sm"></i>) to see which ones are being injected into the prompt in real time.</span>
+            </div>
+            <div id="cm_wiz_existingMemories" style="display:none;">
+                <div class="charMemory_wizardExistingMemSection">
+                    <i class="fa-solid fa-database fa-sm" style="color:#e8a33d;"></i>
+                    <div>
+                        <strong>Existing memories found</strong>
+                        <div id="cm_wiz_existingMemDetail" class="charMemory_wizardCheckText"></div>
+                        <div style="margin-top:6px;display:flex;gap:8px;">
+                            <input type="button" id="cm_wiz_convertNow" class="menu_button" value="Convert Now" title="Reformat memories for better retrieval" />
+                            <input type="button" id="cm_wiz_convertSkip" class="menu_button" value="Skip \u2014 I'll do this later" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="charMemory_wizardNav">
+                <input type="button" id="cm_wiz_back3" class="menu_button" value="\u2190 Back" />
+                <input type="button" id="cm_wiz_done" class="menu_button" value="Get Started" />
+            </div>
+            <div class="charMemory_wizardScopeNote">
+                <i class="fa-solid fa-circle-info fa-xs"></i>
+                Tools like Clear Memories and Reset Extraction State only affect the current character.
+            </div>
+        </div>`;
+
+    const html = `<div class="charMemory_wizard">
+        ${stepIndicatorHtml}
+        ${step1Html}
+        ${step2Html}
+        ${step3Html}
+    </div>`;
+
+    const popup = callGenericPopup(html, POPUP_TYPE.DISPLAY, '', { wide: true, allowVerticalScrolling: true });
+    const $wizard = $('.charMemory_wizard').last();
+
+    // --- Step navigation helpers ---
+    let wizConnectionOk = false;
+    let wizHealthResult = null;
+    let wizRawModels = [];  // raw NanoGPT model objects for badge rendering
+
+    function showStep(step) {
+        $wizard.find('.charMemory_wizardStep').removeClass('active');
+        $wizard.find(`.charMemory_wizardStep[data-step="${step}"]`).addClass('active');
+
+        // Update step dots
+        $wizard.find('.charMemory_wizardDot').each(function () {
+            const dotStep = Number($(this).data('step'));
+            $(this).removeClass('active completed');
+            if (dotStep === step) $(this).addClass('active');
+            else if (dotStep < step) $(this).addClass('completed');
+        });
+
+        // Run step-specific init
+        if (step === 1) updateWizProviderUI();
+        if (step === 2) initStep2();
+        if (step === 3) initStep3();
+    }
+
+    // --- Step 1: LLM Connection ---
+    function updateWizProviderUI() {
+        const pk = extension_settings[MODULE_NAME].selectedProvider;
+        const p = PROVIDER_PRESETS[pk] || {};
+        const ps = getProviderSettings(pk);
+
+        $wizard.find('#cm_wiz_apiKeyRow').toggle(!!p.requiresApiKey);
+        $wizard.find('#cm_wiz_apiKey').val(ps.apiKey || '');
+
+        if (p.helpUrl) {
+            $wizard.find('#cm_wiz_helpLink').attr('href', p.helpUrl).show();
+        } else {
+            $wizard.find('#cm_wiz_helpLink').hide();
+        }
+
+        $wizard.find('#cm_wiz_baseUrlRow').toggle(!!p.allowCustomUrl);
+        if (p.allowCustomUrl) {
+            $wizard.find('#cm_wiz_baseUrl')
+                .attr('placeholder', p.authStyle === 'none' ? 'http://127.0.0.1:1234/v1' : 'https://your-server.com/v1')
+                .val(ps.customBaseUrl || p.baseUrl || '');
+        }
+
+        // NanoGPT-specific filters
+        const isNanoGpt = pk === 'nanogpt';
+        $wizard.find('#cm_wiz_nanogptFilters').toggle(isNanoGpt);
+        if (isNanoGpt) {
+            $wizard.find('#cm_wiz_nanogptFilterSub').prop('checked', !!ps.nanogptFilterSubscription);
+            $wizard.find('#cm_wiz_nanogptFilterOS').prop('checked', !!ps.nanogptFilterOpenSource);
+            $wizard.find('#cm_wiz_nanogptFilterRP').prop('checked', !!ps.nanogptFilterRoleplay);
+            $wizard.find('#cm_wiz_nanogptFilterReasoning').prop('checked', !!ps.nanogptFilterReasoning);
+        }
+
+        // Connect button is full-width when no API key field is shown
+        $wizard.find('#cm_wiz_connect').toggleClass('charMemory_fullWidth', !p.requiresApiKey);
+
+        // Provider-specific hint below the dropdown
+        const providerHints = {
+            pollinations: '<strong>Pollinations</strong> is free and requires no API key \u2014 great for trying out CharMemory. For higher quality, try OpenRouter, Groq, or DeepSeek with an API key.',
+            ollama: 'Ollama runs locally. Make sure Ollama is running and set <code>OLLAMA_ORIGINS=*</code> to allow browser access.',
+        };
+        $wizard.find('#cm_wiz_providerHint').html(providerHints[pk] || '');
+
+        // Reset connection state
+        wizConnectionOk = false;
+        $wizard.find('#cm_wiz_next1').prop('disabled', true);
+        $wizard.find('#cm_wiz_connectStatus').hide().text('');
+        $wizard.find('#cm_wiz_modelRow').hide();
+    }
+
+    $wizard.on('change', '#cm_wiz_provider', function () {
+        const key = String($(this).val());
+        extension_settings[MODULE_NAME].selectedProvider = key;
+        extension_settings[MODULE_NAME].source = EXTRACTION_SOURCE.PROVIDER;
+        saveSettingsDebounced();
+        updateWizProviderUI();
+    });
+
+    $wizard.on('input', '#cm_wiz_apiKey', function () {
+        const pk = extension_settings[MODULE_NAME].selectedProvider;
+        const ps = getProviderSettings(pk);
+        ps.apiKey = String($(this).val());
+        saveSettingsDebounced();
+    });
+
+    $wizard.on('click', '#cm_wiz_apiKeyReveal', function () {
+        const $input = $wizard.find('#cm_wiz_apiKey');
+        const $icon = $(this).find('i');
+        const $btn = $(this);
+        clearTimeout($btn.data('revealTimer'));
+        if ($input.attr('type') === 'password') {
+            $input.attr('type', 'text');
+            $icon.removeClass('fa-eye').addClass('fa-eye-slash');
+            $btn.data('revealTimer', setTimeout(() => {
+                $input.attr('type', 'password');
+                $icon.removeClass('fa-eye-slash').addClass('fa-eye');
+            }, 10000));
+        } else {
+            $input.attr('type', 'password');
+            $icon.removeClass('fa-eye-slash').addClass('fa-eye');
+        }
+    });
+
+    $wizard.on('input', '#cm_wiz_baseUrl', function () {
+        const pk = extension_settings[MODULE_NAME].selectedProvider;
+        const ps = getProviderSettings(pk);
+        ps.customBaseUrl = String($(this).val());
+        saveSettingsDebounced();
+    });
+
+    // Run just the LLM response test with the currently selected model.
+    // Called by the Connect & Test button (after model fetch) and by the model
+    // list click handler when a previous test failed.
+    async function doConnectionTest() {
+        const pk = extension_settings[MODULE_NAME].selectedProvider;
+        const p = PROVIDER_PRESETS[pk];
+        const ps = getProviderSettings(pk);
+        const $status = $wizard.find('#cm_wiz_connectStatus');
+        const $connectBtn = $wizard.find('#cm_wiz_connect');
+
+        const testModel = ps.model || p.defaultModel;
+        if (!testModel) {
+            const hasModels = p.modelsEndpoint === 'standard' || p.modelsEndpoint === 'custom';
+            $status.text('Select a model first.').css('color', '#e67e22').show();
+            if (hasModels) $wizard.find('#cm_wiz_modelRow').show();
+            return;
+        }
+
+        $connectBtn.prop('disabled', true);
+        $status.text('Testing model response...').css('color', '').show();
+        try {
+            const baseUrl = resolveBaseUrl(p, ps);
+            const testMessages = [{ role: 'user', content: 'Respond with exactly: CHARMMEMORY_TEST_OK' }];
+            const t0 = performance.now();
+            let response;
+            if (p.isAnthropic) {
+                response = await generateAnthropicResponse(baseUrl, ps.apiKey, testModel, testMessages, 20, p);
+            } else {
+                response = await generateOpenAICompatibleResponse(baseUrl, ps.apiKey, testModel, testMessages, 20, p);
+            }
+            const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
+            const reply = (response || '').trim();
+            const passed = reply.includes('CHARMMEMORY_TEST_OK');
+
+            const modelShort = testModel.length > 30 ? testModel.slice(0, 30) + '\u2026' : testModel;
+            const displayLabel = (p.modelsEndpoint === 'none') ? p.name : modelShort;
+            if (passed) {
+                $status.text(`\u2714 ${displayLabel} responded correctly (${elapsed}s)`).css('color', '#2ecc71').show();
+            } else {
+                $status.html(`\u2714 ${escapeHtml(displayLabel)} connected (${elapsed}s). It may still work for extraction.`).css('color', '#27ae60').show();
+            }
+
+            wizConnectionOk = true;
+            $wizard.find('#cm_wiz_next1').prop('disabled', false);
+        } catch (err) {
+            let errMsg = err.message || 'Connection failed';
+            // NVIDIA-specific: model list includes models that need terms accepted on build.nvidia.com
+            if (pk === 'nvidia' && errMsg.includes('Not Found')) {
+                errMsg += ' — Select a different model, or accept its terms on build.nvidia.com first.';
+            }
+            $status.text(`\u2718 ${errMsg}`).css('color', '#e74c3c').show();
+            wizConnectionOk = false;
+            $wizard.find('#cm_wiz_next1').prop('disabled', true);
+        } finally {
+            $connectBtn.prop('disabled', false);
+        }
+    }
+
+    $wizard.on('click', '#cm_wiz_connect', async function () {
+        const pk = extension_settings[MODULE_NAME].selectedProvider;
+        const p = PROVIDER_PRESETS[pk];
+        const ps = getProviderSettings(pk);
+        const $btn = $(this);
+        const $status = $wizard.find('#cm_wiz_connectStatus');
+
+        if (p?.requiresApiKey && !ps.apiKey) {
+            $status.text('Enter an API key first.').css('color', '#e74c3c').show();
+            return;
+        }
+
+        $btn.prop('disabled', true).val('Connecting...');
+        $status.text('Connecting to provider...').css('color', '').show();
+
+        try {
+            // Fetch models if the provider supports it
+            const hasModels = p.modelsEndpoint === 'standard' || p.modelsEndpoint === 'custom';
+            if (hasModels) {
+                await populateProviderModels(pk, true);
+                const modelCount = currentModelList.length;
+
+                // Auto-select a model: prefer saved, then default, then first available
+                let selectedModel = ps.model || p.defaultModel || '';
+                if (selectedModel && !currentModelList.find(m => m.id === selectedModel)) {
+                    selectedModel = currentModelList.length > 0 ? currentModelList[0].id : '';
+                }
+                if (!selectedModel && currentModelList.length > 0) {
+                    selectedModel = currentModelList[0].id;
+                }
+
+                // Cache raw NanoGPT model objects for badge rendering
+                if (pk === 'nanogpt') {
+                    wizRawModels = await fetchNanoGptModels();
+                } else {
+                    wizRawModels = [];
+                }
+
+                if (selectedModel) {
+                    ps.model = selectedModel;
+                    saveSettingsDebounced();
+                    $wizard.find('#cm_wiz_modelValue').val(selectedModel);
+                    $wizard.find('#cm_wiz_modelRow').show();
+                    renderWizModelList('');
+                }
+
+                $status.text(`Connected \u2014 ${modelCount} model${modelCount !== 1 ? 's' : ''} available.`).css('color', '#27ae60').show();
+            } else {
+                // No models endpoint (e.g. Pollinations) — use defaultModel
+                const model = ps.model || p.defaultModel || '';
+                if (model) {
+                    ps.model = model;
+                    saveSettingsDebounced();
+                }
+                $status.text('Provider configured.').css('color', '#27ae60').show();
+            }
+        } catch (err) {
+            $status.text(`\u2718 ${err.message || 'Connection failed'}`).css('color', '#e74c3c').show();
+            wizConnectionOk = false;
+            $wizard.find('#cm_wiz_next1').prop('disabled', true);
+            $btn.prop('disabled', false).val('Connect & Test');
+            return;
+        }
+
+        // Restore button, then run the test (model fetch succeeded)
+        $btn.prop('disabled', false).val('Connect & Test');
+        await doConnectionTest();
+    });
+
+    // Wizard model list (always-visible)
+    function renderWizModelList(filter) {
+        const $list = $wizard.find('#cm_wiz_modelList');
+        $list.empty();
+
+        const lowerFilter = (filter || '').toLowerCase();
+        const selectedId = $wizard.find('#cm_wiz_modelValue').val();
+        const pk = extension_settings[MODULE_NAME].selectedProvider;
+        const ps = getProviderSettings(pk);
+        const isNanoGpt = pk === 'nanogpt';
+
+        // Build raw model lookup for badge data
+        const rawById = {};
+        if (isNanoGpt && wizRawModels.length > 0) {
+            for (const m of wizRawModels) rawById[m.id] = m;
+        }
+
+        // Apply NanoGPT filters if active
+        let models = currentModelList;
+        if (isNanoGpt && wizRawModels.length > 0) {
+            const filteredRaw = getFilteredNanoGptModels(wizRawModels, ps);
+            const filteredIds = new Set(filteredRaw.map(m => m.id));
+            models = currentModelList.filter(m => filteredIds.has(m.id));
+        }
+
+        if (models.length === 0) {
+            $list.append('<div class="charMemory_modelEmpty">No models loaded</div>');
+            return;
+        }
+
+        let hasResults = false;
+        let lastGroup = null;
+        for (const model of models) {
+            if (lowerFilter && !model.id.toLowerCase().includes(lowerFilter) && !model.name.toLowerCase().includes(lowerFilter)) continue;
+            if (model.group && model.group !== lastGroup) {
+                $list.append(`<div class="charMemory_modelGroup">${escapeHtml(model.group)}</div>`);
+                lastGroup = model.group;
+            }
+
+            // Build inline badges for NanoGPT
+            let badgesHtml = '';
+            if (isNanoGpt) {
+                const raw = rawById[model.id];
+                if (raw) {
+                    if (raw.subscription) badgesHtml += '<span class="charMemory_modelBadge charMemory_modelBadge--sub">sub</span>';
+                    if (raw.isOpenSource) badgesHtml += '<span class="charMemory_modelBadge charMemory_modelBadge--open">open</span>';
+                    if (raw.category === 'Roleplay/storytelling models') badgesHtml += '<span class="charMemory_modelBadge charMemory_modelBadge--rp">rp</span>';
+                    if (raw.capabilities && raw.capabilities.includes('reasoning')) badgesHtml += '<span class="charMemory_modelBadge charMemory_modelBadge--reason">reason</span>';
+                }
+            }
+
+            const selectedClass = model.id === selectedId ? ' selected' : '';
+            $list.append(`<div class="charMemory_modelOption${selectedClass}" data-model-id="${escapeAttr(model.id)}"><span class="charMemory_modelOptionName">${escapeHtml(model.name)}</span>${badgesHtml}</div>`);
+            hasResults = true;
+        }
+
+        if (!hasResults) {
+            $list.append('<div class="charMemory_modelEmpty">No matching models</div>');
+        }
+    }
+
+    $wizard.on('input', '#cm_wiz_modelSearch', function () {
+        renderWizModelList($(this).val());
+    });
+
+    $wizard.on('click', '#cm_wiz_modelList .charMemory_modelOption', function () {
+        const modelId = $(this).data('model-id');
+        const model = currentModelList.find(m => m.id === modelId);
+        if (!model) return;
+
+        $wizard.find('#cm_wiz_modelValue').val(modelId);
+        $wizard.find('#cm_wiz_modelSearch').val(model.name);
+        $wizard.find('#cm_wiz_modelList .charMemory_modelOption').removeClass('selected');
+        $(this).addClass('selected');
+
+        const pk = extension_settings[MODULE_NAME].selectedProvider;
+        const ps = getProviderSettings(pk);
+        ps.model = modelId;
+        saveSettingsDebounced();
+
+        // If the previous test failed (e.g. wrong model auto-selected), re-test
+        // with the one the user just explicitly chose.
+        if (!wizConnectionOk) {
+            doConnectionTest();
+        }
+    });
+
+    $wizard.on('change', '#cm_wiz_nanogptFilterSub, #cm_wiz_nanogptFilterOS, #cm_wiz_nanogptFilterRP, #cm_wiz_nanogptFilterReasoning', function () {
+        const pk = extension_settings[MODULE_NAME].selectedProvider;
+        const ps = getProviderSettings(pk);
+        ps.nanogptFilterSubscription = $wizard.find('#cm_wiz_nanogptFilterSub').is(':checked');
+        ps.nanogptFilterOpenSource = $wizard.find('#cm_wiz_nanogptFilterOS').is(':checked');
+        ps.nanogptFilterRoleplay = $wizard.find('#cm_wiz_nanogptFilterRP').is(':checked');
+        ps.nanogptFilterReasoning = $wizard.find('#cm_wiz_nanogptFilterReasoning').is(':checked');
+        saveSettingsDebounced();
+        renderWizModelList($wizard.find('#cm_wiz_modelSearch').val());
+    });
+
+    // --- Step 2: Configure ---
+    function initStep2() {
+        // Sync interval input from settings
+        $wizard.find('#cm_wiz_interval').val(extension_settings[MODULE_NAME].interval || 20);
+
+        // Three-tier VS detection: read settings directly (no file checks — new user may have no memory file)
+        // Check DOM for VS extension UI — extension_settings.vectors persists when VS is disabled,
+        // so we need to confirm the extension is actually loaded before trusting its settings.
+        const vecSettings = extension_settings.vectors;
+        const $vsStatus = $wizard.find('#cm_wiz_vsStatus');
+        const $vsAdvisory = $wizard.find('#cm_wiz_vsAdvisory');
+
+        const vsExtLoaded = !!document.querySelector('#vectors_enabled_files');
+        const filesEnabled = vsExtLoaded && !!vecSettings?.enabled_files;
+
+        if (!filesEnabled) {
+            // Tier 1: VS not enabled at all
+            $vsStatus.html(`<div class="charMemory_wizardCheck">
+                <i class="fa-solid fa-circle-xmark fa-sm" style="color:#c44;"></i>
+                <div class="charMemory_wizardCheckDetail">
+                    <div class="charMemory_wizardCheckLabel">Vector Storage is not enabled</div>
+                    <div class="charMemory_wizardCheckText">CharMemory will store memories but your character won't recall them.
+                        Enable it in <strong>Extensions \u2192 Vector Storage</strong> when you're ready.</div>
+                </div>
+            </div>`);
+            $vsAdvisory.find('small').html(`<i class="fa-solid fa-triangle-exclamation fa-xs"></i>
+                You can continue \u2014 memories will be stored. Without Vector Storage enabled, your character won't be able to recall them.`);
+            $vsAdvisory.show();
+        } else {
+            // Check settings quality
+            const chunkSize = vecSettings?.chunk_size_db ?? 2500;
+            const overlapPct = vecSettings?.overlap_percent_db ?? 0;
+            const retrieveChunks = vecSettings?.chunk_count_db ?? 0;
+
+            const issues = [];
+            if (chunkSize < 500 || chunkSize > 1500) {
+                issues.push(`Chunk size is ${chunkSize} chars — recommended 800–1000 for CharMemory.`);
+            }
+            if (overlapPct === 0) {
+                issues.push('Overlap is 0% — memory blocks that span chunk boundaries may be split. Recommended: 10–25%.');
+            }
+            if (retrieveChunks > 5) {
+                issues.push(`Retrieve chunks is ${retrieveChunks} — recommended 2–3 for CharMemory.`);
+            }
+            if (retrieveChunks === 0) {
+                issues.push('Retrieve chunks is 0 — no memories will be injected.');
+            }
+
+            if (issues.length > 0) {
+                // Tier 2: VS enabled but settings need tuning
+                const issueItems = issues.map(i => `<li>${escapeHtml(i)}</li>`).join('');
+                $vsStatus.html(`<div class="charMemory_wizardCheck">
+                    <i class="fa-solid fa-triangle-exclamation fa-sm" style="color:#e8a33d;"></i>
+                    <div class="charMemory_wizardCheckDetail">
+                        <div class="charMemory_wizardCheckLabel">Vector Storage is active, but settings may need tuning</div>
+                        <ul class="charMemory_wizardIssueList">${issueItems}</ul>
+                        <div class="charMemory_wizardCheckFix"><i class="fa-solid fa-lightbulb fa-xs"></i> Adjust these in <strong>Extensions \u2192 Vector Storage</strong>.</div>
+                    </div>
+                </div>`);
+                $vsAdvisory.find('small').html(`<i class="fa-solid fa-triangle-exclamation fa-xs"></i>
+                    You can continue \u2014 memories will be stored and retrieved. Tuning these settings may improve recall accuracy.`);
+                $vsAdvisory.show();
+            } else {
+                // Tier 3: VS fully configured
+                $vsStatus.html(`<div class="charMemory_wizardCheck">
+                    <i class="fa-solid fa-circle-check fa-sm" style="color:#4a4;"></i>
+                    <div class="charMemory_wizardCheckDetail">
+                        <div class="charMemory_wizardCheckLabel">Vector Storage is configured</div>
+                        <div class="charMemory_wizardCheckText">CharMemory memories will be automatically retrieved and injected into the prompt.</div>
+                    </div>
+                </div>`);
+                $vsAdvisory.hide();
+            }
+        }
+    }
+
+    $wizard.on('input change', '#cm_wiz_interval', function () {
+        const val = Math.max(3, Math.min(200, parseInt($(this).val(), 10) || 20));
+        extension_settings[MODULE_NAME].interval = val;
+        saveSettingsDebounced();
+    });
+
+    // --- Step 3: Review & Go ---
+    function initStep3() {
+        const pk = extension_settings[MODULE_NAME].selectedProvider;
+        const p = PROVIDER_PRESETS[pk] || {};
+        const ps = getProviderSettings(pk);
+        const modelName = ps.model || p.defaultModel || '(default)';
+        const modelShort = modelName.length > 40 ? modelName.slice(0, 40) + '\u2026' : modelName;
+        const interval = extension_settings[MODULE_NAME].interval || 20;
+
+        // VS summary from extension_settings.vectors
+        // Check DOM for VS extension UI to avoid false-positive when VS is disabled.
+        const vecSettings = extension_settings.vectors;
+        const vsExtLoaded = !!document.querySelector('#vectors_enabled_files');
+        const filesEnabled = vsExtLoaded && !!vecSettings?.enabled_files;
+        let vsSummaryHtml;
+        if (!filesEnabled) {
+            vsSummaryHtml = `<span style="color:#c44;">\u26A0 Not enabled</span>`;
+        } else {
+            const chunkSize = vecSettings?.chunk_size_db ?? 2500;
+            const overlapPct = vecSettings?.overlap_percent_db ?? 0;
+            const retrieveChunks = vecSettings?.chunk_count_db ?? 0;
+            const hasIssues = chunkSize < 500 || chunkSize > 1500 || overlapPct === 0 || retrieveChunks > 5 || retrieveChunks === 0;
+            vsSummaryHtml = hasIssues
+                ? `<span style="color:#e8a33d;">\u26A0 Active \u2014 settings may need tuning</span>`
+                : `<span style="color:#4a4;">\u2714 Configured</span>`;
+        }
+
+        $wizard.find('#cm_wiz_summary').html(`
+            <div class="charMemory_wizardSummaryRow">
+                <span class="label">Provider</span>
+                <span>${escapeHtml(p.name || pk)}</span>
+            </div>
+            <div class="charMemory_wizardSummaryRow">
+                <span class="label">Model</span>
+                <span>${escapeHtml(modelShort)}</span>
+            </div>
+            <div class="charMemory_wizardSummaryRow">
+                <span class="label">Connection</span>
+                <span>${wizConnectionOk ? '<span style="color:#4a4;">\u2714 Connected</span>' : '<span style="color:#e8a33d;">\u26A0 Not tested</span>'}</span>
+            </div>
+            <div class="charMemory_wizardSummaryRow">
+                <span class="label">Extraction</span>
+                <span>Every ${escapeHtml(String(interval))} messages</span>
+            </div>
+            <div class="charMemory_wizardSummaryRow">
+                <span class="label">Vector Storage</span>
+                <span>${vsSummaryHtml}</span>
+            </div>
+        `);
+
+        // Check for existing memories for the current character
+        const targets = getMemoryTargets();
+        const $existingSection = $wizard.find('#cm_wiz_existingMemories');
+        if (targets.length > 0) {
+            const target = targets[0];
+            const attachment = findMemoryAttachmentForCharacter(target.avatar, target.fileName);
+            if (attachment) {
+                $wizard.find('#cm_wiz_existingMemDetail').text(
+                    `We found an existing memory file for ${target.name}: ${target.fileName}. The Convert tool can reformat it for better retrieval.`
+                );
+                $existingSection.show();
+            } else {
+                $existingSection.hide();
+            }
+        } else {
+            $existingSection.hide();
+        }
+
+        // Contextual next-steps guidance
+        const wizCharName = getCharacterName();
+        const $nextSteps = $wizard.find('#cm_wiz_nextSteps');
+        if (wizCharName) {
+            $nextSteps.html(`
+                <div class="charMemory_wizardCallout">
+                    <i class="fa-solid fa-check-circle fa-sm"></i>
+                    <span>You're in a chat with <strong>${escapeHtml(wizCharName)}</strong>. After closing, click <strong>Extract Now</strong> in the CharMemory panel to create your first memories.</span>
+                </div>
+            `);
+        } else {
+            $nextSteps.html(`
+                <div class="charMemory_wizardCallout charMemory_wizardCallout--warn">
+                    <i class="fa-solid fa-triangle-exclamation fa-sm"></i>
+                    <span><strong>Open a chat first.</strong> CharMemory needs an active character to extract from. Start a chat with a character, then click <strong>Extract Now</strong> in the panel.</span>
+                </div>
+            `);
+        }
+    }
+
+    // --- Navigation handlers ---
+    $wizard.on('click', '#cm_wiz_next1', function () {
+        if (wizConnectionOk) showStep(2);
+    });
+
+    $wizard.on('click', '#cm_wiz_back2', function () { showStep(1); });
+    $wizard.on('click', '#cm_wiz_next2', function () { showStep(3); });
+    $wizard.on('click', '#cm_wiz_back3', function () { showStep(2); });
+
+    $wizard.on('click', '#cm_wiz_convertNow', function () {
+        $wizard.find('#cm_wiz_existingMemories').hide();
+        reformatMemories();
+    });
+
+    $wizard.on('click', '#cm_wiz_convertSkip', function () {
+        $wizard.find('#cm_wiz_existingMemories').hide();
+    });
+
+    $wizard.on('click', '#cm_wiz_done', function () {
+        extension_settings[MODULE_NAME].wizardCompleted = true;
+        saveSettingsDebounced();
+        // Close the popup by clicking the dialog's close/OK button
+        const $dialog = $wizard.closest('.popup');
+        if ($dialog.length) {
+            $dialog.find('.popup-button-ok, .popup-button-close').first().trigger('click');
+        }
+        // Open the CharMemory panel and orient the user
+        setTimeout(() => {
+            if (isTabletMode()) {
+                toggleTabletPanel(true);
+            } else {
+                const $content = $('.charMemory_settings .inline-drawer-content');
+                if ($content.length && !$content.is(':visible')) {
+                    $('.charMemory_settings .inline-drawer-toggle').trigger('click');
+                }
+            }
+            const doneCharName = getCharacterName();
+            if (!doneCharName) {
+                toastr.info('Open a chat with a character, then click <b>Extract Now</b> to start building memories.', 'CharMemory', { timeOut: 7000, escapeHtml: false });
+            } else {
+                toastr.success(`Click <b>Extract Now</b> in the panel to extract your first memories for ${escapeHtml(doneCharName)}.`, 'CharMemory', { timeOut: 7000, escapeHtml: false });
+            }
+        }, 400);
+    });
+
+    // Cleanup when popup closes
+    popup.then(() => {
+        $(document).off('click.cmWizModelPicker');
+    });
+
+    // Show starting step
+    showStep(startStep);
+}
+
+/**
+ * Show a post-first-extraction verification modal.
+ * Explains how to check that retrieval is working correctly.
+ */
+function showVerificationStep() {
+    const html = `<div class="charMemory_verification">
+        <h4>Memories Extracted Successfully!</h4>
+        <p>Your first batch of memories has been saved. Here's how to verify everything is working:</p>
+        <ol>
+            <li><strong>Generate a message</strong> from your character so Vector Storage injects relevant memories.</li>
+            <li>Look for the <i class="fa-solid fa-syringe" style="opacity:0.7;"></i> <strong>syringe icon</strong> next to the character's name. Click it to see what memories were injected.</li>
+            <li>Check the <strong>health indicator</strong> (colored dot) on the dashboard. Green means everything is working. Yellow or red means there may be Vector Storage configuration issues.</li>
+            <li>Use the <strong>Troubleshooter</strong> (<i class="fa-solid fa-screwdriver-wrench" style="opacity:0.7;"></i>) for detailed diagnostics if anything looks off.</li>
+        </ol>
+        <p style="opacity:0.7; font-size:0.9em;">This message will only appear once. You can always access the Troubleshooter from the dashboard header.</p>
+    </div>`;
+
+    callGenericPopup(html, POPUP_TYPE.TEXT, '', { wide: false, allowVerticalScrolling: true });
+    extension_settings[MODULE_NAME].verificationSeen = true;
+    saveSettingsDebounced();
+}
+
+/**
+ * Update the nudge banner visibility based on health status.
+ * Called after health checks complete and when the wizard has been completed previously.
+ * @param {object} [healthResult] Pre-computed health result to avoid re-running checks
+ */
+function updateNudgeBanner(healthResult) {
+    const $banner = $('#charMemory_nudgeBanner');
+    if (!$banner.length) return;
+
+    const s = extension_settings[MODULE_NAME];
+    if (!s.wizardCompleted) {
+        $banner.hide();
+        return;
+    }
+
+    if (!healthResult) {
+        $banner.hide();
+        return;
+    }
+
+    if (healthResult.level === 'red' || healthResult.level === 'yellow') {
+        const issueCount = healthResult.checks.filter(c => c.level !== 'green').length;
+        const label = healthResult.level === 'red' ? 'Issues detected' : 'Warnings detected';
+        $banner.find('span').first().text(`${label} (${issueCount})`);
+        // Determine which step to open
+        const hasConnectionIssue = !s.selectedProvider || !getProviderSettings(s.selectedProvider || '').model;
+        $banner.data('wizStep', hasConnectionIssue ? 1 : 2);
+        $banner.show();
+    } else {
+        $banner.hide();
+    }
+}
+
+// ============ Troubleshooter Modal ============
+
+/**
+ * Build and display the Troubleshooter modal.
+ * Sections: Health Checks, Data Bank Browser, Diagnostic Report, Reset/Clear.
+ * @param {string} [initialSection='health'] Section to show first: 'health', 'databank', 'report', or 'reset'
+ */
+async function showTroubleshooter(initialSection = 'health') {
+    const charName = getCharacterName();
+    const targets = getMemoryTargets();
+    const target = targets[0];
+
+    // Run health checks
+    const healthResult = await computeHealthScore();
+
+    // Build health checks HTML
+    const colors = { green: '#4a4', yellow: '#e8a33d', red: '#c44', unknown: 'var(--SmartThemeBorderColor, #555)' };
+    const icons = { green: 'fa-circle-check', yellow: 'fa-triangle-exclamation', red: 'fa-circle-xmark', unknown: 'fa-circle-question' };
+    const titles = { green: 'All checks passed', yellow: 'Warnings detected', red: 'Issues found', unknown: 'No character selected' };
+
+    let healthHtml = `<div class="charMemory_tsOverallStatus" style="color:${colors[healthResult.level]};">
+        <i class="fa-solid ${icons[healthResult.level]}"></i>
+        ${titles[healthResult.level]}
+    </div>`;
+
+    // Fix hints for checks that have actionable solutions
+    const fixHints = {
+        vec_files_enabled: 'Enable "Files" in the Vector Storage extension settings.',
+        memory_file_exists: 'Use "Extract Now" on the dashboard to create this character\'s memory file.',
+        file_vectorized: 'Send a message in the chat to trigger automatic vectorization, or open Extensions \u2192 Vector Storage \u2192 Files tab to vectorize the file manually.',
+        chunk_overlap: 'Set overlap to 10-25% in Vector Storage settings.',
+        chunk_size: 'Set chunk size to 800-1000 chars in Vector Storage settings.',
+    };
+
+    for (const check of healthResult.checks) {
+        const fixHint = (check.level !== 'green' && fixHints[check.id])
+            ? `<div class="charMemory_tsCheckFix"><i class="fa-solid fa-lightbulb fa-xs"></i> ${escapeHtml(fixHints[check.id])}</div>`
+            : '';
+        healthHtml += `<div class="charMemory_tsCheck">
+            <div class="charMemory_tsCheckHeader">
+                <i class="fa-solid ${icons[check.level]} fa-xs" style="color:${colors[check.level]};"></i>
+                <span>${escapeHtml(check.label)}</span>
+            </div>
+            <div class="charMemory_tsCheckDetail">${escapeHtml(check.detail)}</div>
+            ${fixHint}
+        </div>`;
+    }
+
+    // Build Data Bank browser HTML
+    // Supports group chats — renders a labeled section per member.
+    const buildMemberFileList = (t) => {
+        ensureCharacterAttachments(t.avatar);
+        const disabledUrls = new Set(extension_settings.disabled_attachments || []);
+        const attachments = (extension_settings.character_attachments[t.avatar] || [])
+            .filter(att => !disabledUrls.has(att.url));
+        if (attachments.length === 0) {
+            return '<div class="charMemory_diagEmpty" style="margin:4px 0 8px;">No Data Bank files yet — run <b>Extract Now</b> to create memories.</div>';
+        }
+        let html = '<div class="charMemory_tsFileList">';
+        for (const att of attachments) {
+            const badge = att.name === t.fileName ? '<span class="charMemory_tsBadge">CharMemory</span>' : '';
+            const sizeText = att.size ? `<span class="charMemory_tsFileSize">${(att.size / 1024).toFixed(1)} KB</span>` : '';
+            html += `<div class="charMemory_tsFileRow" data-url="${escapeAttr(att.url)}" data-name="${escapeAttr(att.name || '')}" data-avatar="${escapeAttr(t.avatar)}">
+                    <div class="charMemory_tsFileName">
+                        <i class="fa-solid fa-file-lines fa-sm"></i>
+                        <span>${escapeHtml(att.name || att.url)}</span>
+                        ${sizeText}
+                        ${badge}
+                    </div>
+                    <div class="charMemory_tsFileActions">
+                        <button class="menu_button charMemory_tsViewBtn" title="View file contents"><i class="fa-solid fa-eye fa-sm"></i></button>
+                        <button class="menu_button charMemory_tsExportBtn" title="Download file"><i class="fa-solid fa-download fa-sm"></i></button>
+                        <button class="menu_button charMemory_tsDeleteBtn" title="Delete file"><i class="fa-solid fa-trash fa-sm"></i></button>
+                        <button class="menu_button charMemory_tsConvertBtn" title="Convert file format"><i class="fa-solid fa-arrows-rotate fa-sm"></i></button>
+                    </div>
+                </div>`;
+        }
+        html += '</div>';
+        return html;
+    };
+
+    let dataBankHtml = '';
+    let dataBankSubtitle = 'No character selected';
+    if (!targets.length) {
+        dataBankHtml = '<div class="charMemory_diagEmpty">No character selected.</div>';
+    } else if (targets.length > 1) {
+        // Group chat: labeled section per member
+        dataBankSubtitle = `Group Data Bank \u2014 ${targets.length} characters`;
+        for (const t of targets) {
+            const avatarImg = `<img class="charMemory_groupAvatar" src="/thumbnail?type=avatar&file=${encodeURIComponent(t.avatar)}" alt="" onerror="this.style.display='none'" />`;
+            dataBankHtml += `<div class="charMemory_tsMemberSection">
+                <div class="charMemory_tsMemberLabel">${avatarImg}${escapeHtml(t.name)}</div>
+                ${buildMemberFileList(t)}
+            </div>`;
+        }
+    } else {
+        const displayName = charName || target.name;
+        const avatarImg = `<img class="charMemory_groupAvatar" src="/thumbnail?type=avatar&file=${encodeURIComponent(target.avatar)}" alt="" onerror="this.style.display='none'" style="vertical-align:middle;" />`;
+        dataBankSubtitle = `${avatarImg} ${escapeHtml(displayName)}'s Data Bank files`;
+        dataBankHtml = buildMemberFileList(target);
+    }
+
+    // Build full modal
+    const navActive = (s) => s === initialSection ? ' active' : '';
+    const html = `<div class="charMemory_modal charMemory_troubleshooter">
+        <div class="charMemory_modalNav">
+            <button class="charMemory_modalNavItem${navActive('health')}" data-section="health">Health Checks</button>
+            <button class="charMemory_modalNavItem${navActive('databank')}" data-section="databank">Data Bank</button>
+            <button class="charMemory_modalNavItem${navActive('report')}" data-section="report">Diagnostic Report</button>
+            <button class="charMemory_modalNavItem${navActive('reset')}" data-section="reset">Reset / Clear</button>
+        </div>
+        <div class="charMemory_modalContent">
+            <div class="charMemory_modalSection${navActive('health')}" data-section="health">
+                <h4 class="charMemory_modalSectionTitle">Health Checks</h4>
+                <div id="cm_ts_healthChecks">${healthHtml}</div>
+                <div style="margin-top:10px;">
+                    <button class="menu_button" id="cm_ts_rerunHealth"><i class="fa-solid fa-arrows-rotate fa-sm"></i> Re-run checks</button>
+                </div>
+            </div>
+            <div class="charMemory_modalSection${navActive('databank')}" data-section="databank">
+                <h4 class="charMemory_modalSectionTitle">Data Bank Browser</h4>
+                <small class="charMemory_helperText">${dataBankSubtitle}</small>
+                <div id="cm_ts_dataBankList">${dataBankHtml}</div>
+                <div class="charMemory_tsImportRow">
+                    <input type="file" id="cm_ts_fileImport" style="display:none;" accept=".md,.txt,.json" />
+                    <button class="menu_button" id="cm_ts_importBtn"><i class="fa-solid fa-upload fa-sm"></i> Import file</button>
+                </div>
+            </div>
+            <div class="charMemory_modalSection${navActive('report')}" data-section="report">
+                <h4 class="charMemory_modalSectionTitle">Diagnostic Report</h4>
+                <small class="charMemory_helperText">Full snapshot of settings, health checks, and memory state for debugging.</small>
+                <pre id="cm_ts_reportContent" class="charMemory_reportPre">Generating\u2026</pre>
+                <div class="charMemory_reportActions">
+                    <button class="menu_button" id="cm_ts_copyReport"><i class="fa-solid fa-clipboard fa-sm"></i> Copy</button>
+                    <input type="text" id="cm_ts_reportFilename" class="text_pole charMemory_reportFilename" value="charMemory-diagnostic.txt" placeholder="filename.txt" />
+                    <button class="menu_button" id="cm_ts_saveReport"><i class="fa-solid fa-download fa-sm"></i> Save</button>
+                </div>
+                <small id="cm_ts_reportStatus" class="charMemory_helperText" style="display:none;margin-top:4px;"></small>
+            </div>
+            <div class="charMemory_modalSection${navActive('reset')}" data-section="reset">
+                <h4 class="charMemory_modalSectionTitle">Reset / Clear</h4>
+                <div class="charMemory_tsResetSection">
+                    <button class="menu_button" id="cm_ts_openWizard">Re-run Setup Wizard</button>
+                    <small class="charMemory_helperText">Walk through the setup steps again to reconfigure your LLM connection, storage, or retrieval settings.</small>
+                </div>
+                <div class="charMemory_tsResetSection">
+                    <button class="menu_button" id="cm_ts_resetThisChat">Reset This Chat</button>
+                    <small class="charMemory_helperText">
+                        Resets the extraction pointer for the active chat. Next "Extract Now" will re-read all messages in this chat from the first.
+                        ${isGroupChat() ? '<br><i class="fa-solid fa-people-group fa-xs"></i> <em>Group chat:</em> all members share one extraction pointer, so this resets all of them at once.' : ''}
+                    </small>
+                </div>
+                <div class="charMemory_tsResetSection">
+                    <button class="menu_button" id="cm_ts_resetBatchProgress">Reset Batch Progress</button>
+                    <small class="charMemory_helperText">
+                        The Batch tool remembers the last message it processed in each chat file so future runs only extract new messages. Reset this to make Batch treat all of ${escapeHtml(charName || 'this character')}'s chats as unprocessed — for example, after changing the extraction prompt. Does not affect Extract Now or auto-extraction.
+                    </small>
+                </div>
+                <div class="charMemory_tsResetSection">
+                    <button class="menu_button charMemory_dangerBtn" id="cm_ts_clearMemories">Clear All Memories</button>
+                    <small class="charMemory_helperText">Deletes this character's memory file (contains memories from all their chats) and resets extraction tracking. Cannot be undone.</small>
+                </div>
+            </div>
+        </div>
+    </div>`;
+
+    let autoRefreshInterval;
+    const popup = callGenericPopup(html, POPUP_TYPE.TEXT, '', { wide: true, allowVerticalScrolling: true });
+    popup.then(() => { clearInterval(autoRefreshInterval); updateHealthIndicator(); });
+
+    // Wire nav switching
+    const $modal = $('.charMemory_troubleshooter').last();
+    $modal.on('click', '.charMemory_modalNavItem', function () {
+        const section = $(this).data('section');
+        $modal.find('.charMemory_modalNavItem').removeClass('active');
+        $(this).addClass('active');
+        $modal.find('.charMemory_modalSection').removeClass('active');
+        $modal.find(`.charMemory_modalSection[data-section="${section}"]`).addClass('active');
+        if (section === 'databank') rebuildDataBankList();
+    });
+
+    // Re-run health checks
+    $('#cm_ts_rerunHealth').off('click').on('click', async function () {
+        $(this).prop('disabled', true).find('i').addClass('fa-spin');
+        try {
+            const result = await computeHealthScore();
+            let newHtml = `<div class="charMemory_tsOverallStatus" style="color:${colors[result.level]};">
+                <i class="fa-solid ${icons[result.level]}"></i>
+                ${titles[result.level]}
+            </div>`;
+            for (const check of result.checks) {
+                const fixHint = (check.level !== 'green' && fixHints[check.id])
+                    ? `<div class="charMemory_tsCheckFix"><i class="fa-solid fa-lightbulb fa-xs"></i> ${escapeHtml(fixHints[check.id])}</div>`
+                    : '';
+                newHtml += `<div class="charMemory_tsCheck">
+                    <div class="charMemory_tsCheckHeader">
+                        <i class="fa-solid ${icons[check.level]} fa-xs" style="color:${colors[check.level]};"></i>
+                        <span>${escapeHtml(check.label)}</span>
+                    </div>
+                    <div class="charMemory_tsCheckDetail">${escapeHtml(check.detail)}</div>
+                    ${fixHint}
+                </div>`;
+            }
+            $('#cm_ts_healthChecks').html(newHtml);
+            // Also sync the sidebar health indicator and nudge banner in real time
+            renderHealthStatusBarItem(result);
+            updateNudgeBanner(result);
+        } finally {
+            $(this).prop('disabled', false).find('i').removeClass('fa-spin');
+        }
+    });
+
+    // Data Bank: View / Edit file (editor-based)
+    $modal.on('click', '.charMemory_tsViewBtn', async function () {
+        const $row = $(this).closest('.charMemory_tsFileRow');
+        const url = $row.data('url');
+        const name = $row.data('name') || '';
+        const avatar = $row.data('avatar') || '';
+        try {
+            const content = await getFileAttachment(url);
+            if (!content) {
+                toastr.warning('File is empty or could not be read.', 'CharMemory');
+                return;
+            }
+
+            const blocks = parseMemories(content);
+
+            if (blocks.length === 0) {
+                // Non-memory file or empty — show as plain text (read-only)
+                const displayContent = content.length > 10000
+                    ? content.substring(0, 10000) + '\n\n... (truncated, ' + content.length + ' chars total)'
+                    : content;
+                const viewHtml = `<div style="max-height:60vh;overflow:auto;text-align:left;">
+                    <pre style="white-space:pre-wrap;word-break:break-word;font-size:0.85em;">${escapeHtml(displayContent)}</pre>
+                </div>`;
+                callGenericPopup(viewHtml, POPUP_TYPE.TEXT, escapeHtml(name || 'File contents'), { wide: true, allowVerticalScrolling: true });
+                return;
+            }
+
+            // Memory file — open in editor
+            const tsEditor = createMemoryEditor({ blocks });
+            const emptyEditingSet = tsEditor.getEditingSet();
+            let tsFindPattern = null;
+
+            const refreshTsEditor = (highlightPattern) => {
+                if (highlightPattern !== undefined) tsFindPattern = highlightPattern;
+                const currentBlocks = tsEditor.getBlocks();
+                const editing = tsEditor.getEditingSet();
+                $('#cm_ts_fileEditorPane').html(renderConsolidatedCards(currentBlocks, editing, tsFindPattern));
+                $('#cm_ts_fileEditorCount').text(`${countMemories(currentBlocks)} memories in ${currentBlocks.length} blocks`);
+                $('#cm_ts_fileEditorAddBlock').toggleClass('charMemory_editorAddBlock--hidden', editing.size === 0);
+                $('#cm_ts_fileUndoBtn').prop('disabled', !tsEditor.canUndo());
+            };
+
+            const editorHtml = `<div class="charMemory_tsFileEditor">
+                <div class="charMemory_tsFileEditorHeader">
+                    <span class="charMemory_dimText">${escapeHtml(name)}</span>
+                    <span id="cm_ts_fileEditorCount" class="charMemory_dimText">${countMemories(blocks)} memories in ${blocks.length} blocks</span>
+                </div>
+                ${buildFindReplaceBar('cm_ts_fileFR')}
+                <div class="charMemory_consolidationContent" id="cm_ts_fileEditorPane">${renderConsolidatedCards(blocks, emptyEditingSet)}</div>
+                <div class="charMemory_tsFileEditorFooter">
+                    <button class="charMemory_editorAddBlock menu_button charMemory_editorAddBlock--hidden" id="cm_ts_fileEditorAddBlock"><i class="fa-solid fa-plus fa-xs"></i> Add Block</button>
+                    <button class="menu_button" id="cm_ts_fileUndoBtn" disabled><i class="fa-solid fa-rotate-left fa-xs"></i> Undo</button>
+                </div>
+            </div>`;
+
+            const savePopup = callGenericPopup(editorHtml, POPUP_TYPE.CONFIRM, '', { wide: true, allowVerticalScrolling: true, okButton: 'Save', cancelButton: 'Cancel' });
+
+            // Find/Replace bar
+            const cleanupTsFR = wireFindReplaceEvents(tsEditor, refreshTsEditor, 'cm_ts_fileFR', '.charMemoryTsFR');
+
+            // Editor event delegation (ts-namespaced to avoid conflicts)
+            $(document).off('click.charMemoryTsEditorToggle').on('click.charMemoryTsEditorToggle', '#cm_ts_fileEditorPane .charMemory_editorToggleEdit', function () {
+                tsEditor.toggleEdit(Number($(this).data('block')));
+                refreshTsEditor();
+            });
+
+            $(document).off('input.charMemoryTsEditorBullet').on('input.charMemoryTsEditorBullet', '#cm_ts_fileEditorPane .charMemory_editorBulletInput', function () {
+                tsEditor.updateBullet(Number($(this).data('block')), Number($(this).data('bullet')), $(this).val());
+            });
+
+            $(document).off('input.charMemoryTsEditorTheme').on('input.charMemoryTsEditorTheme', '#cm_ts_fileEditorPane .charMemory_editorThemeInput', function () {
+                tsEditor.updateTheme(Number($(this).data('block')), $(this).val());
+            });
+
+            $(document).off('click.charMemoryTsEditorDelBullet').on('click.charMemoryTsEditorDelBullet', '#cm_ts_fileEditorPane .charMemory_editorDeleteBullet', function () {
+                tsEditor.deleteBullet(Number($(this).data('block')), Number($(this).data('bullet')));
+                refreshTsEditor();
+            });
+
+            $(document).off('click.charMemoryTsEditorDelBlock').on('click.charMemoryTsEditorDelBlock', '#cm_ts_fileEditorPane .charMemory_editorDeleteBlock', function () {
+                tsEditor.deleteBlock(Number($(this).data('block')));
+                refreshTsEditor();
+            });
+
+            $(document).off('click.charMemoryTsEditorAddBullet').on('click.charMemoryTsEditorAddBullet', '#cm_ts_fileEditorPane .charMemory_editorAddBullet', function () {
+                const bi = Number($(this).data('block'));
+                tsEditor.addBullet(bi);
+                refreshTsEditor();
+                $(`#cm_ts_fileEditorPane .charMemory_editorCard[data-block="${bi}"] .charMemory_editorBulletInput:last`).focus();
+            });
+
+            $(document).off('click.charMemoryTsEditorAddBlock').on('click.charMemoryTsEditorAddBlock', '#cm_ts_fileEditorAddBlock', function () {
+                tsEditor.addBlock();
+                refreshTsEditor();
+                $('#cm_ts_fileEditorPane .charMemory_editorCard:last .charMemory_editorBulletInput:last').focus();
+            });
+
+            $(document).off('click.charMemoryTsEditorUndo').on('click.charMemoryTsEditorUndo', '#cm_ts_fileUndoBtn', function () {
+                if (tsEditor.undo()) refreshTsEditor();
+            });
+
+            // Wait for Save/Cancel
+            const confirmed = await savePopup;
+
+            // Clean up event handlers
+            cleanupTsFR();
+            $(document).off('click.charMemoryTsEditorToggle click.charMemoryTsEditorDelBullet click.charMemoryTsEditorDelBlock click.charMemoryTsEditorAddBullet click.charMemoryTsEditorAddBlock click.charMemoryTsEditorUndo');
+            $(document).off('input.charMemoryTsEditorBullet input.charMemoryTsEditorTheme');
+
+            if (confirmed && avatar) {
+                const cleanBlocks = tsEditor.getBlocks()
+                    .map(b => ({ ...b, bullets: b.bullets.filter(bullet => bullet.trim() !== '') }))
+                    .filter(b => b.bullets.length > 0);
+
+                if (cleanBlocks.length === 0) {
+                    toastr.warning('No memories to save.', 'CharMemory');
+                } else {
+                    await writeMemoriesForCharacter(serializeMemories(cleanBlocks), avatar, name);
+                    toastr.success(`Saved ${countMemories(cleanBlocks)} memories to ${name}.`, 'CharMemory');
+                    updateStatusDisplay();
+                }
+            }
+        } catch (err) {
+            console.error(LOG_PREFIX, 'Failed to read file:', err);
+            toastr.error('Could not read file.', 'CharMemory');
+        }
+    });
+
+    // Data Bank: Export file
+    $modal.on('click', '.charMemory_tsExportBtn', async function () {
+        const $row = $(this).closest('.charMemory_tsFileRow');
+        const url = $row.data('url');
+        const name = $row.data('name') || 'download.txt';
+        try {
+            const content = await getFileAttachment(url);
+            if (!content) {
+                toastr.warning('File is empty or could not be read.', 'CharMemory');
+                return;
+            }
+            const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = name;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(a.href);
+            toastr.success(`Downloaded: ${name}`, 'CharMemory');
+        } catch (err) {
+            console.error(LOG_PREFIX, 'Failed to export file:', err);
+            toastr.error('Could not export file.', 'CharMemory');
+        }
+    });
+
+    // Data Bank: Delete file
+    $modal.on('click', '.charMemory_tsDeleteBtn', async function () {
+        const $row = $(this).closest('.charMemory_tsFileRow');
+        const url = $row.data('url');
+        const name = $row.data('name') || url;
+        const confirmed = await callGenericPopup(
+            `Delete "${escapeHtml(name)}" from the Data Bank?\n\nThis cannot be undone.`,
+            POPUP_TYPE.CONFIRM,
+        );
+        if (!confirmed) return;
+        try {
+            const avatar = $row.data('avatar') || target?.avatar;
+            if (!avatar) return;
+            await deleteFileFromServer(url, true);
+            ensureCharacterAttachments(avatar);
+            extension_settings.character_attachments[avatar] =
+                (extension_settings.character_attachments[avatar] || []).filter(a => a.url !== url);
+            saveSettingsDebounced();
+            $row.fadeOut(200, () => $row.remove());
+            toastr.success(`Deleted: ${name}`, 'CharMemory');
+            updateStatusDisplay();
+        } catch (err) {
+            console.error(LOG_PREFIX, 'Failed to delete file:', err);
+            toastr.error('Could not delete file.', 'CharMemory');
+        }
+    });
+
+    // Data Bank: Convert file
+    $modal.on('click', '.charMemory_tsConvertBtn', function () {
+        const $row = $(this).closest('.charMemory_tsFileRow');
+        const url = $row.data('url');
+        // Select 'databank' source in the Convert tool and set the file
+        $('input[name="charMemory_formatSource"][value="databank"]').prop('checked', true);
+        $('#charMemory_convertSource').val(url);
+        toastr.info('File selected in Convert tool. Open the Convert section to proceed.', 'CharMemory', { timeOut: 4000 });
+    });
+
+    // Data Bank: Import file
+    $('#cm_ts_importBtn').off('click').on('click', function () {
+        $('#cm_ts_fileImport').click();
+    });
+    $('#cm_ts_fileImport').off('change').on('change', async function () {
+        const file = this.files?.[0];
+        if (!file) return;
+        const avatar = target?.avatar;
+        if (!avatar) {
+            toastr.warning('No character selected.', 'CharMemory');
+            return;
+        }
+        try {
+            const text = await file.text();
+            const base64 = convertTextToBase64(text);
+            const slug = getStringHash(file.name);
+            const uniqueName = `${Date.now()}_${slug}.txt`;
+            const fileUrl = await uploadFileAttachment(uniqueName, base64);
+            if (!fileUrl) throw new Error('Upload returned no URL');
+            ensureCharacterAttachments(avatar);
+            extension_settings.character_attachments[avatar].push({
+                url: fileUrl,
+                size: text.length,
+                name: file.name,
+                created: Date.now(),
+            });
+            saveSettingsDebounced();
+            toastr.success(`Imported: ${file.name}`, 'CharMemory');
+            // Append new file row to the Data Bank list
+            const sizeText = `<span class="charMemory_tsFileSize">${(text.length / 1024).toFixed(1)} KB</span>`;
+            const newRow = `<div class="charMemory_tsFileRow" data-url="${escapeAttr(fileUrl)}" data-name="${escapeAttr(file.name)}">
+                <div class="charMemory_tsFileName">
+                    <i class="fa-solid fa-file-lines fa-sm"></i>
+                    <span>${escapeHtml(file.name)}</span>
+                    ${sizeText}
+                </div>
+                <div class="charMemory_tsFileActions">
+                    <button class="menu_button charMemory_tsViewBtn" title="View file contents"><i class="fa-solid fa-eye fa-sm"></i></button>
+                    <button class="menu_button charMemory_tsExportBtn" title="Download file"><i class="fa-solid fa-download fa-sm"></i></button>
+                    <button class="menu_button charMemory_tsDeleteBtn" title="Delete file"><i class="fa-solid fa-trash fa-sm"></i></button>
+                    <button class="menu_button charMemory_tsConvertBtn" title="Convert file format"><i class="fa-solid fa-arrows-rotate fa-sm"></i></button>
+                </div>
+            </div>`;
+            let $list = $('#cm_ts_dataBankList .charMemory_tsFileList');
+            if (!$list.length) {
+                // First file — replace empty-state and create the list
+                $('#cm_ts_dataBankList .charMemory_diagEmpty').remove();
+                $('#cm_ts_dataBankList').prepend('<div class="charMemory_tsFileList"></div>');
+                $list = $('#cm_ts_dataBankList .charMemory_tsFileList');
+            }
+            $list.append(newRow);
+        } catch (err) {
+            console.error(LOG_PREFIX, 'Failed to import file:', err);
+            toastr.error('Could not import file.', 'CharMemory');
+        }
+        // Reset input so the same file can be re-imported
+        $(this).val('');
+    });
+
+    // Diagnostic Report: populate pre box on open
+    buildDiagnosticReport().then(report => {
+        $('#cm_ts_reportContent').text(report);
+    }).catch(err => {
+        $('#cm_ts_reportContent').text('Failed to generate report: ' + err.message);
+    });
+
+    // Diagnostic Report: copy to clipboard
+    $('#cm_ts_copyReport').off('click').on('click', async function () {
+        try {
+            await navigator.clipboard.writeText($('#cm_ts_reportContent').text());
+            const $status = $('#cm_ts_reportStatus');
+            $status.text('Copied!').show();
+            setTimeout(() => $status.fadeOut(300), 2000);
+        } catch (err) {
+            console.error(LOG_PREFIX, 'Failed to copy report:', err);
+            toastr.error('Could not copy report to clipboard.', 'CharMemory');
+        }
+    });
+
+    // Diagnostic Report: save to file
+    $('#cm_ts_saveReport').off('click').on('click', function () {
+        const report = $('#cm_ts_reportContent').text();
+        const filename = ($('#cm_ts_reportFilename').val() || '').trim() || 'charMemory-diagnostic.txt';
+        const blob = new Blob([report], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+    });
+
+    // Re-run Setup Wizard
+    $('#cm_ts_openWizard').off('click').on('click', function () {
+        $modal.closest('.popup').find('.popup-button-ok, .popup-button-close').first().trigger('click');
+        setTimeout(() => showSetupWizard(1), 200);
+    });
+
+    // Reset / Clear actions (with confirmation dialogs)
+    $('#cm_ts_resetThisChat').off('click').on('click', async function () {
+        const charName = getCharacterName() || 'this character';
+        const isGroup = isGroupChat();
+        const scopeNote = isGroup
+            ? `<br><small>This is a group chat — all members share one extraction pointer and will all be reset together.</small>`
+            : '';
+        const confirmed = await callGenericPopup(
+            `The extraction pointer for the active chat will be reset for <strong>${escapeHtml(charName)}</strong>. Next "Extract Now" will re-read all messages in this chat from the first.${scopeNote}`,
+            POPUP_TYPE.CONFIRM, 'Reset This Chat',
+        );
+        if (!confirmed) return;
+        resetCurrentChatTracking();
+    });
+
+    $('#cm_ts_resetBatchProgress').off('click').on('click', async function () {
+        const charName = getCharacterName() || 'this character';
+        const confirmed = await callGenericPopup(
+            `The Batch tool's record of which messages it has already processed will be cleared for all of <strong>${escapeHtml(charName)}</strong>'s chats. The next Batch run will re-read every message from the start, which may create duplicate memories unless you clear existing memories first. Extract Now and auto-extraction are not affected.`,
+            POPUP_TYPE.CONFIRM, 'Reset Batch Progress',
+        );
+        if (!confirmed) return;
+        resetBatchProgress();
+    });
+    $('#cm_ts_clearMemories').off('click').on('click', async function () {
+        const charName = getCharacterName() || 'this character';
+        const s = extension_settings[MODULE_NAME];
+        const scopeNote = s.perChat
+            ? `This will delete memories for the current chat only.`
+            : `This includes memories from all of ${escapeHtml(charName)}'s chats.`;
+        const confirmed = await callGenericPopup(
+            `<strong>${escapeHtml(charName)}'s</strong> memory file will be deleted and extraction tracking will be reset. This cannot be undone.<br><br>${scopeNote}`,
+            POPUP_TYPE.CONFIRM, 'Clear All Memories',
+        );
+        if (!confirmed) return;
+        await clearAllMemories();
+    });
+
+    // Auto-refresh the Data Bank file list every 2s while the databank section is active.
+    // Targets are recomputed each tick so the list updates if the character context changes
+    // after the modal was opened (e.g. chat loaded after the troubleshooter was opened).
+    const rebuildDataBankList = () => {
+        if (!$modal.find('.charMemory_modalSection[data-section="databank"]').hasClass('active')) return;
+        const currentTargets = getMemoryTargets();
+        let newHtml = '';
+        if (!currentTargets.length) {
+            newHtml = '<div class="charMemory_diagEmpty">No character selected.</div>';
+        } else if (currentTargets.length > 1) {
+            for (const t of currentTargets) {
+                const avatarImg = `<img class="charMemory_groupAvatar" src="/thumbnail?type=avatar&file=${encodeURIComponent(t.avatar)}" alt="" onerror="this.style.display='none'" />`;
+                newHtml += `<div class="charMemory_tsMemberSection">
+                    <div class="charMemory_tsMemberLabel">${avatarImg}${escapeHtml(t.name)}</div>
+                    ${buildMemberFileList(t)}
+                </div>`;
+            }
+        } else {
+            newHtml = buildMemberFileList(currentTargets[0]);
+        }
+        const $list = $('#cm_ts_dataBankList');
+        if ($list.html() !== newHtml) $list.html(newHtml);
+    };
+    rebuildDataBankList(); // Populate immediately so initial render reflects current state
+    autoRefreshInterval = setInterval(rebuildDataBankList, 2000);
+
+    return popup;
+}
+
+/**
+ * Build a text diagnostic report for clipboard sharing.
+ * Gathers settings, health checks, activity log, memory count,
+ * VS configuration, last injection data, and version info.
+ * @returns {Promise<string>}
+ */
+async function buildDiagnosticReport() {
+    const s = extension_settings[MODULE_NAME];
+    const targets = getMemoryTargets();
+    const target = targets[0];
+    const charName = getCharacterName() || '(none)';
+    const vecSettings = extension_settings.vectors || {};
+
+    // Health checks
+    const healthResult = await computeHealthScore();
+    const healthLines = healthResult.checks.map(c =>
+        `  [${c.level.toUpperCase()}] ${c.label}: ${c.detail}`
+    ).join('\n');
+
+    // Memory count
+    let memoryInfo = 'No memory file';
+    if (target) {
+        const attachment = findMemoryAttachmentForCharacter(target.avatar, target.fileName);
+        if (attachment) {
+            try {
+                const content = await getFileAttachment(attachment.url);
+                const blocks = parseMemories(content || '');
+                const count = countMemories(blocks);
+                memoryInfo = `${count} memories in ${blocks.length} blocks (file: ${target.fileName})`;
+            } catch {
+                memoryInfo = `File exists but could not be read (${target.fileName})`;
+            }
+        } else {
+            memoryInfo = `No file found (expected: ${target.fileName})`;
+        }
+    }
+
+    // Last injection
+    const dbPrompt = lastDiagnostics.extensionPrompts?.['4_vectors_data_bank'];
+    let injectionInfo = 'No injection data captured';
+    if (dbPrompt?.content) {
+        const bullets = dbPrompt.content.split('\n')
+            .map(l => l.trim()).filter(l => l.startsWith('- ')).length;
+        injectionInfo = `${bullets} memories injected (${dbPrompt.content.length} chars total)`;
+    }
+
+    // Activity log (last 10)
+    const logLines = activityLog.slice(0, 10).map(e =>
+        `  [${e.timestamp}] ${e.type}: ${e.message.split('\n')[0]}`
+    ).join('\n');
+
+    const report = `=== CharMemory Diagnostic Report ===
+Generated: ${new Date().toISOString()}
+Version: ${MODULE_VERSION}
+
+--- Character ---
+Name: ${charName}
+Group chat: ${isGroupChat() ? 'Yes (' + targets.length + ' members found)' : 'No'}
+${(() => {
+    if (!isGroupChat()) return '';
+    const context = getContext();
+    const group = context.groups?.find(g => g.id === context.groupId);
+    if (!group) {
+        return `\n--- Group Debug ---\nGroup ID: ${context.groupId}\nGroups loaded: ${context.groups?.length ?? 0}\nAvailable IDs: ${context.groups?.map(g => g.id).join(', ') || '(none)'}\n`;
+    }
+    const activeAvatars = (group.members || []).filter(a => !group.disabled_members?.includes(a));
+    const resolved = activeAvatars.filter(a => characters.findIndex(c => c.avatar === a) >= 0);
+    const unresolved = activeAvatars.filter(a => characters.findIndex(c => c.avatar === a) < 0);
+    let out = `\n--- Group Debug ---\nGroup name: ${group.name}\nGeneration mode: ${group.generation_mode ?? 0}\nTotal members: ${group.members?.length ?? 0}, disabled: ${group.disabled_members?.length ?? 0}, active: ${activeAvatars.length}\nResolved: ${resolved.length}, unresolved: ${unresolved.length}\nCharacters loaded: ${characters.length}`;
+    if (unresolved.length > 0) out += `\nUnresolved avatars: ${unresolved.join(', ')}`;
+    return out + '\n';
+})()}
+--- Settings ---
+Source: ${s.source || 'provider'}
+Provider: ${s.selectedProvider || '(none)'}
+Interval: ${s.interval}
+Chunk size: ${s.maxMessagesPerExtraction}
+Response length: ${s.responseLength}
+Per-chat: ${s.perChat ? 'Yes' : 'No'}
+
+--- Memories ---
+${memoryInfo}
+
+--- Health Checks (${healthResult.level}) ---
+${healthLines || '  No checks run'}
+
+--- Vector Storage ---
+Enabled (files): ${vecSettings.enabled_files ? 'Yes' : 'No'}
+Chunk size: ${vecSettings.chunk_size_db ?? 'default'}
+Overlap: ${vecSettings.overlap_percent_db ?? 0}%
+Retrieve chunks: ${vecSettings.chunk_count_db ?? 'default'}
+Score threshold: ${vecSettings.score_threshold ?? 'not set'}
+
+--- Last Injection ---
+${injectionInfo}
+Timestamp: ${lastDiagnostics.timestamp || 'none'}
+
+--- Recent Activity (last 10) ---
+${logLines || '  No activity logged'}
+`;
+    return report;
 }
 
 // ============ Memory Manager ============
@@ -3674,239 +6235,233 @@ async function showMemoryManager() {
         callGenericPopup('No character selected.', POPUP_TYPE.TEXT);
         return;
     }
-    const isMultiTarget = targets.length > 1;
 
-    // Load all targets' memories in parallel
-    const targetData = await Promise.all(targets.map(async (target) => {
-        const content = await readMemoriesForCharacter(target.avatar, target.fileName);
-        const blocks = parseMemories(content || '');
-        return { ...target, blocks };
-    }));
+    // For group chats, show a character picker first
+    let target;
+    if (targets.length === 1) {
+        target = targets[0];
+    } else {
+        // Load counts for the picker labels
+        const targetData = await Promise.all(targets.map(async (t) => {
+            const content = await readMemoriesForCharacter(t.avatar, t.fileName);
+            const blocks = parseMemories(content || '');
+            const count = blocks.reduce((sum, b) => sum + b.bullets.length, 0);
+            return { ...t, count };
+        }));
+        const pickerHtml = targetData.map((t, i) =>
+            `<label class="checkbox_label"><input type="radio" name="charMemory_mmTarget" value="${i}" ${i === 0 ? 'checked' : ''} /> ${escapeHtml(t.name)} <small style="opacity:0.5;">(${t.count} memories)</small></label>`,
+        ).join('<br>');
+        const picked = await callGenericPopup(`Select a character to view/edit memories for:<br><br>${pickerHtml}`, POPUP_TYPE.CONFIRM);
+        if (!picked) return;
+        const selectedIdx = Number($('input[name="charMemory_mmTarget"]:checked').val()) || 0;
+        target = targets[selectedIdx];
+    }
 
-    const totalBlocks = targetData.reduce((sum, t) => sum + t.blocks.length, 0);
-    if (totalBlocks === 0) {
-        callGenericPopup(isMultiTarget ? 'No memories yet for any group member.' : 'No memories yet.', POPUP_TYPE.TEXT);
+    const content = await readMemoriesForCharacter(target.avatar, target.fileName);
+    const blocks = parseMemories(content || '');
+
+    if (blocks.length === 0) {
+        callGenericPopup('No memories yet.', POPUP_TYPE.TEXT);
         return;
     }
 
-    let html = '<div class="charMemory_manager">';
-    for (const target of targetData) {
-        if (target.blocks.length === 0) continue;
+    const memCount = countMemories(blocks);
+    const editor = createMemoryEditor({ blocks });
+    let mmFindPattern = null;
 
-        // Character header (group mode only)
-        if (isMultiTarget) {
-            const memCount = target.blocks.reduce((sum, b) => sum + b.bullets.length, 0);
-            html += `<div class="charMemory_groupSection" data-avatar="${escapeAttr(target.avatar)}" data-filename="${escapeAttr(target.fileName)}">
-                <div style="font-weight:bold;font-size:0.95em;margin:8px 0 4px;border-bottom:1px solid var(--SmartThemeBorderColor, rgba(128,128,128,0.2));padding-bottom:4px;">
-                    ${escapeHtml(target.name)} <small style="opacity:0.5;">(${memCount} memories)</small>
-                </div>`;
-        }
+    const refreshEditor = (highlightPattern) => {
+        if (highlightPattern !== undefined) mmFindPattern = highlightPattern;
+        const currentBlocks = editor.getBlocks();
+        const editing = editor.getEditingSet();
+        $('#charMemory_mmEditorPane').html(renderConsolidatedCards(currentBlocks, editing, mmFindPattern));
+        $('#charMemory_mmCount').text(`${countMemories(currentBlocks)} memories in ${currentBlocks.length} blocks`);
+        $('#charMemory_mmAddBlock').toggleClass('charMemory_editorAddBlock--hidden', editing.size === 0);
+        $('#charMemory_mmUndoBtn').prop('disabled', !editor.canUndo());
+    };
 
-        // Display newest blocks first (reverse chronological) while preserving original indices
-        for (let bi = target.blocks.length - 1; bi >= 0; bi--) {
-            const b = target.blocks[bi];
-            const chatLabel = b.chat.length > 16 ? b.chat.slice(0, 16) + '...' : b.chat;
-            html += `<div class="charMemory_card" data-block="${bi}" data-avatar="${escapeAttr(target.avatar)}" data-filename="${escapeAttr(target.fileName)}">
-                <div class="charMemory_cardHeader">
-                    <span class="charMemory_cardTitle">${escapeHtml(chatLabel)}</span>
-                    <span class="charMemory_cardTimestamp">${escapeHtml(b.date)}</span>
-                    <span class="charMemory_cardActions">
-                        <button class="charMemory_deleteBlockBtn menu_button menu_button_icon" data-block="${bi}" data-avatar="${escapeAttr(target.avatar)}" data-filename="${escapeAttr(target.fileName)}" title="Delete all memories from this block"><i class="fa-solid fa-trash"></i></button>
-                    </span>
-                </div>
-                <div class="charMemory_cardBullets">`;
-            for (let bui = 0; bui < b.bullets.length; bui++) {
-                html += `<div class="charMemory_bulletRow" data-block="${bi}" data-bullet="${bui}">
-                    <span class="charMemory_bulletText">- ${escapeHtml(b.bullets[bui])}</span>
-                    <span class="charMemory_bulletActions">
-                        <button class="charMemory_editBtn menu_button menu_button_icon" data-block="${bi}" data-bullet="${bui}" data-avatar="${escapeAttr(target.avatar)}" data-filename="${escapeAttr(target.fileName)}" title="Edit"><i class="fa-solid fa-pencil"></i></button>
-                        <button class="charMemory_deleteBtn menu_button menu_button_icon" data-block="${bi}" data-bullet="${bui}" data-avatar="${escapeAttr(target.avatar)}" data-filename="${escapeAttr(target.fileName)}" title="Delete"><i class="fa-solid fa-trash"></i></button>
-                    </span>
-                </div>`;
-            }
-            html += '</div></div>';
-        }
+    const editorHtml = `<div class="charMemory_manager">
+        <div class="charMemory_tsFileEditorHeader">
+            <span class="charMemory_dimText">${escapeHtml(target.name)}</span>
+            <span id="charMemory_mmCount" class="charMemory_dimText">${memCount} memories in ${blocks.length} blocks</span>
+        </div>
+        ${buildFindReplaceBar('charMemory_mmFR')}
+        <div class="charMemory_consolidationContent" id="charMemory_mmEditorPane">${renderConsolidatedCards(blocks, editor.getEditingSet())}</div>
+        <div class="charMemory_tsFileEditorFooter">
+            <button class="charMemory_editorAddBlock menu_button charMemory_editorAddBlock--hidden" id="charMemory_mmAddBlock"><i class="fa-solid fa-plus fa-xs"></i> Add Block</button>
+            <button class="menu_button" id="charMemory_mmUndoBtn" disabled><i class="fa-solid fa-rotate-left fa-xs"></i> Undo</button>
+        </div>
+    </div>`;
 
-        if (isMultiTarget) {
-            html += '</div>'; // close .charMemory_groupSection
-        }
+    const popup = callGenericPopup(editorHtml, POPUP_TYPE.CONFIRM, '', { wide: true, allowVerticalScrolling: true, okButton: 'Save', cancelButton: 'Cancel' });
+
+    // Find/Replace bar
+    const cleanupMmFR = wireFindReplaceEvents(editor, refreshEditor, 'charMemory_mmFR', '.charMemoryMmFR');
+
+    // Editor event delegation
+    $(document).off('click.charMemoryMmToggle').on('click.charMemoryMmToggle', '#charMemory_mmEditorPane .charMemory_editorToggleEdit', function () {
+        editor.toggleEdit(Number($(this).data('block')));
+        refreshEditor();
+    });
+
+    $(document).off('input.charMemoryMmBullet').on('input.charMemoryMmBullet', '#charMemory_mmEditorPane .charMemory_editorBulletInput', function () {
+        editor.updateBullet(Number($(this).data('block')), Number($(this).data('bullet')), $(this).val());
+    });
+
+    $(document).off('input.charMemoryMmTheme').on('input.charMemoryMmTheme', '#charMemory_mmEditorPane .charMemory_editorThemeInput', function () {
+        editor.updateTheme(Number($(this).data('block')), $(this).val());
+    });
+
+    $(document).off('click.charMemoryMmDelBullet').on('click.charMemoryMmDelBullet', '#charMemory_mmEditorPane .charMemory_editorDeleteBullet', function () {
+        editor.deleteBullet(Number($(this).data('block')), Number($(this).data('bullet')));
+        refreshEditor();
+    });
+
+    $(document).off('click.charMemoryMmDelBlock').on('click.charMemoryMmDelBlock', '#charMemory_mmEditorPane .charMemory_editorDeleteBlock', function () {
+        editor.deleteBlock(Number($(this).data('block')));
+        refreshEditor();
+    });
+
+    $(document).off('click.charMemoryMmAddBullet').on('click.charMemoryMmAddBullet', '#charMemory_mmEditorPane .charMemory_editorAddBullet', function () {
+        const bi = Number($(this).data('block'));
+        editor.addBullet(bi);
+        refreshEditor();
+        $(`#charMemory_mmEditorPane .charMemory_editorCard[data-block="${bi}"] .charMemory_editorBulletInput:last`).focus();
+    });
+
+    $(document).off('click.charMemoryMmAddBlock').on('click.charMemoryMmAddBlock', '#charMemory_mmAddBlock', function () {
+        editor.addBlock();
+        refreshEditor();
+        $('#charMemory_mmEditorPane .charMemory_editorCard:last .charMemory_editorBulletInput:last').focus();
+    });
+
+    $(document).off('click.charMemoryMmUndo').on('click.charMemoryMmUndo', '#charMemory_mmUndoBtn', function () {
+        if (editor.undo()) refreshEditor();
+    });
+
+    // Wait for Save/Cancel
+    const confirmed = await popup;
+
+    // Clean up
+    cleanupMmFR();
+    $(document).off('click.charMemoryMmToggle click.charMemoryMmDelBullet click.charMemoryMmDelBlock click.charMemoryMmAddBullet click.charMemoryMmAddBlock click.charMemoryMmUndo');
+    $(document).off('input.charMemoryMmBullet input.charMemoryMmTheme');
+
+    if (!confirmed) return;
+
+    // Filter out empty bullets and empty blocks before saving
+    const cleanBlocks = editor.getBlocks()
+        .map(b => ({ ...b, bullets: b.bullets.filter(bullet => bullet.trim() !== '') }))
+        .filter(b => b.bullets.length > 0);
+
+    if (cleanBlocks.length === 0) {
+        toastr.warning('No memories to save.', 'CharMemory');
+        return;
     }
-    html += '</div>';
 
-    const popup = callGenericPopup(html, POPUP_TYPE.TEXT, '', { wide: true, allowVerticalScrolling: true });
+    await writeMemoriesForCharacter(serializeMemories(cleanBlocks), target.avatar, target.fileName);
+    const savedCount = countMemories(cleanBlocks);
+    toastr.success(`Saved ${savedCount} memories.`, 'CharMemory');
+    updateStatusDisplay();
+}
 
-    // Wire up event handlers — always read avatar+fileName from data attributes
-    $(document).off('click.charMemoryManager').on('click.charMemoryManager', '.charMemory_editBtn', async function (e) {
-        e.stopPropagation();
-        const blockIdx = Number($(this).data('block'));
-        const bulletIdx = Number($(this).data('bullet'));
-        const avatar = String($(this).data('avatar'));
-        const fileName = String($(this).data('filename'));
-        await editMemory(blockIdx, bulletIdx, avatar, fileName);
-    });
+// ============ Find & Replace ============
 
-    $(document).off('click.charMemoryDelete').on('click.charMemoryDelete', '.charMemory_deleteBtn', async function (e) {
-        e.stopPropagation();
-        const blockIdx = Number($(this).data('block'));
-        const bulletIdx = Number($(this).data('bullet'));
-        const avatar = String($(this).data('avatar'));
-        const fileName = String($(this).data('filename'));
-        await deleteMemory(blockIdx, bulletIdx, avatar, fileName);
-    });
-
-    $(document).off('click.charMemoryDeleteBlock').on('click.charMemoryDeleteBlock', '.charMemory_deleteBlockBtn', async function (e) {
-        e.stopPropagation();
-        const blockIdx = Number($(this).data('block'));
-        const avatar = String($(this).data('avatar'));
-        const fileName = String($(this).data('filename'));
-        await deleteBlock(blockIdx, avatar, fileName);
-    });
-
-    popup.finally(() => {
-        $(document).off('click.charMemoryManager');
-        $(document).off('click.charMemoryDelete');
-        $(document).off('click.charMemoryDeleteBlock');
-    });
+/**
+ * Build HTML for a compact find/replace bar. Reusable across all editor surfaces.
+ * @param {string} idPrefix - Unique prefix for element IDs to avoid conflicts.
+ * @returns {string} HTML string
+ */
+function buildFindReplaceBar(idPrefix) {
+    return `<div class="charMemory_findReplaceBar">
+        <input type="text" id="${idPrefix}_findInput" class="text_pole" placeholder="Find..." />
+        <input type="text" id="${idPrefix}_replaceInput" class="text_pole" placeholder="Replace with..." />
+        <button id="${idPrefix}_caseSensitive" class="menu_button menu_button_icon charMemory_frCaseBtn" title="Case sensitive">Aa</button>
+        <button id="${idPrefix}_replaceAllBtn" class="menu_button" disabled>Replace All</button>
+        <span id="${idPrefix}_matchCount" class="charMemory_frMatchCount"></span>
+    </div>`;
 }
 
 /**
- * Re-index block/bullet data attributes within a scope after deletion.
- * If group sections exist, re-indexes within each section independently.
- * Otherwise re-indexes all cards in the manager.
+ * Wire find/replace bar events to a createMemoryEditor instance.
+ * @param {object} editor - Editor API from createMemoryEditor()
+ * @param {function} refreshFn - Called after replace to re-render cards. Receives (highlightPattern).
+ * @param {string} idPrefix - Same prefix used in buildFindReplaceBar()
+ * @param {string} namespace - jQuery event namespace for cleanup (e.g. '.charMemoryConsolFR')
+ * @returns {function} Cleanup function that removes all event handlers.
  */
-function reindexManager() {
-    const $sections = $('.charMemory_manager .charMemory_groupSection');
-    if ($sections.length > 0) {
-        $sections.each(function () {
-            $(this).find('.charMemory_card').each(function (ci) {
-                $(this).attr('data-block', ci);
-                $(this).find('.charMemory_deleteBlockBtn').attr('data-block', ci);
-                $(this).find('.charMemory_bulletRow').each(function (ri) {
-                    $(this).attr('data-block', ci).attr('data-bullet', ri);
-                    $(this).find('.charMemory_editBtn, .charMemory_deleteBtn').attr('data-block', ci).attr('data-bullet', ri);
-                });
-            });
-        });
-    } else {
-        $('.charMemory_manager .charMemory_card').each(function (ci) {
-            $(this).attr('data-block', ci);
-            $(this).find('.charMemory_deleteBlockBtn').attr('data-block', ci);
-            $(this).find('.charMemory_bulletRow').each(function (ri) {
-                $(this).attr('data-block', ci).attr('data-bullet', ri);
-                $(this).find('.charMemory_editBtn, .charMemory_deleteBtn').attr('data-block', ci).attr('data-bullet', ri);
-            });
-        });
-    }
-}
+function wireFindReplaceEvents(editor, refreshFn, idPrefix, namespace) {
+    let caseSensitive = false;
 
-async function editMemory(blockIndex, bulletIndex, avatar, fileName) {
-    const content = await readMemoriesForCharacter(avatar, fileName);
-    const blocks = parseMemories(content);
-
-    if (blockIndex < 0 || blockIndex >= blocks.length) return;
-    const block = blocks[blockIndex];
-    if (bulletIndex < 0 || bulletIndex >= block.bullets.length) return;
-
-    const edited = await callGenericPopup('Edit memory:', POPUP_TYPE.INPUT, block.bullets[bulletIndex], { rows: 3 });
-    if (edited === null || edited === false) return;
-
-    const newText = String(edited).trim();
-    block.bullets[bulletIndex] = newText;
-    await writeMemoriesForCharacter(serializeMemories(blocks), avatar, fileName);
-    toastr.success('Memory updated.', 'CharMemory');
-
-    // Update DOM in place — scope to section if present
-    const $scope = $(`.charMemory_groupSection[data-avatar="${avatar}"]`);
-    const $row = ($scope.length ? $scope : $('.charMemory_manager'))
-        .find(`.charMemory_bulletRow[data-block="${blockIndex}"][data-bullet="${bulletIndex}"]`);
-    $row.find('.charMemory_bulletText').text('- ' + newText);
-}
-
-async function deleteMemory(blockIndex, bulletIndex, avatar, fileName) {
-    const content = await readMemoriesForCharacter(avatar, fileName);
-    const blocks = parseMemories(content);
-
-    if (blockIndex < 0 || blockIndex >= blocks.length) return;
-    const block = blocks[blockIndex];
-    if (bulletIndex < 0 || bulletIndex >= block.bullets.length) return;
-
-    const confirm = await callGenericPopup(`Delete this memory?\n\n- ${block.bullets[bulletIndex]}`, POPUP_TYPE.CONFIRM);
-    if (!confirm) return;
-
-    block.bullets.splice(bulletIndex, 1);
-    if (block.bullets.length === 0) {
-        blocks.splice(blockIndex, 1);
+    function getPattern() {
+        const find = $(`#${idPrefix}_findInput`).val();
+        if (!find) return null;
+        const escaped = find.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const flags = caseSensitive ? 'g' : 'gi';
+        return new RegExp(escaped, flags);
     }
 
-    await writeMemoriesForCharacter(serializeMemories(blocks), avatar, fileName);
-    toastr.success('Memory deleted.', 'CharMemory');
-
-    // Update DOM in place
-    const $scope = $(`.charMemory_groupSection[data-avatar="${avatar}"]`);
-    const $row = ($scope.length ? $scope : $('.charMemory_manager'))
-        .find(`.charMemory_bulletRow[data-block="${blockIndex}"][data-bullet="${bulletIndex}"]`);
-    const $card = $row.closest('.charMemory_card');
-    $row.remove();
-
-    if ($card.find('.charMemory_bulletRow').length === 0) {
-        $card.remove();
-    }
-    if ($scope.length && $scope.find('.charMemory_card').length === 0) {
-        $scope.remove();
-    }
-    if ($('.charMemory_manager .charMemory_card').length === 0) {
-        $('.charMemory_manager').html('<div style="text-align:center;padding:1em;">No memories yet.</div>');
+    function updateCount() {
+        const find = $(`#${idPrefix}_findInput`).val();
+        const count = editor.countMatches(find, caseSensitive);
+        const $count = $(`#${idPrefix}_matchCount`);
+        $count.text(count > 0 ? `${count} match${count === 1 ? '' : 'es'}` : (find ? 'No matches' : ''));
+        $(`#${idPrefix}_replaceAllBtn`).prop('disabled', count === 0);
     }
 
-    reindexManager();
-}
+    $(document).on(`input${namespace}`, `#${idPrefix}_findInput`, function () {
+        updateCount();
+        refreshFn(getPattern());
+    });
 
-async function deleteBlock(blockIndex, avatar, fileName) {
-    const content = await readMemoriesForCharacter(avatar, fileName);
-    const blocks = parseMemories(content);
+    $(document).on(`click${namespace}`, `#${idPrefix}_caseSensitive`, function () {
+        caseSensitive = !caseSensitive;
+        $(this).toggleClass('charMemory_frCaseBtn--active', caseSensitive);
+        updateCount();
+        refreshFn(getPattern());
+    });
 
-    if (blockIndex < 0 || blockIndex >= blocks.length) return;
-    const block = blocks[blockIndex];
+    $(document).on(`click${namespace}`, `#${idPrefix}_replaceAllBtn`, function () {
+        const find = $(`#${idPrefix}_findInput`).val();
+        const replace = $(`#${idPrefix}_replaceInput`).val();
+        if (!find) return;
+        const result = editor.findAndReplaceAll(find, replace, caseSensitive);
+        refreshFn(null);
+        updateCount();
+        toastr.success(`Replaced ${result.replacements} occurrence${result.replacements === 1 ? '' : 's'}.`, 'CharMemory');
+    });
 
-    const confirm = await callGenericPopup(`Delete all ${block.bullets.length} memories from this block?`, POPUP_TYPE.CONFIRM);
-    if (!confirm) return;
-
-    blocks.splice(blockIndex, 1);
-    await writeMemoriesForCharacter(serializeMemories(blocks), avatar, fileName);
-    toastr.success('Block deleted.', 'CharMemory');
-
-    // Update DOM in place
-    const $scope = $(`.charMemory_groupSection[data-avatar="${avatar}"]`);
-    ($scope.length ? $scope : $('.charMemory_manager'))
-        .find(`.charMemory_card[data-block="${blockIndex}"]`).remove();
-
-    if ($scope.length && $scope.find('.charMemory_card').length === 0) {
-        $scope.remove();
-    }
-    if ($('.charMemory_manager .charMemory_card').length === 0) {
-        $('.charMemory_manager').html('<div style="text-align:center;padding:1em;">No memories yet.</div>');
-    }
-
-    reindexManager();
+    return function cleanup() {
+        $(document).off(`input${namespace}`);
+        $(document).off(`click${namespace}`);
+    };
 }
 
 // ============ Consolidation ============
 
 /**
- * Re-index editingSet after a block is removed via splice.
- * Indices above the removed position shift down by one.
+ * Apply <mark> highlighting to raw text, escaping HTML safely per-segment.
+ * Matches against raw text first, then escapes each segment individually.
+ * This prevents mark tags from splitting HTML entities like &amp;.
+ * @param {string} rawText Unescaped raw text
+ * @param {RegExp|null} pattern Highlight pattern (global flag required)
+ * @returns {string} HTML-safe string with mark wrapping around matches
  */
-function reindexEditingSet(editingSet, removedIndex) {
-    const updated = new Set();
-    for (const idx of editingSet) {
-        if (idx < removedIndex) updated.add(idx);
-        else if (idx > removedIndex) updated.add(idx - 1);
+function highlightText(rawText, pattern) {
+    if (!pattern) return escapeHtml(rawText);
+    pattern.lastIndex = 0;
+    let result = '';
+    let lastIndex = 0;
+    let m;
+    while ((m = pattern.exec(rawText)) !== null) {
+        result += escapeHtml(rawText.slice(lastIndex, m.index));
+        result += '<mark>' + escapeHtml(m[0]) + '</mark>';
+        lastIndex = m.index + m[0].length;
     }
-    editingSet.clear();
-    for (const idx of updated) editingSet.add(idx);
+    result += escapeHtml(rawText.slice(lastIndex));
+    return result;
 }
 
-function renderConsolidatedCards(blocks, editingSet) {
+function renderConsolidatedCards(blocks, editingSet, highlightPattern = null) {
     return blocks.map((b, bi) => {
         const isEditing = editingSet.has(bi);
         const themeLabel = `${bi + 1}. ${b.chat}`;
@@ -3931,10 +6486,11 @@ function renderConsolidatedCards(blocks, editingSet) {
                 <button class="charMemory_editorAddBullet menu_button" data-block="${bi}"><i class="fa-solid fa-plus fa-xs"></i> Add memory</button>
             </div>`;
         } else {
-            const bullets = b.bullets.map(bullet => `<li>${escapeHtml(bullet)}</li>`).join('');
+            const bullets = b.bullets.map(bullet => `<li>${highlightText(bullet, highlightPattern)}</li>`).join('');
+            const headerHtml = highlightText(themeLabel, highlightPattern);
             return `<div class="charMemory_card charMemory_editorCard" data-block="${bi}">
                 <div class="charMemory_cardHeader">
-                    <strong>${escapeHtml(themeLabel)}</strong>
+                    <strong>${headerHtml}</strong>
                     <span class="charMemory_cardActions">
                         <button class="charMemory_editorToggleEdit menu_button menu_button_icon" data-block="${bi}" title="Edit block"><i class="fa-solid fa-pencil"></i></button>
                     </span>
@@ -3980,6 +6536,7 @@ function buildConsolidationDialog(beforeBlocks, beforeCount, consolidatedBlocks,
             <input type="button" id="charMemory_undoRerun" class="menu_button" value="Undo" title="Revert to previous consolidated version" disabled />
             <span id="charMemory_rerunSpinner" style="display:none;">Working...</span>
         </div>
+        ${buildFindReplaceBar('charMemory_consolFR')}
         <div class="charMemory_consolidationPanes">
             <div class="charMemory_consolidationPane">
                 <h4>Original Memories</h4>
@@ -4004,7 +6561,6 @@ async function undoConsolidation() {
 
     await writeMemoriesForCharacter(consolidationBackup.content, consolidationBackup.avatar, consolidationBackup.fileName);
     consolidationBackup = null;
-    $('#charMemory_undoConsolidate').prop('disabled', true);
     toastr.success('Consolidation undone. Memories restored.', 'CharMemory');
     updateStatusDisplay();
 }
@@ -4013,27 +6569,30 @@ const CONSOLIDATION_PRESETS = {
     conservative: {
         name: 'Conservative',
         description: 'Only merge near-exact duplicates. Preserves everything else.',
-        prompt: `Merge ONLY near-exact duplicate memories. If two bullets say essentially the same thing, keep the more detailed version. Do NOT combine loosely related facts. Do NOT summarize. Preserve every distinct piece of information.`,
+        prompt: `Merge ONLY near-exact duplicate memories. If two bullets say essentially the same thing, keep the more detailed version. Do NOT combine loosely related facts. Do NOT summarize. Preserve every distinct piece of information.
+Each block must start with a topic tag as the first bullet: "- [{{charName}}, OtherNames — short description]". ALWAYS include {{charName}} first. Preserve existing topic tags.`,
     },
     balanced: {
         name: 'Balanced',
         description: 'Merge duplicates and combine related facts.',
-        prompt: `Merge duplicate or near-duplicate memories into one. Combine closely related facts about the same event or topic. Preserve all unique information — do NOT discard distinct memories. Summarize in third person.`,
+        prompt: `Merge duplicate or near-duplicate memories into one. Combine closely related facts about the same event or topic. Preserve all unique information — do NOT discard distinct memories. Summarize in third person.
+Each block must start with a topic tag as the first bullet: "- [{{charName}}, OtherNames — short description]". ALWAYS include {{charName}} first, then other key participants. When merging blocks, update the topic tag to reflect the combined content. No more than 5 bullets per block (not counting the topic tag).`,
     },
     aggressive: {
         name: 'Aggressive',
         description: 'Compress heavily. Summarize themes. Minimize bullet count.',
-        prompt: `Aggressively consolidate these memories into the fewest possible entries. Group by theme or topic. Summarize rather than listing individual events. It's OK to lose minor details if the key facts are preserved. Aim for a compact overview.`,
+        prompt: `Aggressively consolidate these memories into the fewest possible entries. Group by theme or topic. Summarize rather than listing individual events. It's OK to lose minor details if the key facts are preserved. Aim for a compact overview.
+Each block must start with a topic tag as the first bullet: "- [{{charName}}, OtherNames/themes — short description]". ALWAYS include {{charName}} first. No more than 5 bullets per block (not counting the topic tag). Always name specific people — never use "a client" or "someone."`,
     },
 };
 
-function buildConsolidationPrompt(memoriesText) {
+function buildConsolidationPrompt(memoriesText, charName) {
     const strategy = extension_settings[MODULE_NAME].consolidationStrategy || 'balanced';
     const overrides = extension_settings[MODULE_NAME].consolidationPrompts || {};
     const userPrompt = overrides[strategy]
         || CONSOLIDATION_PRESETS[strategy]?.prompt
         || CONSOLIDATION_PRESETS.balanced.prompt;
-    return `You are a memory consolidation assistant. Review the following character memories and consolidate them.
+    let prompt = `You are a memory consolidation assistant. Review the following character memories and consolidate them.
 
 RULES:
 ${userPrompt}
@@ -4041,28 +6600,32 @@ ${userPrompt}
 ADDITIONAL FORMAT RULES:
 1. Do NOT use emojis anywhere in the output.
 2. Do NOT copy text verbatim from the input — rephrase in third person.
-3. Group memories by theme. Each group is wrapped in <memory chat="Theme Name"></memory> tags where "Theme Name" is a short descriptive label (e.g. "Relationship History", "Character Background", "Key Events").
+3. Group memories by theme or encounter. Each group is wrapped in <memory chat="Theme Name"></memory> tags where "Theme Name" is a short, specific label. Prefer encounter-specific labels (e.g., "Adoption day at the apartment", "First vet visit") over broad categories (e.g., "Key Events", "Relationships"). Specific labels improve later retrieval.
 4. Inside each <memory> block, use a markdown bulleted list (lines starting with "- ").
+5. The first bullet in each block must be a topic tag: "- [{{charName}}, OtherNames — short description]". ALWAYS include {{charName}} first. This is mandatory.
+6. Always use specific names for people involved, never generic labels like "a client" or "someone."
 
 MEMORIES TO CONSOLIDATE:
 ${memoriesText}
 
 Output ONLY <memory> blocks. No headers, no commentary, no extra text.`;
+    prompt = prompt.replace(/\{\{charName\}\}/g, charName || '');
+    return prompt;
 }
 
-async function runConsolidationLLM(memories) {
+async function runConsolidationLLM(memories, charName) {
     let memoriesText = memories.map((b, i) =>
         `[Block ${i + 1}]\n${b.bullets.map(bullet => `- ${bullet}`).join('\n')}`,
     ).join('\n\n');
 
     const isWebLlm = extension_settings[MODULE_NAME].source === EXTRACTION_SOURCE.WEBLLM;
     if (isWebLlm) {
-        const template = buildConsolidationPrompt('');
+        const template = buildConsolidationPrompt('', charName);
         const available = Math.max(WEBLLM_MAX_PROMPT_CHARS - template.length, 1000);
         memoriesText = truncateText(memoriesText, available);
     }
 
-    let prompt = buildConsolidationPrompt(memoriesText);
+    let prompt = buildConsolidationPrompt(memoriesText, charName);
     prompt = substituteParamsExtended(prompt);
 
     try {
@@ -4099,14 +6662,25 @@ async function runConsolidationLLM(memories) {
         }
 
         // Parse into memory format, then serialize back to plain text for the editor
-        const now = new Date();
-        const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+        const timestamp = getTimestamp();
 
         const consolidationRegex = /<memory(?:\s+chat="([^"]*)")?>([\s\S]*?)<\/memory>/gi;
         const consolidationMatches = [...cleanResult.matchAll(consolidationRegex)];
-        const rawEntries = consolidationMatches.length > 0
+        let rawEntries = consolidationMatches.length > 0
             ? consolidationMatches.map(m => ({ theme: m[1] || 'Consolidated', content: m[2].trim() })).filter(e => e.content)
-            : [{ theme: 'Consolidated', content: cleanResult.trim() }].filter(e => e.content);
+            : [];
+
+        // Handle LLMs that produce self-closing <memory></memory> with bullets after the tag
+        if (rawEntries.length === 0 && consolidationMatches.length > 0) {
+            const altRegex = /<memory(?:\s+chat="([^"]*)")?\s*>\s*<\/memory>([\s\S]*?)(?=<memory|$)/gi;
+            const altMatches = [...cleanResult.matchAll(altRegex)];
+            rawEntries = altMatches.map(m => ({ theme: m[1] || 'Consolidated', content: m[2].trim() })).filter(e => e.content);
+        }
+
+        // Final fallback: treat entire response as one block
+        if (rawEntries.length === 0) {
+            rawEntries = [{ theme: 'Consolidated', content: cleanResult.trim() }].filter(e => e.content);
+        }
 
         const consolidated = rawEntries.map(entry => {
             const bullets = entry.content.split('\n')
@@ -4166,34 +6740,36 @@ async function consolidateMemories() {
     logActivity(`Consolidation started for ${target.name}: ${beforeCount} memories in ${memories.length} blocks`);
 
     // Show busy state on button
-    const $btn = $('#charMemory_consolidate');
+    const $btn = $('#charMemory_consolidateBtn');
     $btn.val('Consolidating…').prop('disabled', true);
 
     // Run initial consolidation — returns serialized text, parse to blocks
     let initialResult;
     try {
-        initialResult = await runConsolidationLLM(memories);
+        initialResult = await runConsolidationLLM(memories, target.name);
     } finally {
         $btn.val('Consolidate').prop('disabled', false);
     }
     if (!initialResult) return;
 
-    let editorBlocks = parseMemories(initialResult);
-    const versionStack = [];
-    const editingSet = new Set();
+    const editor = createMemoryEditor({ blocks: parseMemories(initialResult) });
+    const rerunBackups = []; // separate stack for re-run undo
+    let consolFindPattern = null;
 
-    // Deep copy blocks array
-    const cloneBlocks = (blocks) => blocks.map(b => ({ ...b, bullets: [...b.bullets] }));
-
-    // Re-render the editor pane from editorBlocks
-    const refreshEditor = () => {
-        $('#charMemory_editorPane').html(renderConsolidatedCards(editorBlocks, editingSet));
-        $('#charMemory_afterCount').text(countMemories(editorBlocks));
-        $('#charMemory_editorAddBlock').toggleClass('charMemory_editorAddBlock--hidden', editingSet.size === 0);
+    // Re-render the editor pane from editor state
+    const refreshEditor = (highlightPattern) => {
+        if (highlightPattern !== undefined) consolFindPattern = highlightPattern;
+        const blocks = editor.getBlocks();
+        const editing = editor.getEditingSet();
+        $('#charMemory_editorPane').html(renderConsolidatedCards(blocks, editing, consolFindPattern));
+        $('#charMemory_afterCount').text(countMemories(blocks));
+        $('#charMemory_editorAddBlock').toggleClass('charMemory_editorAddBlock--hidden', editing.size === 0);
     };
 
     // Build and show the interactive dialog
-    const dialogHtml = buildConsolidationDialog(memories, beforeCount, editorBlocks, editingSet);
+    const initBlocks = editor.getBlocks();
+    const initEditing = editor.getEditingSet();
+    const dialogHtml = buildConsolidationDialog(memories, beforeCount, initBlocks, initEditing);
     const popup = callGenericPopup(dialogHtml, POPUP_TYPE.CONFIRM, '', { wide: true, allowVerticalScrolling: true, okButton: 'Save', cancelButton: 'Cancel' });
 
     // Set up the strategy dropdown and prompt viewer to match current setting
@@ -4204,75 +6780,50 @@ async function consolidateMemories() {
     $('#charMemory_dialogPrompt').val(currentPrompt);
     $('#charMemory_dialogRestoreDefault').toggle(!!overrides[currentStrategy]);
 
+    // === Find/Replace bar ===
+    const cleanupConsolFR = wireFindReplaceEvents(editor, refreshEditor, 'charMemory_consolFR', '.charMemoryConsolFR');
+
     // === Event delegation for editor interactions ===
 
     // Toggle edit mode per block
     $(document).off('click.charMemoryEditorToggle').on('click.charMemoryEditorToggle', '.charMemory_editorToggleEdit', function () {
-        const bi = Number($(this).data('block'));
-        if (editingSet.has(bi)) {
-            editingSet.delete(bi);
-        } else {
-            editingSet.add(bi);
-        }
+        editor.toggleEdit(Number($(this).data('block')));
         refreshEditor();
     });
 
-    // Sync bullet input changes back to editorBlocks
+    // Sync bullet input changes back to editor state
     $(document).off('input.charMemoryEditor').on('input.charMemoryEditor', '.charMemory_editorBulletInput', function () {
-        const bi = Number($(this).data('block'));
-        const bui = Number($(this).data('bullet'));
-        if (editorBlocks[bi]) {
-            editorBlocks[bi].bullets[bui] = $(this).val();
-        }
+        editor.updateBullet(Number($(this).data('block')), Number($(this).data('bullet')), $(this).val());
     });
 
-    // Sync theme input changes back to editorBlocks
+    // Sync theme input changes back to editor state
     $(document).off('input.charMemoryEditorTheme').on('input.charMemoryEditorTheme', '.charMemory_editorThemeInput', function () {
-        const bi = Number($(this).data('block'));
-        if (editorBlocks[bi]) {
-            editorBlocks[bi].chat = $(this).val();
-        }
+        editor.updateTheme(Number($(this).data('block')), $(this).val());
     });
 
     // Delete bullet
     $(document).off('click.charMemoryEditorDelBullet').on('click.charMemoryEditorDelBullet', '.charMemory_editorDeleteBullet', function () {
-        const bi = Number($(this).data('block'));
-        const bui = Number($(this).data('bullet'));
-        if (editorBlocks[bi]) {
-            editorBlocks[bi].bullets.splice(bui, 1);
-            if (editorBlocks[bi].bullets.length === 0) {
-                editorBlocks.splice(bi, 1);
-                reindexEditingSet(editingSet, bi);
-            }
-            refreshEditor();
-        }
+        editor.deleteBullet(Number($(this).data('block')), Number($(this).data('bullet')));
+        refreshEditor();
     });
 
     // Delete block
     $(document).off('click.charMemoryEditorDelBlock').on('click.charMemoryEditorDelBlock', '.charMemory_editorDeleteBlock', function () {
-        const bi = Number($(this).data('block'));
-        editorBlocks.splice(bi, 1);
-        reindexEditingSet(editingSet, bi);
+        editor.deleteBlock(Number($(this).data('block')));
         refreshEditor();
     });
 
     // Add bullet to block
     $(document).off('click.charMemoryEditorAddBullet').on('click.charMemoryEditorAddBullet', '.charMemory_editorAddBullet', function () {
         const bi = Number($(this).data('block'));
-        if (editorBlocks[bi]) {
-            editorBlocks[bi].bullets.push('');
-            refreshEditor();
-            $(`#charMemory_editorPane .charMemory_editorCard[data-block="${bi}"] .charMemory_editorBulletInput:last`).focus();
-        }
+        editor.addBullet(bi);
+        refreshEditor();
+        $(`#charMemory_editorPane .charMemory_editorCard[data-block="${bi}"] .charMemory_editorBulletInput:last`).focus();
     });
 
     // Add new block
     $(document).off('click.charMemoryEditorAddBlock').on('click.charMemoryEditorAddBlock', '#charMemory_editorAddBlock', function () {
-        const now = new Date();
-        const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-        const newIdx = editorBlocks.length;
-        editorBlocks.push({ chat: 'New Group', date: timestamp, bullets: [''] });
-        editingSet.add(newIdx);
+        editor.addBlock();
         refreshEditor();
         $('#charMemory_editorPane .charMemory_editorCard:last .charMemory_editorBulletInput:last').focus();
     });
@@ -4312,7 +6863,7 @@ async function consolidateMemories() {
     $('#charMemory_rerunConsolidation').off('click').on('click', async () => {
         if (inApiCall) return;
 
-        const currentBlocks = cloneBlocks(editorBlocks);
+        const backupBlocks = editor.getBlocks();
 
         const dialogStrategy = $('#charMemory_consolidationDialogStrategy').val();
         extension_settings[MODULE_NAME].consolidationStrategy = dialogStrategy;
@@ -4323,28 +6874,26 @@ async function consolidateMemories() {
         $('#charMemory_rerunConsolidation').prop('disabled', true);
         $('#charMemory_editorPane').addClass('charMemory_editorDisabled');
 
-        const newResult = await runConsolidationLLM(memories);
+        const newResult = await runConsolidationLLM(memories, target.name);
 
         $('#charMemory_rerunSpinner').hide();
         $('#charMemory_rerunConsolidation').prop('disabled', false);
         $('#charMemory_editorPane').removeClass('charMemory_editorDisabled');
 
         if (newResult) {
-            versionStack.push(currentBlocks);
+            rerunBackups.push(backupBlocks);
             $('#charMemory_undoRerun').prop('disabled', false);
-            editorBlocks = parseMemories(newResult);
-            editingSet.clear();
+            editor.replaceAll(parseMemories(newResult));
             refreshEditor();
         }
     });
 
     // === Undo button ===
     $('#charMemory_undoRerun').off('click').on('click', () => {
-        if (versionStack.length === 0) return;
-        editorBlocks = versionStack.pop();
-        editingSet.clear();
+        if (rerunBackups.length === 0) return;
+        editor.replaceAll(rerunBackups.pop());
         refreshEditor();
-        if (versionStack.length === 0) {
+        if (rerunBackups.length === 0) {
             $('#charMemory_undoRerun').prop('disabled', true);
         }
     });
@@ -4353,6 +6902,7 @@ async function consolidateMemories() {
     const confirmed = await popup;
 
     // Clean up event delegation
+    cleanupConsolFR();
     $(document).off('click.charMemoryEditorToggle');
     $(document).off('input.charMemoryEditor');
     $(document).off('input.charMemoryEditorTheme');
@@ -4374,7 +6924,7 @@ async function consolidateMemories() {
     }
 
     // Filter out empty bullets and empty blocks before saving
-    const cleanBlocks = editorBlocks
+    const cleanBlocks = editor.getBlocks()
         .map(b => ({ ...b, bullets: b.bullets.filter(bullet => bullet.trim() !== '') }))
         .filter(b => b.bullets.length > 0);
 
@@ -4385,13 +6935,335 @@ async function consolidateMemories() {
 
     consolidationBackup = { content, avatar: target.avatar, fileName: target.fileName };
     await writeMemoriesForCharacter(serializeMemories(cleanBlocks), target.avatar, target.fileName);
-    $('#charMemory_undoConsolidate').prop('disabled', false);
 
     const afterCount = countMemories(cleanBlocks);
     logActivity(`Consolidation complete: ${beforeCount} → ${afterCount} memories`, 'success');
     toastr.success(`Consolidated ${beforeCount} → ${afterCount} memories.`, 'CharMemory');
     updateStatusDisplay();
     updateConsolidationStrategyUI();
+}
+
+// ============ Reformat Tool ============
+
+/**
+ * Build the HTML for the reformat preview dialog.
+ * Left pane: read-only original blocks. Right pane: editable reformatted blocks.
+ * Reuses the same CSS classes as the consolidation/conversion editor.
+ */
+function buildReformatDialog(originalBlocks, originalCount, reformattedBlocks, editingSet) {
+    const renderReadOnlyCards = (blocks) => {
+        return blocks.map(b => {
+            const bullets = b.bullets.map(bullet => `<li>${escapeHtml(bullet)}</li>`).join('');
+            return `<div class="charMemory_card">
+                <div class="charMemory_cardHeader"><strong>${escapeHtml(b.chat)}</strong> <span class="charMemory_cardDate">${escapeHtml(b.date)}</span></div>
+                <ul>${bullets}</ul>
+            </div>`;
+        }).join('');
+    };
+
+    const afterCount = countMemories(reformattedBlocks);
+    const hasEditing = editingSet.size > 0;
+
+    return `<div class="charMemory_consolidationDialog">
+        <div class="charMemory_consolidationStats" id="charMemory_reformatStats">
+            Original: ${originalCount} memories in ${originalBlocks.length} blocks &rarr; Reformatted: <span id="charMemory_reformatAfterCount">${afterCount}</span> memories in <span id="charMemory_reformatBlockCount">${reformattedBlocks.length}</span> blocks
+        </div>
+        <div class="charMemory_consolidationToolbar">
+            <input type="button" id="charMemory_rerunReformat" class="menu_button" value="Re-run" title="Send original memories to the LLM again" />
+            <input type="button" id="charMemory_undoReformatRerun" class="menu_button" value="Undo" title="Revert to previous reformatted version" disabled />
+            <span id="charMemory_reformatRerunSpinner" style="display:none;">Working...</span>
+        </div>
+        ${buildFindReplaceBar('charMemory_refFR')}
+        <div class="charMemory_consolidationPanes">
+            <div class="charMemory_consolidationPane">
+                <h4>Original Memories</h4>
+                <div class="charMemory_consolidationContent">${renderReadOnlyCards(originalBlocks)}</div>
+            </div>
+            <div class="charMemory_consolidationPane">
+                <h4>Reformatted Memories</h4>
+                <div class="charMemory_consolidationContent" id="charMemory_reformatEditorPane">${renderConsolidatedCards(reformattedBlocks, editingSet)}</div>
+                <button class="charMemory_editorAddBlock menu_button ${hasEditing ? '' : 'charMemory_editorAddBlock--hidden'}" id="charMemory_reformatAddBlock"><i class="fa-solid fa-plus fa-xs"></i> Add Block</button>
+            </div>
+        </div>
+    </div>`;
+}
+
+/**
+ * Show the reformat preview dialog with side-by-side comparison and editing.
+ * Returns the edited blocks on confirm, or null on cancel.
+ */
+async function showReformatPreview(originalBlocks, reformattedBlocks, charName, target) {
+    const originalCount = countMemories(originalBlocks);
+
+    // Editor state lives in closure
+    const editor = createMemoryEditor({ blocks: reformattedBlocks });
+    const rerunBackups = []; // separate stack for re-run undo
+    let dialogClosed = false;
+    let refFindPattern = null;
+
+    const refreshEditor = (highlightPattern) => {
+        if (highlightPattern !== undefined) refFindPattern = highlightPattern;
+        const blocks = editor.getBlocks();
+        const editing = editor.getEditingSet();
+        $('#charMemory_reformatEditorPane').html(renderConsolidatedCards(blocks, editing, refFindPattern));
+        $('#charMemory_reformatAfterCount').text(countMemories(blocks));
+        $('#charMemory_reformatBlockCount').text(blocks.length);
+        $('#charMemory_reformatAddBlock').toggleClass('charMemory_editorAddBlock--hidden', editing.size === 0);
+    };
+
+    // Build and show dialog
+    const initBlocks = editor.getBlocks();
+    const initEditing = editor.getEditingSet();
+    const dialogHtml = buildReformatDialog(originalBlocks, originalCount, initBlocks, initEditing);
+    const popup = callGenericPopup(dialogHtml, POPUP_TYPE.CONFIRM, '', { wide: true, allowVerticalScrolling: true, okButton: 'Save', cancelButton: 'Cancel' });
+
+    // === Find/Replace bar ===
+    const cleanupRefFR = wireFindReplaceEvents(editor, refreshEditor, 'charMemory_refFR', '.charMemoryRefFR');
+
+    // === Editor event delegation (unique namespace to avoid conflicts) ===
+
+    $(document).off('click.charMemoryRefToggle').on('click.charMemoryRefToggle', '.charMemory_editorToggleEdit', function () {
+        editor.toggleEdit(Number($(this).data('block')));
+        refreshEditor();
+    });
+
+    $(document).off('input.charMemoryRefBullet').on('input.charMemoryRefBullet', '.charMemory_editorBulletInput', function () {
+        editor.updateBullet(Number($(this).data('block')), Number($(this).data('bullet')), $(this).val());
+    });
+
+    $(document).off('input.charMemoryRefTheme').on('input.charMemoryRefTheme', '.charMemory_editorThemeInput', function () {
+        editor.updateTheme(Number($(this).data('block')), $(this).val());
+    });
+
+    $(document).off('click.charMemoryRefDelBullet').on('click.charMemoryRefDelBullet', '.charMemory_editorDeleteBullet', function () {
+        editor.deleteBullet(Number($(this).data('block')), Number($(this).data('bullet')));
+        refreshEditor();
+    });
+
+    $(document).off('click.charMemoryRefDelBlock').on('click.charMemoryRefDelBlock', '.charMemory_editorDeleteBlock', function () {
+        editor.deleteBlock(Number($(this).data('block')));
+        refreshEditor();
+    });
+
+    $(document).off('click.charMemoryRefAddBullet').on('click.charMemoryRefAddBullet', '.charMemory_editorAddBullet', function () {
+        const bi = Number($(this).data('block'));
+        editor.addBullet(bi);
+        refreshEditor();
+        $(`#charMemory_reformatEditorPane .charMemory_editorCard[data-block="${bi}"] .charMemory_editorBulletInput:last`).focus();
+    });
+
+    $(document).off('click.charMemoryRefAddBlock').on('click.charMemoryRefAddBlock', '#charMemory_reformatAddBlock', function () {
+        editor.addBlock();
+        refreshEditor();
+        $('#charMemory_reformatEditorPane .charMemory_editorCard:last .charMemory_editorBulletInput:last').focus();
+    });
+
+    // === Re-run button ===
+    $('#charMemory_rerunReformat').off('click').on('click', async () => {
+        if (inApiCall) return;
+        const backupBlocks = editor.getBlocks();
+
+        $('#charMemory_reformatRerunSpinner').show();
+        $('#charMemory_rerunReformat').prop('disabled', true);
+        $('#charMemory_reformatEditorPane').addClass('charMemory_editorDisabled');
+
+        let newResult;
+        try {
+            inApiCall = true;
+            const content = serializeMemories(originalBlocks);
+            newResult = await convertWithLLM(content, charName);
+        } catch (err) {
+            console.error(LOG_PREFIX, 'Re-run reformat failed:', err);
+            toastr.error(`Re-run failed: ${err.message || 'Unknown error'}`, 'CharMemory');
+            newResult = null;
+        } finally {
+            inApiCall = false;
+        }
+
+        if (dialogClosed) return;
+
+        $('#charMemory_reformatRerunSpinner').hide();
+        $('#charMemory_rerunReformat').prop('disabled', false);
+        $('#charMemory_reformatEditorPane').removeClass('charMemory_editorDisabled');
+
+        if (newResult && newResult.blocks.length > 0) {
+            rerunBackups.push(backupBlocks);
+            $('#charMemory_undoReformatRerun').prop('disabled', false);
+            editor.replaceAll(newResult.blocks);
+            refreshEditor();
+            for (const w of newResult.warnings) {
+                toastr.warning(w, 'CharMemory');
+            }
+        }
+    });
+
+    // === Undo button ===
+    $('#charMemory_undoReformatRerun').off('click').on('click', () => {
+        if (rerunBackups.length === 0) return;
+        editor.replaceAll(rerunBackups.pop());
+        refreshEditor();
+        if (rerunBackups.length === 0) $('#charMemory_undoReformatRerun').prop('disabled', true);
+    });
+
+    // === Wait for Accept/Cancel ===
+    const confirmed = await popup;
+    dialogClosed = true;
+
+    // Clean up event delegation
+    cleanupRefFR();
+    $(document).off('click.charMemoryRefToggle');
+    $(document).off('input.charMemoryRefBullet');
+    $(document).off('input.charMemoryRefTheme');
+    $(document).off('click.charMemoryRefDelBullet');
+    $(document).off('click.charMemoryRefDelBlock');
+    $(document).off('click.charMemoryRefAddBullet');
+    $(document).off('click.charMemoryRefAddBlock');
+
+    if (!confirmed) return null;
+
+    // Guard: if a re-run is still in flight, don't save stale state
+    if (inApiCall) {
+        toastr.warning('Cannot save while a re-run is in progress.', 'CharMemory');
+        return null;
+    }
+
+    // Filter out empty bullets and empty blocks before returning
+    const cleanBlocks = editor.getBlocks()
+        .map(b => ({ ...b, bullets: b.bullets.filter(bullet => bullet.trim() !== '') }))
+        .filter(b => b.bullets.length > 0);
+
+    return cleanBlocks.length > 0 ? cleanBlocks : null;
+}
+
+/**
+ * Main reformat flow: read memories, send through LLM conversion prompt,
+ * show interactive preview, save on confirmation with backup for undo.
+ */
+async function reformatMemories() {
+    if (inApiCall) {
+        toastr.warning('An API call is already in progress.', 'CharMemory');
+        return;
+    }
+
+    const targets = getMemoryTargets();
+    if (targets.length === 0) {
+        toastr.warning('No character selected.', 'CharMemory');
+        return;
+    }
+
+    // For multiple targets (group), show a character picker
+    let target;
+    if (targets.length === 1) {
+        target = targets[0];
+    } else {
+        const pickerHtml = targets.map((t, i) =>
+            `<label class="checkbox_label"><input type="radio" name="charMemory_reformatTarget" value="${i}" ${i === 0 ? 'checked' : ''} /> ${escapeHtml(t.name)}</label>`,
+        ).join('<br>');
+        const picked = await callGenericPopup(`Select a character to reformat memories for:<br><br>${pickerHtml}`, POPUP_TYPE.CONFIRM);
+        if (!picked) return;
+        const selectedIdx = Number($('input[name="charMemory_reformatTarget"]:checked').val()) || 0;
+        target = targets[selectedIdx];
+    }
+
+    const content = await readMemoriesForCharacter(target.avatar, target.fileName);
+    const originalBlocks = parseMemories(content);
+
+    if (originalBlocks.length === 0) {
+        toastr.info('No memories found to reformat.', 'CharMemory');
+        return;
+    }
+
+    // Check if all blocks already have topic tags (first bullet matches [Topic])
+    const allHaveTopicTags = originalBlocks.every(b =>
+        b.bullets.length > 0 && /^\[.+\]$/.test(b.bullets[0]),
+    );
+    if (allHaveTopicTags) {
+        const proceed = await callGenericPopup(
+            'All memory blocks already have topic tags. Reformatting may still improve structure, but the memories may already be well-formatted.<br><br>Continue anyway?',
+            POPUP_TYPE.CONFIRM,
+        );
+        if (!proceed) return;
+    }
+
+    const beforeCount = countMemories(originalBlocks);
+    logActivity(`Reformat started for ${target.name}: ${beforeCount} memories in ${originalBlocks.length} blocks`);
+
+    // Show busy state
+    const $btn = $('#charMemory_formatBtn');
+    $btn.val('Reformatting\u2026').prop('disabled', true);
+
+    let result;
+    try {
+        inApiCall = true;
+        const charName = target.name || 'Character';
+        const sourceLabel = getSourceLabel();
+        toastr.info(`Sending to ${sourceLabel} for reformatting...`, 'CharMemory', { timeOut: 3000 });
+        result = await convertWithLLM(content, charName);
+    } catch (err) {
+        console.error(LOG_PREFIX, 'Reformat failed:', err);
+        toastr.error(`Reformat failed: ${err.message || 'Unknown error'}`, 'CharMemory');
+        return;
+    } finally {
+        inApiCall = false;
+        $btn.val('Reformat').prop('disabled', false);
+    }
+
+    for (const w of result.warnings) {
+        toastr.warning(w, 'CharMemory');
+    }
+
+    if (result.blocks.length === 0) {
+        toastr.warning('LLM returned no usable memories. Reformat aborted.', 'CharMemory');
+        return;
+    }
+
+    // Show interactive preview dialog
+    const editedBlocks = await showReformatPreview(originalBlocks, result.blocks, target.name, target);
+
+    if (!editedBlocks) {
+        logActivity('Reformat cancelled by user');
+        toastr.info('Reformat cancelled.', 'CharMemory');
+        return;
+    }
+
+    // Back up original content for undo
+    reformatBackup = { content, avatar: target.avatar, fileName: target.fileName };
+
+    // Save reformatted memories
+    try {
+        await writeMemoriesForCharacter(serializeMemories(editedBlocks), target.avatar, target.fileName);
+    } catch (err) {
+        console.error(LOG_PREFIX, 'Reformat save failed:', err);
+        toastr.error('Failed to save reformatted memories.', 'CharMemory');
+        reformatBackup = null;
+        return;
+    }
+
+    const afterCount = countMemories(editedBlocks);
+    logActivity(`Reformat complete: ${beforeCount} → ${afterCount} memories in ${editedBlocks.length} blocks`, 'success');
+    toastr.success(`Reformatted ${beforeCount} → ${afterCount} memories.`, 'CharMemory');
+    updateStatusDisplay();
+}
+
+/**
+ * Undo the last reformat and restore original memories.
+ */
+async function undoReformat() {
+    if (!reformatBackup) {
+        toastr.warning('No reformat to undo.', 'CharMemory');
+        return;
+    }
+    const confirm = await callGenericPopup(
+        'Undo the last reformat and restore original memories?',
+        POPUP_TYPE.CONFIRM,
+    );
+    if (!confirm) return;
+
+    await writeMemoriesForCharacter(reformatBackup.content, reformatBackup.avatar, reformatBackup.fileName);
+    reformatBackup = null;
+    toastr.info('Reformat undone — original memories restored.', 'CharMemory');
+    logActivity('Reformat undone');
+    updateStatusDisplay();
 }
 
 // ============ Slash Commands ============
@@ -4430,509 +7302,194 @@ function registerSlashCommands() {
 
 // ============ UI Setup ============
 
-function setupListeners() {
-    $('#charMemory_enabled').off('change').on('change', function () {
-        extension_settings[MODULE_NAME].enabled = !!$(this).prop('checked');
-        saveSettingsDebounced();
-    });
+/**
+ * Wire event handlers for provider selection and configuration controls.
+ * Covers: LLM source dropdown, provider picker, API key, connect/test,
+ * model search/picker with keyboard navigation, provider settings fields,
+ * and NanoGPT filter checkboxes.
+ */
+// setupConnectionControls() removed in v2.0 — all sidebar provider panel elements
+// (#charMemory_source, #charMemory_providerSelect, etc.) were removed from settings.html.
+// Connection and provider settings are now managed exclusively in the Settings Modal.
 
-    $('#charMemory_interval').off('input').on('input', function () {
-        const val = Number($(this).val());
-        extension_settings[MODULE_NAME].interval = val;
-        $('#charMemory_intervalCounter').val(val);
-        saveSettingsDebounced();
-        updateStatusDisplay();
-    });
-
-    $('#charMemory_maxMessages').off('input').on('input', function () {
-        const val = Number($(this).val());
-        extension_settings[MODULE_NAME].maxMessagesPerExtraction = val;
-        $('#charMemory_maxMessagesCounter').val(val);
-        saveSettingsDebounced();
-    });
-
-    $('#charMemory_minCooldown').off('input').on('input', function () {
-        const val = Number($(this).val());
-        extension_settings[MODULE_NAME].minCooldownMinutes = val;
-        $('#charMemory_minCooldownCounter').val(val);
-        saveSettingsDebounced();
-    });
-
-    $('#charMemory_responseLength').off('input').on('input', function () {
-        const val = Number($(this).val());
-        extension_settings[MODULE_NAME].responseLength = val;
-        $('#charMemory_responseLengthCounter').val(val);
-        saveSettingsDebounced();
-    });
-
-    $('#charMemory_source').off('change').on('change', function () {
-        const val = String($(this).val());
-        extension_settings[MODULE_NAME].source = val;
-        saveSettingsDebounced();
-        toggleProviderSettings(val);
-    });
-
-    $('#charMemory_providerSelect').off('change').on('change', function () {
-        extension_settings[MODULE_NAME].selectedProvider = String($(this).val());
-        saveSettingsDebounced();
-        $('#charMemory_providerTestStatus').hide().text('');
-        $('#charMemory_providerConnectStatus').hide().text('');
-        updateProviderUI();
-    });
-
-    $('#charMemory_providerApiKey').off('input').on('input', function () {
-        const providerKey = extension_settings[MODULE_NAME].selectedProvider;
-        const providerSettings = getProviderSettings(providerKey);
-        providerSettings.apiKey = String($(this).val());
-        saveSettingsDebounced();
-    });
-
-    $('#charMemory_providerConnect').off('click').on('click', async function () {
-        const providerKey = extension_settings[MODULE_NAME].selectedProvider;
-        const preset = PROVIDER_PRESETS[providerKey];
-        const providerSettings = getProviderSettings(providerKey);
-        const $btn = $(this);
-        const $status = $('#charMemory_providerConnectStatus');
-
-        if (preset?.requiresApiKey && !providerSettings.apiKey) {
-            $status.text('Enter an API key first.').css('color', '#e74c3c').show();
-            return;
-        }
-
-        $btn.prop('disabled', true).val('Connecting...');
-        $status.text('Fetching models...').css('color', '').show();
-
-        try {
-            await populateProviderModels(providerKey, true);
-            const modelCount = currentModelList.length;
-            if (modelCount > 0) {
-                $status.text(`Connected — ${modelCount} model${modelCount !== 1 ? 's' : ''} available.`).css('color', '#27ae60').show();
-            } else {
-                $status.text('Connected, but no models returned.').css('color', '#e67e22').show();
-            }
-        } catch (err) {
-            $status.text(`Connection failed: ${err.message}`).css('color', '#e74c3c').show();
-        } finally {
-            $btn.prop('disabled', false).val('Connect');
-        }
-    });
-
-    // Model search input — filter dropdown on typing
-    $('#charMemory_modelSearch').off('input').on('input', function () {
-        const filter = $(this).val();
-        renderModelDropdown(filter);
-        $('#charMemory_modelDropdown').addClass('open');
-    });
-
-    // Model search input — open dropdown on focus
-    $('#charMemory_modelSearch').off('focus').on('focus', function () {
-        renderModelDropdown($(this).val());
-        $('#charMemory_modelDropdown').addClass('open');
-    });
-
-    // Model dropdown — select a model on click
-    $('#charMemory_modelDropdown').off('click').on('click', '.charMemory_modelOption', function () {
-        const modelId = $(this).data('model-id');
-        const model = currentModelList.find(m => m.id === modelId);
-        if (!model) return;
-
-        $('#charMemory_providerModel').val(modelId);
-        $('#charMemory_modelSearch').val(model.name);
-        $('#charMemory_modelDropdown').removeClass('open');
-
-        const providerKey = extension_settings[MODULE_NAME].selectedProvider;
-        const providerSettings = getProviderSettings(providerKey);
-        providerSettings.model = modelId;
-        saveSettingsDebounced();
-
-        if (providerKey === 'nanogpt' && cachedNanoGptModels) {
-            updateProviderModelInfo(cachedNanoGptModels, modelId);
-        }
-    });
-
-    // Close dropdown when clicking outside
-    $(document).off('click.charMemoryModelPicker').on('click.charMemoryModelPicker', function (e) {
-        if (!$(e.target).closest('.charMemory_modelPicker').length) {
-            $('#charMemory_modelDropdown').removeClass('open');
-            // Restore display to current selection if search was abandoned
-            const selectedId = $('#charMemory_providerModel').val();
-            if (selectedId) {
-                const model = currentModelList.find(m => m.id === selectedId);
-                if (model) $('#charMemory_modelSearch').val(model.name);
-            } else {
-                $('#charMemory_modelSearch').val('');
-            }
-        }
-    });
-
-    // Keyboard navigation in model dropdown
-    $('#charMemory_modelSearch').off('keydown').on('keydown', function (e) {
-        const $dropdown = $('#charMemory_modelDropdown');
-        if (!$dropdown.hasClass('open')) {
-            if (e.key === 'ArrowDown' || e.key === 'Enter') {
-                renderModelDropdown($(this).val());
-                $dropdown.addClass('open');
-                e.preventDefault();
-            }
-            return;
-        }
-
-        const $options = $dropdown.find('.charMemory_modelOption');
-        const $active = $dropdown.find('.charMemory_modelOption.active');
-        let idx = $options.index($active);
-
-        if (e.key === 'ArrowDown') {
-            e.preventDefault();
-            idx = Math.min(idx + 1, $options.length - 1);
-            $options.removeClass('active');
-            $options.eq(idx).addClass('active');
-            $options.eq(idx)[0]?.scrollIntoView({ block: 'nearest' });
-        } else if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            idx = Math.max(idx - 1, 0);
-            $options.removeClass('active');
-            $options.eq(idx).addClass('active');
-            $options.eq(idx)[0]?.scrollIntoView({ block: 'nearest' });
-        } else if (e.key === 'Enter') {
-            e.preventDefault();
-            if ($active.length) {
-                $active.click();
-            }
-        } else if (e.key === 'Escape') {
-            $dropdown.removeClass('open');
-        }
-    });
-
-    $('#charMemory_providerModelInput').off('input').on('input', function () {
-        const providerSettings = getProviderSettings(extension_settings[MODULE_NAME].selectedProvider);
-        providerSettings.model = String($(this).val());
-        saveSettingsDebounced();
-    });
-
-    $('#charMemory_providerRefreshModels').off('click').on('click', function () {
-        populateProviderModels(extension_settings[MODULE_NAME].selectedProvider, true);
-    });
-
-    $('#charMemory_providerBaseUrl').off('input').on('input', function () {
-        const providerSettings = getProviderSettings(extension_settings[MODULE_NAME].selectedProvider);
-        providerSettings.customBaseUrl = String($(this).val());
-        saveSettingsDebounced();
-    });
-
-    $('#charMemory_providerSystemPrompt').off('input').on('input', function () {
-        const providerSettings = getProviderSettings(extension_settings[MODULE_NAME].selectedProvider);
-        providerSettings.systemPrompt = String($(this).val());
-        saveSettingsDebounced();
-    });
-
-    $('#charMemory_providerApiKeyReveal').off('click').on('click', function () {
-        const $input = $('#charMemory_providerApiKey');
-        const $icon = $(this).find('i');
-        const $btn = $(this);
-        clearTimeout($btn.data('revealTimer'));
-        if ($input.attr('type') === 'password') {
-            $input.attr('type', 'text');
-            $icon.removeClass('fa-eye').addClass('fa-eye-slash');
-            $btn.data('revealTimer', setTimeout(() => {
-                $input.attr('type', 'password');
-                $icon.removeClass('fa-eye-slash').addClass('fa-eye');
-            }, 10000));
-        } else {
-            $input.attr('type', 'password');
-            $icon.removeClass('fa-eye-slash').addClass('fa-eye');
-        }
-    });
-
-    $('#charMemory_providerTest').off('click').on('click', () => testProviderConnection());
-
-    $('#charMemory_nanogptFilterSub').off('change').on('change', function () {
-        const providerSettings = getProviderSettings('nanogpt');
-        providerSettings.nanogptFilterSubscription = !!$(this).prop('checked');
-        saveSettingsDebounced();
-        populateProviderModels('nanogpt', true);
-    });
-
-    $('#charMemory_nanogptFilterOS').off('change').on('change', function () {
-        const providerSettings = getProviderSettings('nanogpt');
-        providerSettings.nanogptFilterOpenSource = !!$(this).prop('checked');
-        saveSettingsDebounced();
-        populateProviderModels('nanogpt', true);
-    });
-
-    $('#charMemory_nanogptFilterRP').off('change').on('change', function () {
-        const providerSettings = getProviderSettings('nanogpt');
-        providerSettings.nanogptFilterRoleplay = !!$(this).prop('checked');
-        saveSettingsDebounced();
-        populateProviderModels('nanogpt', true);
-    });
-
-    $('#charMemory_nanogptFilterReasoning').off('change').on('change', function () {
-        const providerSettings = getProviderSettings('nanogpt');
-        providerSettings.nanogptFilterReasoning = !!$(this).prop('checked');
-        saveSettingsDebounced();
-        populateProviderModels('nanogpt', true);
-    });
-
-    $('#charMemory_verboseLog').off('change').on('change', function () {
-        extension_settings[MODULE_NAME].verboseLogging = !!$(this).prop('checked');
-        saveSettingsDebounced();
-    });
-
-    $('#charMemory_extractionPrompt').off('input').on('input', function () {
-        extension_settings[MODULE_NAME].extractionPrompt = String($(this).val());
-        saveSettingsDebounced();
-    });
-
-    $('#charMemory_restorePrompt').off('click').on('click', function () {
-        extension_settings[MODULE_NAME].extractionPrompt = defaultExtractionPrompt;
-        $('#charMemory_extractionPrompt').val(defaultExtractionPrompt);
-        saveSettingsDebounced();
-        toastr.info('Extraction prompt restored to default.', 'CharMemory');
-    });
-
-    $('#charMemory_groupExtractionPrompt').off('input').on('input', function () {
-        extension_settings[MODULE_NAME].groupExtractionPrompt = String($(this).val());
-        saveSettingsDebounced();
-    });
-
-    $('#charMemory_restoreGroupPrompt').off('click').on('click', function () {
-        extension_settings[MODULE_NAME].groupExtractionPrompt = defaultGroupExtractionPrompt;
-        $('#charMemory_groupExtractionPrompt').val(defaultGroupExtractionPrompt);
-        saveSettingsDebounced();
-        toastr.info('Group extraction prompt restored to default.', 'CharMemory');
-    });
-
-    // Group member filename overrides (event delegation for dynamic inputs)
-    $(document).on('input', '.charMemory_groupMemberFile', function () {
-        const avatar = $(this).data('avatar');
-        const value = String($(this).val()).trim();
-        if (!extension_settings[MODULE_NAME].characterFileNames) {
-            extension_settings[MODULE_NAME].characterFileNames = {};
-        }
-        if (value) {
-            extension_settings[MODULE_NAME].characterFileNames[avatar] = value;
-        } else {
-            delete extension_settings[MODULE_NAME].characterFileNames[avatar];
-        }
-        saveSettingsDebounced();
-    });
-
-    $('#charMemory_consolidationStrategy').off('change').on('change', function () {
-        extension_settings[MODULE_NAME].consolidationStrategy = String($(this).val());
-        updateConsolidationStrategyUI();
-        saveSettingsDebounced();
-    });
-
-    // Consolidation prompt editing — save override for current strategy
-    $('#charMemory_consolidationPrompt').off('input').on('input', function () {
-        const strategy = extension_settings[MODULE_NAME].consolidationStrategy || 'balanced';
-        if (!extension_settings[MODULE_NAME].consolidationPrompts) {
-            extension_settings[MODULE_NAME].consolidationPrompts = {};
-        }
-        extension_settings[MODULE_NAME].consolidationPrompts[strategy] = $(this).val();
-        $('#charMemory_restorePresetDefault').show();
-        saveSettingsDebounced();
-    });
-
-    // Restore preset default prompt
-    $('#charMemory_restorePresetDefault').off('click').on('click', function () {
-        const strategy = extension_settings[MODULE_NAME].consolidationStrategy || 'balanced';
-        if (extension_settings[MODULE_NAME].consolidationPrompts) {
-            delete extension_settings[MODULE_NAME].consolidationPrompts[strategy];
-        }
-        updateConsolidationStrategyUI();
-        saveSettingsDebounced();
-    });
-
+/**
+ * Wire event handlers for extraction, memory manager, and dashboard tool launchers.
+ * Covers: extract now, manage memories, consolidate/batch/format launcher buttons,
+ * consolidation strategy/prompt, convert preview/undo, format source radio,
+ * convert prompt, batch extract controls, and files popover.
+ */
+function setupToolControls() {
     $('#charMemory_extractNow').off('click').on('click', function () {
         extractMemories({ force: true });
     });
 
-    $('#charMemory_resetTracking').off('click').on('click', function () {
-        ensureMetadata();
-        chat_metadata[MODULE_NAME].lastExtractedIndex = -1;
-        chat_metadata[MODULE_NAME].messagesSinceExtraction = 0;
-        saveMetadataDebounced();
-
-        // Also clear batch state for all chats of this character
-        const charName = getCharacterName();
-        if (charName && extension_settings[MODULE_NAME].batchState) {
-            const prefix = `${charName}:`;
-            for (const key of Object.keys(extension_settings[MODULE_NAME].batchState)) {
-                if (key.startsWith(prefix)) {
-                    delete extension_settings[MODULE_NAME].batchState[key];
-                }
-            }
-            saveSettingsDebounced();
-        }
-
-        updateStatusDisplay();
-        toastr.success('Extraction state reset for all chats. Next extraction will re-read all messages.', 'CharMemory');
-    });
-
-    $('#charMemory_resetExtraction').off('click').on('click', async function () {
-        ensureMetadata();
-        chat_metadata[MODULE_NAME].lastExtractedIndex = -1;
-        chat_metadata[MODULE_NAME].messagesSinceExtraction = 0;
-        saveMetadataDebounced();
-
-        // Also clear batch state for all chats of this character
-        const charName = getCharacterName();
-        if (charName && extension_settings[MODULE_NAME].batchState) {
-            const prefix = `${charName}:`;
-            for (const key of Object.keys(extension_settings[MODULE_NAME].batchState)) {
-                if (key.startsWith(prefix)) {
-                    delete extension_settings[MODULE_NAME].batchState[key];
-                }
-            }
-            saveSettingsDebounced();
-        }
-
-        // Also clear stored memories for ALL targets so re-extraction starts fresh
-        const resetTargets = getMemoryTargets();
-        for (const target of resetTargets) {
-            const existing = findMemoryAttachmentForCharacter(target.avatar, target.fileName);
-            if (existing) {
-                await deleteFileFromServer(existing.url, true);
-                ensureCharacterAttachments(target.avatar);
-                extension_settings.character_attachments[target.avatar] =
-                    extension_settings.character_attachments[target.avatar].filter(a => a.url !== existing.url);
-            }
-        }
-        saveSettingsDebounced();
-
-        // Immediately update stats bar to avoid stale async reads
-        $('#charMemory_statCount').text('0 memories');
-        $('#charMemory_statProgress').text(`0/${extension_settings[MODULE_NAME].interval} msgs`);
-        updateStatusDisplay();
-        toastr.success('Memories cleared and extraction state reset for all chats. Next extraction will start from the beginning.', 'CharMemory');
-    });
-
-    $('#charMemory_fileName').off('input').on('input', function () {
-        const val = String($(this).val()).trim();
-        extension_settings[MODULE_NAME].fileName = val;
-        saveSettingsDebounced();
-    });
-
-    $('#charMemory_mergeChunks').off('change').on('change', function () {
-        extension_settings[MODULE_NAME].mergeChunks = !!$(this).prop('checked');
-        saveSettingsDebounced();
-    });
-
-    $('#charMemory_perChat').off('change').on('change', function () {
-        extension_settings[MODULE_NAME].perChat = !!$(this).prop('checked');
+    $('#charMemory_autoExtractPill').off('click').on('click', function () {
+        extension_settings[MODULE_NAME].enabled = !extension_settings[MODULE_NAME].enabled;
+        $(this).toggleClass('active', !!extension_settings[MODULE_NAME].enabled);
         saveSettingsDebounced();
     });
 
     $('#charMemory_manageMemories').off('click').on('click', () => showMemoryManager());
 
-    $('#charMemory_consolidate').off('click').on('click', () => consolidateMemories());
-    $('#charMemory_undoConsolidate').off('click').on('click', () => undoConsolidation());
+    // Dashboard tool launcher buttons
+    $('#charMemory_consolidateBtn').off('click').on('click', () => consolidateMemories());
+    $('#charMemory_batchBtn').off('click').on('click', () => showBatchPopup());
+    $('#charMemory_formatBtn').off('click').on('click', () => reformatMemories());
+    $('#charMemory_filesPopover').off('click').on('click', () => showTroubleshooter('databank'));
 
-    // Tab switching for top-level panel tabs
-    $('.charMemory_tab').off('click').on('click', function () {
-        const tab = $(this).data('tab');
-        $('.charMemory_tab').removeClass('active');
-        $(this).addClass('active');
-        $('.charMemory_tabContent').hide();
-        const capName = tab.charAt(0).toUpperCase() + tab.slice(1);
-        $(`#charMemory_tab${capName}`).show();
-        // Auto-load batch list when switching to Tools tab with Batch pill active
-        if (tab === 'tools' && $('.charMemory_toolPill.active').data('tool') === 'batch') {
-            loadBatchChatList();
-        }
-    });
+    // Diagnostics link → open troubleshooter
+    $('#charMemory_viewDiagDetails').off('click').on('click', () => showTroubleshooter('health'));
 
-    // Pill switching within Tools tab
-    $('.charMemory_toolPill').off('click').on('click', function () {
-        const tool = $(this).data('tool');
-        $('.charMemory_toolPill').removeClass('active');
-        $(this).addClass('active');
-        $('.charMemory_toolContent').hide();
-        $(`#charMemory_tool${tool.charAt(0).toUpperCase() + tool.slice(1)}`).show();
-        if (tool === 'batch') loadBatchChatList();
-        if (tool === 'convert') populateConvertSourceDropdown();
-    });
-
-    // Chunk boundary format controls
-    $('#charMemory_chunkBoundary').off('change').on('change', async function () {
-        const val = $(this).val();
-        extension_settings[MODULE_NAME].chunkBoundary = val;
-        saveSettingsDebounced();
-        toggleChunkBoundaryUI(val);
-        await offerReformat();
-    });
-
-    $('#charMemory_customSeparator').off('input').on('input', function () {
-        extension_settings[MODULE_NAME].customSeparator = $(this).val();
-        saveSettingsDebounced();
-    });
-
-    $('#charMemory_chunkMetadata').off('change').on('change', function () {
-        extension_settings[MODULE_NAME].chunkMetadata = $(this).prop('checked');
-        saveSettingsDebounced();
-    });
-
-    // Convert tool
-    $('#charMemory_convertPreview').off('click').on('click', () => previewConversion());
-    $('#charMemory_restoreConvertPrompt').off('click').on('click', () => {
-        $('#charMemory_convertPrompt').val(defaultConversionPrompt);
-        extension_settings[MODULE_NAME].conversionPrompt = '';
-        saveSettingsDebounced();
-    });
-    $('#charMemory_convertPrompt').off('input').on('input', function () {
-        extension_settings[MODULE_NAME].conversionPrompt = $(this).val();
-        saveSettingsDebounced();
-    });
-    $('#charMemory_refreshDiag').off('click').on('click', function () {
-        captureDiagnostics();
-        toastr.info('Diagnostics refreshed.', 'CharMemory');
-    });
-
-    // Health indicator click — scroll to diagnostics
-    $('#charMemory_statHealth').off('click').on('click', function () {
-        const $diag = $('.charMemory_bottomDiagnostics');
-        if ($diag.length) {
-            $diag[0].scrollIntoView({ behavior: 'smooth', block: 'start' });
-            $diag.css('outline', '2px solid var(--SmartThemeQuoteColor, #e8a33d)');
-            setTimeout(() => $diag.css('outline', ''), 1500);
-        }
-    });
-
-    $('#charMemory_clearLog').off('click').on('click', function () {
-        activityLog = [];
-        updateActivityLogDisplay();
-    });
-
-    $('#charMemory_saveLog').off('click').on('click', function () {
-        if (activityLog.length === 0) {
-            toastr.info('Activity log is empty.', 'CharMemory');
-            return;
-        }
-        const lines = activityLog.map(e => `[${e.timestamp}] [${e.type}] ${e.message}`).join('\n');
-        const blob = new Blob([lines], { type: 'text/plain' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `charMemory-log-${new Date().toISOString().slice(0, 19).replace(/:/g, '')}.txt`;
-        a.click();
-        URL.revokeObjectURL(url);
-    });
-
-
-
-    // Batch Extract tab
-    $('#charMemory_batchRefresh').off('click').on('click', loadBatchChatList);
-    $('#charMemory_batchExtract').off('click').on('click', runBatchExtraction);
-    $('#charMemory_batchStop').off('click').on('click', function () {
-        if (batchAbortController) batchAbortController.abort();
-    });
-    $('#charMemory_batchSelectAll').off('change').on('change', function () {
-        const checked = $(this).prop('checked');
-        $('.charMemory_batchChatCheck').prop('checked', checked);
-        updateBatchButtons();
-    });
+    // Delegated handler for batch chat checkboxes (created dynamically in showBatchPopup)
     $(document).off('change', '.charMemory_batchChatCheck').on('change', '.charMemory_batchChatCheck', updateBatchButtons);
+}
+
+// setupStorageControls() removed in v2.0 — all sidebar storage panel elements
+// (#charMemory_fileName, #charMemory_perChat, etc.) were removed from settings.html.
+// Storage settings are now managed exclusively in the Settings Modal.
+
+/**
+ * Wire event handlers for health indicator click.
+ */
+function setupLogControls() {
+    // Health indicator click — open troubleshooter
+    $('#charMemory_statHealth').off('click').on('click', function () {
+        showTroubleshooter('health');
+    });
+
+    // Intercept inline-drawer toggle for tablet mode.
+    // In tablet mode: prevent ST's native sidebar expansion, open floating panel instead.
+    // In normal mode: refresh status/health when the drawer opens (existing behavior).
+    // Uses capturing phase to fire before ST's own inline-drawer handler.
+    const drawerToggle = document.querySelector('.charMemory_settings .inline-drawer-toggle');
+    if (drawerToggle && !drawerToggle._charMemoryTabletBound) {
+        drawerToggle._charMemoryTabletBound = true;
+        drawerToggle.addEventListener('click', function (e) {
+            if (isTabletMode()) {
+                e.stopPropagation();
+                e.preventDefault();
+                toggleTabletPanel();
+                return;
+            }
+            // Normal mode: let ST handle the toggle, then refresh if opened
+            setTimeout(() => {
+                if ($('.charMemory_settings .inline-drawer-content').is(':visible')) {
+                    updateStatusDisplay();
+                    updateHealthIndicator();
+                }
+            }, 50);
+        }, true); // capturing phase
+    }
+}
+
+/**
+ * Reset extraction tracking for the currently open chat only.
+ * Resets lastExtractedIndex and messagesSinceExtraction in chat_metadata.
+ * NOTE: In group chats, all characters share one extraction pointer — this resets all of them simultaneously.
+ */
+function resetCurrentChatTracking() {
+    ensureMetadata();
+    chat_metadata[MODULE_NAME].lastExtractedIndex = -1;
+    chat_metadata[MODULE_NAME].messagesSinceExtraction = 0;
+    saveMetadataDebounced();
+    updateStatusDisplay();
+    const msg = isGroupChat()
+        ? 'Extraction state reset for this group chat. All members will re-process from the beginning.'
+        : 'Extraction state reset. Next "Extract Now" will re-read all messages.';
+    toastr.success(msg, 'CharMemory');
+}
+
+/**
+ * Clear batch extraction progress records for all of this character's chats.
+ * Does NOT affect the current chat's regular extraction pointer (chat_metadata).
+ * For non-active chats, only batch records can be cleared from here — their regular
+ * extraction pointers live in each chat's metadata and can only be reset when that chat is open.
+ */
+function resetBatchProgress() {
+    const charName = getCharacterName();
+    if (!charName || !extension_settings[MODULE_NAME].batchState) {
+        toastr.info('No batch progress to clear.', 'CharMemory');
+        return;
+    }
+    const prefix = `${charName}:`;
+    let count = 0;
+    for (const key of Object.keys(extension_settings[MODULE_NAME].batchState)) {
+        if (key.startsWith(prefix)) {
+            delete extension_settings[MODULE_NAME].batchState[key];
+            count++;
+        }
+    }
+    saveSettingsDebounced();
+    if (count > 0) {
+        toastr.success(`Batch progress cleared for ${count} chat${count !== 1 ? 's' : ''}.`, 'CharMemory');
+    } else {
+        toastr.info('No batch progress to clear.', 'CharMemory');
+    }
+}
+
+/**
+ * Clear all memories and reset extraction state for the current character.
+ * Called from Settings Modal, Troubleshooter, and dashboard.
+ */
+async function clearAllMemories() {
+    ensureMetadata();
+    chat_metadata[MODULE_NAME].lastExtractedIndex = -1;
+    chat_metadata[MODULE_NAME].messagesSinceExtraction = 0;
+    saveMetadataDebounced();
+
+    // Also clear batch state for all chats of this character
+    const charName = getCharacterName();
+    if (charName && extension_settings[MODULE_NAME].batchState) {
+        const prefix = `${charName}:`;
+        for (const key of Object.keys(extension_settings[MODULE_NAME].batchState)) {
+            if (key.startsWith(prefix)) {
+                delete extension_settings[MODULE_NAME].batchState[key];
+            }
+        }
+        saveSettingsDebounced();
+    }
+
+    // Also clear stored memories for ALL targets so re-extraction starts fresh
+    const resetTargets = getMemoryTargets();
+    for (const target of resetTargets) {
+        const existing = findMemoryAttachmentForCharacter(target.avatar, target.fileName);
+        if (existing) {
+            await deleteFileFromServer(existing.url, true);
+            ensureCharacterAttachments(target.avatar);
+            extension_settings.character_attachments[target.avatar] =
+                extension_settings.character_attachments[target.avatar].filter(a => a.url !== existing.url);
+        }
+    }
+    saveSettingsDebounced();
+
+    // Immediately update stats bar to avoid stale async reads
+    $('#charMemory_statCount').text('0 memories');
+    $('#charMemory_statProgress').text(`0/${extension_settings[MODULE_NAME].interval} msgs`);
+    updateStatusDisplay();
+    toastr.success('Memories cleared and extraction state reset for all chats. Next extraction will start from the beginning.', 'CharMemory');
+}
+
+function setupListeners() {
+    setupToolControls();
+    setupLogControls();
+
+    // Gear icon → Settings modal
+    $('#charMemory_openSettingsModal').off('click').on('click', function (e) {
+        e.stopPropagation(); // Prevent toggling the inline-drawer
+        showSettingsModal();
+    });
+
+    // Wrench icon → Troubleshooter modal
+    $('#charMemory_openTroubleshooter').off('click').on('click', function (e) {
+        e.stopPropagation();
+        showTroubleshooter();
+    });
+
+    // Syringe icon → Toggle Injection Sidebar
+    $('#charMemory_toggleInjectionBtn').off('click').on('click', function (e) {
+        e.stopPropagation();
+        toggleInjectionDrawer();
+    });
 }
 
 // ============ Per-Message Buttons & Indicators ============
@@ -5088,8 +7645,7 @@ async function onPinMemoryClick() {
 
     if (bullets.length === 0) return;
 
-    const now = new Date();
-    const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const timestamp = getTimestamp();
     const chatId = context.chatId || 'unknown';
 
     // Find the target matching the message sender (for groups, match by name)
@@ -5126,6 +7682,9 @@ function toggleInjectionDrawer(forceState) {
     const isOpen = $drawer.hasClass('open');
     const shouldOpen = forceState !== undefined ? forceState : !isOpen;
 
+    // Close log drawer if opening injection drawer (same screen position)
+    if (shouldOpen) $('#charMemory_logDrawer').removeClass('open');
+
     // Position drawer below ST's top bar so header isn't clipped by browser chrome
     if (shouldOpen) {
         const topBar = document.getElementById('top-settings-holder');
@@ -5141,6 +7700,324 @@ function toggleInjectionDrawer(forceState) {
     // Persist state
     extension_settings[MODULE_NAME].injectionDrawerOpen = shouldOpen;
     saveSettingsDebounced();
+}
+
+/**
+ * Toggle the log drawer open/closed.
+ * @param {boolean} [forceState] If provided, force open (true) or closed (false).
+ */
+function toggleLogDrawer(forceState) {
+    const $drawer = $('#charMemory_logDrawer');
+    const isOpen = $drawer.hasClass('open');
+    const shouldOpen = forceState !== undefined ? forceState : !isOpen;
+
+    // Close injection drawer if opening log drawer (same screen position)
+    // Log drawer state is not persisted — it's session-only, unlike the injection drawer
+    if (shouldOpen) {
+        $('#charMemory_injectionDrawer').removeClass('open');
+        $('#charMemory_drawerToggle').removeClass('open');
+    }
+
+    // Position drawer below ST's top bar so header isn't clipped by browser chrome
+    if (shouldOpen) {
+        const topBar = document.getElementById('top-settings-holder');
+        if (topBar) {
+            const topOffset = topBar.getBoundingClientRect().bottom;
+            $drawer.css({ top: topOffset + 'px', height: `calc(100vh - ${topOffset}px)` });
+        }
+
+        // Populate log entries and sync verbose toggle
+        $('#charMemory_logDrawerVerbose').prop('checked', !!extension_settings[MODULE_NAME].verboseLogging);
+        renderLogDrawerEntries();
+    }
+
+    $drawer.toggleClass('open', shouldOpen);
+}
+
+/**
+ * Whether the tablet panel is currently open.
+ * @returns {boolean}
+ */
+function isTabletPanelOpen() {
+    return $('#charMemory_tabletPanel').hasClass('open');
+}
+
+/**
+ * Toggle the tablet floating panel open/closed.
+ * When opening: relocates sidebar header icons and content into the panel.
+ * When closing: moves everything back to the sidebar.
+ * Event handlers survive because they are bound to the element IDs, not parent containers.
+ * @param {boolean} [forceState] If provided, force open (true) or closed (false).
+ */
+function toggleTabletPanel(forceState) {
+    const $panel = $('#charMemory_tabletPanel');
+    const isOpen = $panel.hasClass('open');
+    const shouldOpen = forceState !== undefined ? forceState : !isOpen;
+
+    if (shouldOpen === isOpen) return;
+
+    if (shouldOpen) {
+        // Move header icons from sidebar to panel header
+        const $icons = $('.charMemory_settings .inline-drawer-header .charMemory_headerGear');
+        $icons.detach().appendTo('#charMemory_tabletHeaderIcons');
+
+        // Move all inline-drawer-content children to the panel body
+        const $content = $('.charMemory_settings .inline-drawer-content');
+        $content.children().detach().appendTo('#charMemory_tabletBody');
+
+        // Ensure the sidebar drawer is collapsed
+        if ($content.is(':visible')) {
+            $content.hide();
+            $('.charMemory_settings .inline-drawer-icon').removeClass('up').addClass('down');
+        }
+
+        $panel.addClass('open');
+
+        // Refresh stats in the relocated elements
+        updateStatusDisplay();
+        updateHealthIndicator();
+    } else {
+        // Move children back to sidebar
+        const $sidebarContent = $('.charMemory_settings .inline-drawer-content');
+        $('#charMemory_tabletBody').children().detach().appendTo($sidebarContent);
+
+        // Move header icons back — insert before the chevron icon
+        const $chevron = $('.charMemory_settings .inline-drawer-header .inline-drawer-icon');
+        $('#charMemory_tabletHeaderIcons .charMemory_headerGear').detach().insertBefore($chevron);
+
+        $panel.removeClass('open');
+    }
+}
+
+/**
+ * Render all log entries into the log drawer body.
+ */
+function renderLogDrawerEntries() {
+    const $body = $('#charMemory_logDrawerBody');
+    if (!$body.length) return;
+
+    if (activityLog.length === 0) {
+        $body.html('<div class="charMemory_diagEmpty">No activity yet.</div>');
+        return;
+    }
+
+    $body.html(activityLog.map(renderLogEntryHtml).join(''));
+}
+
+/**
+ * Update the log drawer with a new entry if it is currently open.
+ * Called from logActivity() for live updates.
+ * @param {{timestamp: string, message: string, type: string}} entry The new log entry.
+ */
+function updateLogDrawer(entry) {
+    const $drawer = $('#charMemory_logDrawer');
+    if (!$drawer.hasClass('open')) return;
+
+    const $body = $('#charMemory_logDrawerBody');
+    if (!$body.length) return;
+
+    // Remove empty-state placeholder if present
+    $body.find('.charMemory_diagEmpty').remove();
+
+    // Prepend since activityLog stores newest first
+    $body.prepend(renderLogEntryHtml(entry));
+}
+
+/**
+ * Show a popup with actionable tips for reducing injection token usage.
+ */
+/**
+ * Render the full prompt token breakdown from ST's itemized prompt data.
+ * @param {object} params Result of itemizedParams()
+ * @returns {string} HTML string
+ */
+function renderPromptBreakdown(params) {
+    const isOAI = params.this_main_api === 'openai';
+    let categories = [];
+    let total, maxCtx;
+
+    if (isOAI) {
+        total  = params.finalPromptTokens || 0;
+        maxCtx = params.thisPrompt_max_context || null;
+        // oaiPromptTokens includes char card + WI + scenario anchors; subtract WI to isolate char card
+        const charCardTk = Math.max(0, (params.oaiPromptTokens || 0) - (params.worldInfoStringTokens || 0));
+        categories = [
+            { label: 'System',       tokens: params.oaiSystemTokens            || 0, color: '#7878aa' },
+            { label: 'Char card',    tokens: charCardTk,                             color: '#5b8dd9' },
+            { label: 'Lorebook',     tokens: params.worldInfoStringTokens       || 0, color: '#e8a33d' },
+            { label: 'Data Bank',    tokens: params.dataBankVectorsStringTokens || 0, color: '#7c6bc9' },
+            { label: 'Examples',     tokens: params.examplesStringTokens        || 0, color: '#6aaa64' },
+            { label: 'Chat history', tokens: params.ActualChatHistoryTokens     || 0, color: '#4a8fa8' },
+        ];
+    } else {
+        total  = params.totalTokensInPrompt || 0;
+        maxCtx = params.thisPrompt_max_context || null;
+        categories = [
+            { label: 'Char card',    tokens: params.storyStringTokens      || 0, color: '#5b8dd9' },
+            { label: 'Lorebook',     tokens: params.worldInfoStringTokens   || 0, color: '#e8a33d' },
+            { label: 'Anchors',      tokens: params.allAnchorsTokens        || 0, color: '#7878aa' },
+            { label: 'Examples',     tokens: params.examplesStringTokens    || 0, color: '#6aaa64' },
+            { label: 'Chat history', tokens: params.ActualChatHistoryTokens || 0, color: '#4a8fa8' },
+        ];
+    }
+
+    const active = categories.filter(c => c.tokens > 0);
+    let html = '';
+
+    // Bar: segments sized relative to context window so unused context shows as grey
+    const barBase = (maxCtx && maxCtx > total) ? maxCtx : (total || 1);
+    if (total > 0) {
+        html += '<div class="charMemory_fullPromptBar">';
+        for (const cat of active) {
+            const pct = ((cat.tokens / barBase) * 100).toFixed(2);
+            const pctOfTotal = ((cat.tokens / total) * 100).toFixed(1);
+            html += `<div class="charMemory_tokenBarSeg" style="width:${pct}%;background:${escapeHtml(cat.color)};" title="${escapeHtml(cat.label)}: ${cat.tokens.toLocaleString()} tk (${pctOfTotal}% of prompt)"></div>`;
+        }
+        html += '</div>';
+    }
+
+    // Summary line: total / context and %
+    const usedPct = (maxCtx && total) ? Math.round((total / maxCtx) * 100) : null;
+    const maxStr = maxCtx ? ` / ${maxCtx.toLocaleString()} tk` : '';
+    const pctStr = usedPct !== null ? ` — ${usedPct}% of context used` : '';
+    html += `<div class="charMemory_fullPromptSummary">${total.toLocaleString()}${maxStr} tk${escapeHtml(pctStr)}</div>`;
+
+    // Breakdown table: % of context window if available, else % of total
+    html += '<div class="charMemory_tokenBreakdown" style="margin-top:4px;">';
+    for (const cat of active) {
+        const pct = maxCtx
+            ? ((cat.tokens / maxCtx) * 100).toFixed(1) + '% of ctx'
+            : ((cat.tokens / (total || 1)) * 100).toFixed(1) + '% of total';
+        html += '<div class="charMemory_tokenRow">';
+        html += `<span class="charMemory_tokenDot" style="background:${escapeHtml(cat.color)};"></span>`;
+        html += `<span>${escapeHtml(cat.label)}</span>`;
+        html += `<span>${cat.tokens.toLocaleString()} tk (${pct})</span>`;
+        html += '</div>';
+    }
+    html += `<div class="charMemory_tokenRow charMemory_tokenRow--total"><span></span><span>Total</span><span>${total.toLocaleString()} tk</span></div>`;
+    html += '</div>';
+
+    // Footer: model + tokenizer + tips link
+    const meta = [params.modelUsed, params.selectedTokenizer ? `tokenizer: ${params.selectedTokenizer}` : ''].filter(Boolean).join(' · ');
+    const metaStr = meta ? `${escapeHtml(meta)} &middot; ` : '';
+    html += `<div class="charMemory_tokenNote" style="margin-top:6px;">${metaStr}<span class="charMemory_tokenTipsLink">Tips to reduce <i class="fa-solid fa-circle-question fa-xs"></i></span></div>`;
+
+    return html;
+}
+
+/**
+ * Render an estimated token breakdown from snapshot data (for old messages without itemized prompt data).
+ * @param {object} snapshot Injection snapshot from chat_metadata
+ * @returns {string} HTML string
+ */
+function renderEstimatedBreakdown(snapshot) {
+    const td = snapshot.tokenData;
+    const memTk = estimateTokens(td?.charMemoryChars || 0);
+    const wiTk  = estimateTokens(td?.wiChars || 0);
+    const otherEpChars = Object.entries(td?.epCharCounts || {})
+        .filter(([k]) => k !== '4_vectors_data_bank')
+        .reduce((sum, [, v]) => sum + v, 0);
+    const otherEpTk = estimateTokens(otherEpChars);
+    const total = memTk + wiTk + otherEpTk;
+    const maxCtx = td?.contextMaxTokens || null;
+
+    const cats = [
+        { label: 'Data Bank', tokens: memTk, color: '#7c6bc9' },
+        { label: 'Lorebook',  tokens: wiTk,  color: '#e8a33d' },
+        { label: 'Other extensions', tokens: otherEpTk, color: '#4a8fa8' },
+    ].filter(c => c.tokens > 0);
+
+    let html = '';
+    const barBase = (maxCtx && maxCtx > total) ? maxCtx : (total || 1);
+    if (total > 0) {
+        html += '<div class="charMemory_fullPromptBar">';
+        for (const cat of cats) {
+            const pct = ((cat.tokens / barBase) * 100).toFixed(2);
+            const pctOfTotal = ((cat.tokens / total) * 100).toFixed(1);
+            html += `<div class="charMemory_tokenBarSeg" style="width:${pct}%;background:${escapeHtml(cat.color)};" title="${escapeHtml(cat.label)}: ~${cat.tokens.toLocaleString()} tk (${pctOfTotal}% of injections)"></div>`;
+        }
+        html += '</div>';
+    }
+
+    const usedPct = (maxCtx && total) ? Math.round((total / maxCtx) * 100) : null;
+    const ctxStr = maxCtx ? ` / ${maxCtx.toLocaleString()} tk` : '';
+    const pctStr = usedPct !== null ? ` — ~${usedPct}% of context (injections only)` : '';
+    html += `<div class="charMemory_fullPromptSummary">~${total.toLocaleString()}${ctxStr} tk${escapeHtml(pctStr)}</div>`;
+
+    html += '<div class="charMemory_tokenBreakdown" style="margin-top:4px;">';
+    for (const cat of cats) {
+        const pct = maxCtx
+            ? '~' + ((cat.tokens / maxCtx) * 100).toFixed(1) + '% of ctx'
+            : '~' + ((cat.tokens / (total || 1)) * 100).toFixed(1) + '%';
+        html += '<div class="charMemory_tokenRow">';
+        html += `<span class="charMemory_tokenDot" style="background:${escapeHtml(cat.color)};"></span>`;
+        html += `<span>${escapeHtml(cat.label)}</span>`;
+        html += `<span>~${cat.tokens.toLocaleString()} tk (${pct})</span>`;
+        html += '</div>';
+    }
+    const totalStr = maxCtx
+        ? `~${total.toLocaleString()} / ${maxCtx.toLocaleString()}`
+        : `~${total.toLocaleString()}`;
+    html += `<div class="charMemory_tokenRow charMemory_tokenRow--total"><span></span><span>Total tracked</span><span>${totalStr} tk</span></div>`;
+    html += '</div>';
+
+    html += '<div class="charMemory_tokenNote" style="margin-top:6px;">Estimated injection tokens (~4 chars/token). '
+        + 'Char card, system prompt, and chat history not included — Prompt Itemization was unavailable for this message. '
+        + '<span class="charMemory_tokenTipsLink">Tips <i class="fa-solid fa-circle-question fa-xs"></i></span></div>';
+    return html;
+}
+
+function showTokenTipsPopup() {
+    const section = (title, color, items) => {
+        const bullets = items.map(([label, detail]) =>
+            `<li style="margin-bottom:6px;"><strong>${label}</strong> — ${detail}</li>`
+        ).join('');
+        return `
+            <div style="margin-bottom:14px;">
+                <div style="font-weight:bold;margin-bottom:6px;display:flex;align-items:center;gap:6px;">
+                    <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${color};flex-shrink:0;"></span>
+                    ${title}
+                </div>
+                <ul style="margin:0;padding-left:18px;line-height:1.5;">${bullets}</ul>
+            </div>`;
+    };
+
+    const html = `<div style="max-width:420px;font-size:0.9em;text-align:left;">
+        <h4 style="margin:0 0 14px;">Optimizing Token Usage</h4>
+        <p style="opacity:0.65;margin:0 0 14px;font-size:0.9em;">
+            Each category in the Prompt Breakdown competes for the same context window.
+            Reducing any one of them leaves more room for chat history and the model's reply.
+        </p>
+        ${section('Char Card / System Prompt', '#5b8dd9', [
+            ['Shorten the description', 'The character description, personality, and scenario fields are injected every generation — keep them focused on what\'s relevant to the RP rather than exhaustive world-building.'],
+            ['Move lore to the Lorebook', 'Details that are only relevant in certain situations (locations, side characters, history) belong in the Lorebook, where they only activate when triggered.'],
+            ['Trim the system prompt', 'Long system / author\'s notes prompts add up quickly. Cut any instructions the model already follows by default.'],
+        ])}
+        ${section('Data Bank', '#7c6bc9', [
+            ['Consolidate', 'Use the <strong>Consolidate</strong> button on the dashboard to compress memories into fewer, denser bullets.'],
+            ['Retrieve chunks', 'Lower <strong>Vector Storage → Data Bank files → Retrieve chunks</strong> to inject fewer chunks per generation. Also raise <strong>Score threshold</strong> to filter out low-relevance results.'],
+            ['Per-chat isolation', 'Enable <strong>Settings → Storage → Per-chat isolation</strong> so only memories from the current chat are retrieved, not the entire character file.'],
+            ['Edit the memory file', 'Open the memory file via <strong>Troubleshooter → Data Bank</strong> and manually trim verbose or redundant bullets.'],
+        ])}
+        ${section('Lorebook', '#e8a33d', [
+            ['Shorten entry content', 'The full text of each triggered entry is injected verbatim — keep entries concise.'],
+            ['More specific keywords', 'Broad trigger keywords activate entries unnecessarily; tighten them to reduce spurious activations.'],
+            ['Token budget', 'Use ST\'s built-in <strong>Lorebook → Token budget</strong> setting to cap total WI injection size.'],
+            ['Disable idle entries', 'Disable lorebook entries that aren\'t relevant to the current story arc.'],
+        ])}
+        ${section('Other Extensions', '#4a8fa8', [
+            ['Identify heavy injectors', 'The <strong>Extension Prompts</strong> section shows each extension\'s name and estimated token cost.'],
+            ['Disable unused extensions', 'Many extensions inject a system prompt even when idle — disable ones you\'re not actively using.'],
+            ['Per-extension settings', 'Most extensions have their own injection size controls (e.g. Summary max tokens, memory depth).'],
+        ])}
+        ${section('Overall', 'rgba(128,128,128,0.4)', [
+            ['Expand context window', 'Increase the model\'s <strong>Max context</strong> setting if the model supports a larger window.'],
+            ['Reduce response tokens', 'Lowering <strong>Max response tokens</strong> reserves less space for output, freeing more for injections and history.'],
+            ['Use a larger model', 'Switch to a model with a bigger context window (32k, 128k) to accommodate injections without crowding out chat history.'],
+        ])}
+    </div>`;
+
+    callGenericPopup(html, POPUP_TYPE.TEXT, '', { wide: false, allowVerticalScrolling: true });
 }
 
 /**
@@ -5166,12 +8043,30 @@ function showInjectionDrawer(messageIndex) {
 
     let html = '';
 
-    // Per-message health notes
+    // ── Prompt Breakdown section (auto-loaded) ───────────────────────────
+    const td = snapshot.tokenData;
+    const memTokens   = estimateTokens(td?.charMemoryChars || 0);
+    const wiTokens    = estimateTokens(td?.wiChars || 0);
+    const otherEpChars = Object.entries(td?.epCharCounts || {})
+        .filter(([k]) => k !== '4_vectors_data_bank')
+        .reduce((sum, [, v]) => sum + v, 0);
+    const otherEpTokens = estimateTokens(otherEpChars);
+
+    html += '<div class="charMemory_drawerSection">';
+    html += '<div class="charMemory_drawerSectionHeader" data-section="promptbreakdown">';
+    html += '<i class="fa-solid fa-chevron-down charMemory_drawerChevron"></i> ';
+    html += '<strong>Context</strong>';
+    html += '</div>';
+    html += '<div class="charMemory_drawerSectionBody charMemory_promptBreakdownBody">';
+    html += '<div class="charMemory_diagEmpty"><i class="fa-solid fa-spinner fa-spin fa-sm"></i> Loading…</div>';
+    html += '</div></div>';
+
+    // ── Per-message health notes ──────────────────────────────────────────
     const memCount = snapshot.memories?.length || 0;
     if (memCount === 0) {
-        html += '<div class="charMemory_drawerHealthNote charMemory_drawerHealthNote--red">'
-            + '<i class="fa-solid fa-circle-xmark fa-xs"></i> No memories injected for this message. '
-            + 'Check the health indicator in the status bar.'
+        html += '<div class="charMemory_drawerHealthNote charMemory_drawerHealthNote--yellow">'
+            + '<i class="fa-solid fa-circle-info fa-xs"></i> No memories matched this message. '
+            + 'This is normal when the conversation topic doesn\'t relate to stored memories.'
             + '</div>';
     } else {
         const uniqueTexts = new Set(snapshot.memories.map(m => m.text));
@@ -5184,11 +8079,12 @@ function showInjectionDrawer(messageIndex) {
         }
     }
 
-    // CharMemory section
+    // ── CharMemory section ────────────────────────────────────────────────
     html += '<div class="charMemory_drawerSection">';
     html += '<div class="charMemory_drawerSectionHeader" data-section="memories">';
     html += '<i class="fa-solid fa-chevron-down charMemory_drawerChevron"></i> ';
-    html += `<strong>CharMemory</strong> <span class="charMemory_drawerCount">(${memCount})</span>`;
+    html += `<strong>Data Bank</strong> <span class="charMemory_drawerCount">(${memCount})</span>`;
+    if (memTokens > 0) html += `<span class="charMemory_drawerTokenHint">~${memTokens.toLocaleString()} tk</span>`;
     html += '</div>';
     html += '<div class="charMemory_drawerSectionBody">';
     if (memCount > 0) {
@@ -5200,21 +8096,24 @@ function showInjectionDrawer(messageIndex) {
     }
     html += '</div></div>';
 
-    // Lorebook Entries section
+    // ── Lorebook Entries section ──────────────────────────────────────────
     const wiCount = snapshot.worldInfo?.length || 0;
     html += '<div class="charMemory_drawerSection">';
     html += '<div class="charMemory_drawerSectionHeader" data-section="worldinfo">';
     html += '<i class="fa-solid fa-chevron-down charMemory_drawerChevron"></i> ';
     html += `<strong>Lorebook Entries</strong> <span class="charMemory_drawerCount">(${wiCount})</span>`;
+    if (wiTokens > 0) html += `<span class="charMemory_drawerTokenHint">~${wiTokens.toLocaleString()} tk</span>`;
     html += '</div>';
     html += '<div class="charMemory_drawerSectionBody">';
     if (wiCount > 0) {
         for (const entry of snapshot.worldInfo) {
+            const entryTk = estimateTokens(entry.content?.length || 0);
             html += '<div class="charMemory_drawerCard">';
             html += `<div class="charMemory_drawerCardTitle">${escapeHtml(entry.comment)}</div>`;
             if (entry.keys?.length > 0) {
                 html += `<div class="charMemory_drawerCardKeys">Keys: ${escapeHtml(entry.keys.join(', '))}</div>`;
             }
+            html += `<div class="charMemory_drawerCardMeta">~${entryTk.toLocaleString()} tk</div>`;
             if (entry.content) {
                 html += `<div class="charMemory_drawerCardContent">${escapeHtml(entry.content)}${entry.content.length >= 200 ? '...' : ''}</div>`;
             }
@@ -5225,19 +8124,30 @@ function showInjectionDrawer(messageIndex) {
     }
     html += '</div></div>';
 
-    // Extension Prompts section
+    // ── Extension Prompts section ─────────────────────────────────────────
     const epCount = snapshot.extensionPrompts?.length || 0;
+    const epPositionLabel = (position, depth) => {
+        const names = { 0: 'before prompt', 1: 'after system', 2: 'before messages', 3: 'in-chat', 4: 'before reply' };
+        const label = names[position] ?? `pos ${position}`;
+        return typeof depth === 'number' ? `${label} @ depth ${depth}` : label;
+    };
     html += '<div class="charMemory_drawerSection">';
     html += '<div class="charMemory_drawerSectionHeader" data-section="prompts">';
     html += '<i class="fa-solid fa-chevron-down charMemory_drawerChevron"></i> ';
     html += `<strong>Extension Prompts</strong> <span class="charMemory_drawerCount">(${epCount})</span>`;
+    if (otherEpTokens > 0) html += `<span class="charMemory_drawerTokenHint">~${otherEpTokens.toLocaleString()} tk</span>`;
     html += '</div>';
     html += '<div class="charMemory_drawerSectionBody">';
     if (epCount > 0) {
         for (const prompt of snapshot.extensionPrompts) {
+            const rawChars = td?.epCharCounts?.[prompt.label] ?? prompt.content.length;
+            const promptTk = estimateTokens(rawChars);
+            const posLabel = prompt.position !== undefined
+                ? epPositionLabel(prompt.position, prompt.depth) : '';
+            const isTruncated = prompt.label !== '4_vectors_data_bank' && prompt.content.length >= 500;
             html += '<div class="charMemory_drawerCard">';
             html += `<div class="charMemory_drawerCardTitle">${escapeHtml(prompt.label)}</div>`;
-            const isTruncated = prompt.label !== '4_vectors_data_bank' && prompt.content.length >= 500;
+            html += `<div class="charMemory_drawerCardMeta">~${promptTk.toLocaleString()} tk${posLabel ? ' · ' + escapeHtml(posLabel) : ''}</div>`;
             html += `<div class="charMemory_drawerCardContent" style="white-space:pre-wrap;">${escapeHtml(prompt.content)}${isTruncated ? '...' : ''}</div>`;
             html += '</div>';
         }
@@ -5246,7 +8156,26 @@ function showInjectionDrawer(messageIndex) {
     }
     html += '</div></div>';
 
+
     $body.html(html);
+
+    // Auto-load prompt breakdown
+    (async () => {
+        const $pbBody = $body.find('.charMemory_promptBreakdownBody');
+        try {
+            const idx = itemizedPrompts.findIndex(x => Number(x.mesId) === messageIndex);
+            if (idx !== -1) {
+                const params = await itemizedParams(itemizedPrompts, idx, messageIndex);
+                $pbBody.html(renderPromptBreakdown(params));
+            } else {
+                $pbBody.html(renderEstimatedBreakdown(snapshot));
+            }
+        } catch (err) {
+            console.error(LOG_PREFIX, 'Failed to load prompt breakdown:', err);
+            $pbBody.html('<div class="charMemory_diagEmpty">Error computing token counts.</div>');
+        }
+    })();
+
     $toolbar.html(`<span>Captured at ${escapeHtml(snapshot.timestamp)}</span><span class="charMemory_drawerDiagLink" title="Open CharMemory panel and scroll to Diagnostics">Diagnostics</span>`);
 
     // Open the drawer
@@ -5261,6 +8190,67 @@ function showInjectionDrawer(messageIndex) {
 // ============ Batch Extraction ============
 
 let batchAbortController = null;
+
+/**
+ * Show a standalone batch extraction popup with chat list and controls.
+ * Re-uses the same element IDs as the old sidebar so loadBatchChatList()
+ * and runBatchExtraction() work without modification.
+ */
+async function showBatchPopup() {
+    const charName = getCharacterName();
+    if (!charName) {
+        toastr.warning('No character selected.', 'CharMemory');
+        return;
+    }
+
+    const batchHtml = `
+        <div style="text-align:left;min-width:350px;">
+            <div class="charMemory_buttonRow">
+                <input type="button" id="charMemory_batchRefresh" class="menu_button" value="Refresh" title="Load chat list for this character" />
+                <input type="button" id="charMemory_batchExtract" class="menu_button" value="Extract Selected" title="Run extraction on all selected chats" disabled />
+                <input type="button" id="charMemory_batchStop" class="menu_button" value="Stop" title="Cancel batch extraction" style="display:none;" />
+            </div>
+            <div id="charMemory_batchProgress" class="charMemory_batchProgress" style="display:none;">
+                <div class="charMemory_batchProgressText"></div>
+                <div class="charMemory_batchProgressBar"><div class="charMemory_batchProgressFill"></div></div>
+            </div>
+            <div class="charMemory_sectionHeader">
+                <small><b title="Chat files attached to this character. Select which ones to extract memories from.">Character Chats</b></small>
+                <label class="checkbox_label">
+                    <input type="checkbox" id="charMemory_batchSelectAll" />
+                    <small>Select all</small>
+                </label>
+            </div>
+            <div id="charMemory_batchChatList" class="charMemory_batchChatList" style="max-height:400px;">
+                <div class="charMemory_diagEmpty">Loading...</div>
+            </div>
+        </div>
+    `;
+
+    // Show the popup (non-blocking)
+    const popup = callGenericPopup(batchHtml, POPUP_TYPE.TEXT, 'Batch Extraction', { wide: true, okButton: 'Close' });
+
+    // Wire batch controls after DOM is inserted
+    setTimeout(() => {
+        $('#charMemory_batchRefresh').off('click').on('click', loadBatchChatList);
+        $('#charMemory_batchExtract').off('click').on('click', runBatchExtraction);
+        $('#charMemory_batchStop').off('click').on('click', function () {
+            if (batchAbortController) batchAbortController.abort();
+        });
+        $('#charMemory_batchSelectAll').off('change').on('change', function () {
+            const checked = $(this).prop('checked');
+            $('.charMemory_batchChatCheck').prop('checked', checked);
+            updateBatchButtons();
+        });
+        $(document).off('change.batchPopup', '.charMemory_batchChatCheck')
+            .on('change.batchPopup', '.charMemory_batchChatCheck', updateBatchButtons);
+
+        // Auto-load
+        loadBatchChatList();
+    }, 100);
+
+    await popup;
+}
 
 async function loadBatchChatList() {
     const $list = $('#charMemory_batchChatList');
@@ -5443,9 +8433,59 @@ jQuery(async function () {
         </div>
     `);
 
+    // Log drawer — appended to body, outside extension panel
+    $('body').append(`
+        <div id="charMemory_logDrawer" class="charMemory_logDrawer">
+            <div class="charMemory_drawerHeader">
+                <span class="charMemory_drawerTitle">Activity Log</span>
+                <div style="display:flex; gap:6px; align-items:center; margin-left:auto;">
+                    <label class="checkbox_label" style="font-size:0.85em;">
+                        <input type="checkbox" id="charMemory_logDrawerVerbose" />
+                        <span>Verbose</span>
+                    </label>
+                    <button id="charMemory_logDrawerClear" class="menu_button" style="font-size:0.8em; padding:2px 8px;">Clear</button>
+                    <button id="charMemory_logDrawerSave" class="menu_button" style="font-size:0.8em; padding:2px 8px;">Save</button>
+                    <div class="charMemory_drawerClose" id="charMemory_logDrawerClose" title="Close"><i class="fa-solid fa-xmark"></i></div>
+                </div>
+            </div>
+            <div class="charMemory_drawerBody" id="charMemory_logDrawerBody">
+                <div class="charMemory_diagEmpty">No activity yet.</div>
+            </div>
+        </div>
+    `);
+
+    // Tablet mode floating panel — appended to body, hidden by default
+    $('body').append(`
+        <div id="charMemory_tabletPanel" class="charMemory_tabletPanel">
+            <div class="charMemory_tabletHeader">
+                <b>CharMemory</b>
+                <div id="charMemory_tabletHeaderIcons" class="charMemory_tabletHeaderIcons"></div>
+                <div class="charMemory_drawerClose" id="charMemory_tabletClose" title="Close">
+                    <i class="fa-solid fa-xmark"></i>
+                </div>
+            </div>
+            <div id="charMemory_tabletBody" class="charMemory_tabletBody"></div>
+        </div>
+    `);
+
     loadSettings();
     setupListeners();
     registerSlashCommands();
+
+    // Setup Wizard: auto-trigger on first launch
+    if (!extension_settings[MODULE_NAME].wizardCompleted) {
+        showSetupWizard(1);
+    }
+
+    // Dashboard wizard button
+    $('#charMemory_openWizard').on('click', function () {
+        showSetupWizard(1);
+    });
+
+    // Nudge banner: View button opens troubleshooter health checks
+    $('#charMemory_nudgeFix').on('click', function () {
+        showTroubleshooter('health');
+    });
 
     // Event hooks
     eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, onCharacterMessageRendered);
@@ -5466,6 +8506,73 @@ jQuery(async function () {
     // Injection drawer controls
     $('#charMemory_drawerClose').on('click', () => toggleInjectionDrawer(false));
     $('#charMemory_drawerToggle').on('click', () => toggleInjectionDrawer());
+
+    // Log drawer controls
+    $('#charMemory_logDrawerClose').on('click', () => toggleLogDrawer(false));
+    $('#charMemory_logDrawerClear').on('click', function () {
+        activityLog = [];
+        updateActivityLogDisplay();
+        renderLogDrawerEntries();
+    });
+    $('#charMemory_logDrawerSave').on('click', function () {
+        if (activityLog.length === 0) {
+            toastr.info('Activity log is empty.', 'CharMemory');
+            return;
+        }
+        const lines = activityLog.map(e => `[${e.timestamp}] [${e.type}] ${e.message}`).join('\n');
+        const blob = new Blob([lines], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `charMemory-log-${new Date().toISOString().slice(0, 19).replace(/:/g, '')}.txt`;
+        a.click();
+        URL.revokeObjectURL(url);
+    });
+    $('#charMemory_logDrawerVerbose').on('change', function () {
+        extension_settings[MODULE_NAME].verboseLogging = !!$(this).prop('checked');
+        saveSettingsDebounced();
+    });
+    // "View full log" link (wired from sidebar dashboard, Task 5)
+    $(document).on('click', '#charMemory_viewFullLog', () => toggleLogDrawer(true));
+
+    // Swipe left to close log drawer (touch devices)
+    const logDrawerEl = document.getElementById('charMemory_logDrawer');
+    if (logDrawerEl) {
+        let logTouchStartX = 0;
+        logDrawerEl.addEventListener('touchstart', (e) => {
+            logTouchStartX = e.touches[0].clientX;
+        }, { passive: true });
+        logDrawerEl.addEventListener('touchend', (e) => {
+            const deltaX = e.changedTouches[0].clientX - logTouchStartX;
+            if (deltaX > 60) toggleLogDrawer(false);
+        }, { passive: true });
+    }
+
+    // Tablet panel controls
+    $('#charMemory_tabletClose').on('click', () => toggleTabletPanel(false));
+
+    // Tap outside panel to dismiss (non-modal: doesn't block underlying tap)
+    $(document).off('click.tabletPanelClose').on('click.tabletPanelClose', function (e) {
+        if (!isTabletPanelOpen()) return;
+        // Don't close if an ST popup/modal is currently visible (their backdrop is outside the panel)
+        if ($('.popup:visible').length) return;
+        if (!$(e.target).closest('#charMemory_tabletPanel').length) {
+            toggleTabletPanel(false);
+        }
+    });
+
+    // Swipe down to dismiss tablet panel (touch devices)
+    const tabletPanelEl = document.getElementById('charMemory_tabletPanel');
+    if (tabletPanelEl) {
+        let tabletTouchStartY = 0;
+        tabletPanelEl.addEventListener('touchstart', (e) => {
+            tabletTouchStartY = e.touches[0].clientY;
+        }, { passive: true });
+        tabletPanelEl.addEventListener('touchend', (e) => {
+            const deltaY = e.changedTouches[0].clientY - tabletTouchStartY;
+            if (deltaY > 80) toggleTabletPanel(false);
+        }, { passive: true });
+    }
 
     // Drawer "Open Diagnostics" link — opens extension panel and scrolls to diagnostics
     // Drawer "Diagnostics" link — touch devices get an inline popup, desktop navigates to the panel
@@ -5509,36 +8616,8 @@ jQuery(async function () {
             return;
         }
 
-        // Desktop: scroll to diagnostics if visible, otherwise open the extensions panel
-        const $diag = $('.charMemory_bottomDiagnostics');
-        if ($diag.length && $diag.is(':visible')) {
-            $diag[0].scrollIntoView({ behavior: 'smooth', block: 'start' });
-            $diag.css('outline', '2px solid var(--SmartThemeQuoteColor, #e8a33d)');
-            setTimeout(() => $diag.css('outline', ''), 1500);
-            return;
-        }
-        try {
-            const navButtons = document.querySelectorAll('#top-settings-holder .drawer-icon');
-            const extButton = Array.from(navButtons).find(b => b.title === 'Extensions');
-            if (extButton) extButton.click();
-            setTimeout(() => {
-                const charMemDrawer = document.querySelector('#charMemory_settings .inline-drawer');
-                if (charMemDrawer && !charMemDrawer.classList.contains('open')) {
-                    const toggle = charMemDrawer.querySelector('.inline-drawer-toggle');
-                    if (toggle) toggle.click();
-                }
-                setTimeout(() => {
-                    const $d = $('.charMemory_bottomDiagnostics');
-                    if ($d.length) {
-                        $d[0].scrollIntoView({ behavior: 'smooth', block: 'start' });
-                        $d.css('outline', '2px solid var(--SmartThemeQuoteColor, #e8a33d)');
-                        setTimeout(() => $d.css('outline', ''), 1500);
-                    }
-                }, 300);
-            }, 300);
-        } catch (e) {
-            console.log(LOG_PREFIX, 'Could not open diagnostics panel:', e);
-        }
+        // Desktop: open troubleshooter health checks
+        showTroubleshooter('health');
     });
 
     // Swipe right to close drawer (touch devices)
@@ -5562,10 +8641,22 @@ jQuery(async function () {
         $chevron.toggleClass('collapsed');
     });
 
+    // Token tips link in the budget breakdown
+    $(document).on('click', '.charMemory_tokenTipsLink', function (e) {
+        e.stopPropagation(); // don't trigger section collapse
+        showTokenTipsPopup();
+    });
+
+
+
     // Restore drawer state from settings
     if (extension_settings[MODULE_NAME].injectionDrawerOpen) {
         toggleInjectionDrawer(true);
     }
+
+    // Apply display mode body class (for phone-mode CSS overrides)
+    applyDisplayModeClass();
+    window.addEventListener('resize', applyDisplayModeClass);
 
     console.log(LOG_PREFIX, 'Extension loaded');
 });

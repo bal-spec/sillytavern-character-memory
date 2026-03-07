@@ -1,10 +1,163 @@
 # Changelog
 
-## 1.6.2
+## 2.1.6
 
 ### Improvements
 
-- **Clearer dialog buttons**: Consolidation and conversion dialogs now show "Save" and "Cancel" buttons instead of the ambiguous "Yes"/"No" defaults, preventing accidental loss of edits.
+- **Prompt Breakdown at top of injection viewer**: The injection viewer now opens with a "Prompt Breakdown" section at the top that loads automatically — no need to find or click a collapsed panel. Shows exact per-category token counts (System, Char card, Lorebook, Data Bank, Examples, Chat history) via ST's Prompt Itemization when available, or estimated injection-only numbers for snapshots from previous sessions.
+- **Accurate Lorebook token estimates**: Previously token estimates were computed by summing truncated entry content (200 chars/entry from `WORLD_INFO_ACTIVATED`), causing large overestimates on multi-entry lorebooks. Estimates now use the actual injected `worldInfoString` and `dataBankVectorsString` from ST's prompt data, matching the Prompt Breakdown numbers.
+- **Data Bank label consistency**: CharMemory's injected memories are now labelled "Data Bank" throughout — section header, breakdown rows, and tips popup — matching SillyTavern's own terminology.
+- **Expanded "Optimize" tips popup**: The tips popup now covers all breakdown categories. A new "Char Card / System Prompt" section advises shortening the description, moving lore to the Lorebook, and trimming the system prompt. The intro text is updated to reflect that the breakdown now shows the full prompt, not injections only.
+
+## 2.1.5
+
+### Improvements
+
+- **Unified Context section in injection viewer**: The previous "Context Budget" and "Prompt Breakdown" sections are now a single "Context" section at the top of each injection snapshot. The header shows a compact stacked bar and summary (e.g. `~1,200 / 32,768 tk (4%)`). Expanding loads the full token breakdown — exact per-category counts via ST's Prompt Itemization when available, or injection-only estimates for snapshots from previous sessions.
+- **Accurate Lorebook token estimates**: The "Context Budget" section previously summed truncated entry content (200 chars/entry) from `WORLD_INFO_ACTIVATED`, causing large overestimates for lorebooks with many entries. Token estimates now use the actual injected `worldInfoString` from ST's prompt data, giving accurate numbers that match the Prompt Breakdown view.
+- **Data Bank label consistency**: The injection viewer now labels CharMemory's injected memories as "Data Bank" throughout (section header, breakdown rows, tips popup), matching SillyTavern's own terminology.
+- **Estimated fallback breakdown**: When exact Prompt Itemization data is unavailable (previous session or feature disabled), the Context section body shows an estimated injection-only breakdown using snapshot char counts, with a clear note that the numbers are approximate.
+- **Tips to reduce link in full breakdown**: The "Tips to reduce" link (and tips popup) now appears in all breakdown views — both the exact Prompt Itemization breakdown and the estimated fallback.
+
+## 2.1.4
+
+### Improvements
+
+- **Token budget panel in injection viewer**: The per-message injection viewer now shows a "Context Budget" section at the top of each snapshot. A compact horizontal stacked bar (collapsed by default) displays estimated token usage across three tracked sources — CharMemory (purple), Lorebook (amber), and other extension prompts (teal) — relative to the model's configured context limit. Expanding the section shows a per-source breakdown table. Token estimates (~4 chars/token) are labeled as approximate; char card, system prompt, and chat history are noted as not counted.
+- **Context overflow and heavy injection warnings**: If tracked injections alone exceed the model context, a red health note flags the overflow. If they exceed 40% of context (leaving little room for char card and chat history), a yellow advisory note appears.
+- **Token hints in section headers**: The CharMemory, Lorebook, and Extension Prompts section headers each show a faint `~N tk` estimate so token cost is visible without expanding the budget panel.
+- **Token and position metadata in cards**: Each Extension Prompt card now shows its estimated token cost and injection position/depth (e.g. `~340 tk · in-chat @ depth 2`). Lorebook entry cards show estimated token cost. The snapshot now also captures injection `depth` for extension prompts, which was previously missing.
+- **"Tips to reduce" popup**: A "Tips to reduce" link in the budget breakdown opens a popup with actionable guidance organized by source — Consolidate and Retrieve chunks for CharMemory, token budget and keyword specificity for Lorebook, per-extension settings for other extensions, and context window / response token tuning for overall budget.
+
+## 2.1.3
+
+### Improvements
+
+- **Generation mode in group diagnostics**: The Group Debug section of the Diagnostic Report now shows the group's generation mode value. This is the key piece needed to diagnose issue #4 — groups using Append (with disabled) mode have all members in the disabled list by design, which was invisible in prior reports.
+- **Clearer warning when all group members are disabled**: Instead of the generic "no targets found" message, the Activity Log now says "all group members are disabled in SillyTavern — re-enable at least one in the group settings" when a group has members but all are in the disabled list.
+- **Clearer dialog buttons**: Consolidation, conversion, reformat, and Data Bank editor dialogs now show "Save" and "Cancel" buttons instead of ambiguous defaults, preventing accidental loss of edits.
+- **Unified Memory Manager editor**: The View/Edit memories dialog now uses the same block editor as Consolidation, Conversion, and the Data Bank browser. Inline editing, undo, add/delete blocks and bullets, and find/replace — all consistent across every editing surface. In group chats, a character picker selects which member to edit.
+
+### Bug Fixes
+
+- **Consolidation dialog not appearing with some LLMs**: Models like GLM-4.7 produce self-closing `<memory chat="..."></memory>` tags with bullets placed after the closing tag instead of inside it. The parser now handles this pattern, recovering per-block structure instead of silently returning an empty result. The same fix is applied to the extraction pipeline.
+- **Prompt update notifications silent after upgrading from 1.x**: Users who customized an extraction or consolidation prompt in 1.x and then upgraded to 2.x were never notified that the default prompts had changed. The version-tracking system introduced in 2.0 only ran on the second launch (after `promptVersions` was already initialized), so the first launch after upgrade silently marked all prompts as up-to-date — even customized ones. The check now detects a customized prompt with no prior version record and flags it for review. A toast notification also appears 2 seconds after load whenever any prompt has a pending update, directing users to Settings → Prompts.
+
+## 2.1.2
+
+### Bug Fixes
+
+- **Extraction restarting from the beginning every session**: After running consolidation, `lastExtractedIndex` was reset to -1 on every SillyTavern restart. Consolidation replaces the original chat-ID labels on memory blocks with thematic labels (e.g. "First vet visit"), and the stale-metadata check incorrectly treated those as "no memories found for this chat." The check now resets only when the memory file is genuinely empty.
+- **Group chat extraction discarded mid-flight**: If any group member sent a message during an LLM call, the extraction result was silently thrown away and the same messages re-extracted after cooldown — doubling API cost. The context-change guard now only checks for a chat switch in group chats; `characterId` flipping between members is expected and no longer triggers a discard. The discard event is also now visible in the Activity Log instead of being hidden in the browser console.
+
+### Improvements
+
+- **Group chat diagnostics in Troubleshooter**: The Diagnostic Report now includes a Group Debug section when in a group chat, showing member counts, how many resolved vs. unresolved, and any avatar strings that couldn't be matched to a loaded character. Helps diagnose issue #4 where group members aren't detected.
+
+## 2.1.1
+
+### New Features
+
+- **Protect recent messages**: New toggle in Settings > Extraction that excludes the most recent messages from auto-extraction, preventing a feedback loop where just-extracted memories constrain swipes and regenerations. When enabled, a configurable buffer (default: 4 messages) keeps recent events out of memories until the next extraction cycle. Does not affect Extract Now or Extract Here.
+
+### Bug Fixes
+
+- **KoboldCPP vectorization check false negative**: The health check reported files as "not vectorized" when using KoboldCPP as the vectorization backend. KoboldCPP doesn't store its model name in Vector Storage settings — it's discovered dynamically from the API. The check now queries the KoboldCPP embed endpoint to discover the correct model name before looking up vector data.
+
+## 2.1.0
+
+### New Features
+
+- **Tablet / Touch Mode**: On touch devices (iPad, tablets), the dashboard now opens as a centered floating panel instead of expanding in the narrow sidebar. All buttons are enlarged to 44px touch targets per Apple HIG. The panel is non-modal — tap outside or swipe down to dismiss, and tools like Settings and Troubleshooter open on top.
+- **Display Mode setting**: The old Tablet/Touch Mode toggle (Auto/On/Off) is replaced with a unified Display Mode selector in Settings > Advanced. Four options: Auto (detect your device), Desktop (sidebar), Tablet (floating panel), Phone (panel + wider drawers). Forced overrides work regardless of actual viewport — useful when auto-detection gets it wrong.
+- **Phone layout**: On narrow viewports (≤600px), the injection viewer and activity log drawers are widened to 85vw and raised above the SillyTavern sidebar (z-index 4000). Auto-detected in Auto mode, or force via the Phone display mode.
+
+### Bug Fixes
+
+- **Tablet panel off-screen on mobile**: SillyTavern sets `perspective` on `<html>`, which changes the containing block for `position: fixed` elements. The panel's `top: 50%` resolved to 0px on mobile. Fixed by using viewport units (`50vh`/`50vw`) instead of percentages.
+- **Tablet panel hidden behind sidebar**: The panel's z-index (1002) was below SillyTavern's extensions drawer (3005). Raised to 5000.
+- **Injection viewer and log drawer hidden on mobile**: Both drawers had z-index below the sidebar and were too narrow at phone widths (40vw = 157px on a 393px screen). Phone mode overrides fix both issues.
+- **Nudge banner "Fix now" → "View"**: The warning banner button now says "View" since it opens the Troubleshooter for inspection — it doesn't auto-fix anything.
+
+## 2.0.1
+
+### Improvements
+
+- **Topic tags now include character name**: All extraction, consolidation, and conversion prompts produce topic tags starting with the character's name (e.g., `[Flux, Alex — adoption day]` instead of `[Alex — adoption day]`). This improves vector embedding discrimination for retrieval. Prompt versions bumped to `2.0.1` — users with customized prompts will see an update notification.
+- **Cross-chunk deduplication**: When extraction spans multiple chunks, each chunk's output is now fed forward as existing memories for subsequent chunks. This prevents duplicate memory blocks when a scene spans a chunk boundary.
+- **Sanitized prompt examples**: DO NOT EXTRACT examples in extraction prompts now use neutral, non-explicit examples.
+
+### Bug Fixes
+
+- **False alarm: file vectorization on chat open**: The health check no longer shows a red error when opening an existing chat whose memory file hasn't been re-indexed yet by Vector Storage. Downgraded to a yellow note explaining it resolves automatically on the next message.
+- **False alarm: "no memories injected"**: When no memories match the current conversation topic (score threshold filtering working correctly), the health check and injection viewer now show a yellow info note instead of a red error. Zero matches is a normal state, not a failure.
+- **Consolidation {{charName}} substitution**: The consolidation pipeline now correctly substitutes the character's name into topic tag instructions. Previously, `{{charName}}` in consolidation prompts was not replaced because `buildConsolidationPrompt()` only called `substituteParamsExtended()` (which handles `{{char}}` but not `{{charName}}`).
+
+## 2.0.0
+
+### New Features
+
+- **Find & Replace across all editing surfaces**: A compact find/replace bar is available in the Memory Manager, Consolidation, Conversion Preview, Reformat Preview, and Data Bank editor. Type to see matches highlighted with a live count. Replace All updates every occurrence at once. Supports case-sensitive matching. In block editor dialogs (Consolidation, Reformat, Conversion, Data Bank editor), Replace All is undoable.
+- **Undo in Data Bank editor**: The Data Bank file editor now has an Undo button that reverts Replace All, delete, and add operations. Nothing is written to disk until you click Save.
+
+### UX Redesign
+
+Complete UI overhaul replacing the 4-tab sidebar (Main, Tools, Settings, Log) with a streamlined dashboard + modal architecture.
+
+- **Single-view dashboard**: Sidebar is now a compact dashboard with stats bar, file info, extraction toggle, Extract Now button, tool launchers (Consolidate, Batch, Format), mini activity log, and diagnostics summary
+- **Settings modal**: All settings moved to a center-screen modal with left-nav sections (Connection, Extraction, Storage, Advanced). Opens via gear icon in sidebar header
+- **Prompts modal**: Dedicated full-width editor for extraction and consolidation prompts with prompt version tracking and update notifications when defaults change
+- **Log drawer**: Activity log moved to a slide-out right-side drawer with verbose toggle, export, and swipe-to-close on touch devices
+- **Troubleshooter modal**: Replaces the old Diagnostics panel. Includes automated health checks, Data Bank file browser with export/delete/convert actions, diagnostic report, and reset/clear tools. Opens via wrench icon in sidebar header
+- **Setup wizard**: First-run 3-step flow (LLM Connection, Vector Storage, Ready) that guides new users through initial configuration. Detects unconfigured state and shows a nudge banner
+- **Prompt version tracking**: When default prompts are updated between versions, users with customized prompts see an update banner with options to view changes, adopt the new default, or dismiss
+- **Health indicator in stats bar**: Traffic-light dot showing injection health status — click to open Troubleshooter
+
+### Developer
+
+- Removed dead CSS for old tab/pill layout (`.charMemory_tabs`, `.charMemory_toolPills`, etc.)
+- Removed dead JS handlers binding to old sidebar element IDs (`#charMemory_consolidate`, `#charMemory_undoConsolidate`, `#charMemory_verboseLog`, etc.)
+- Removed unused `updateDiagnosticsDisplay()` function (~180 lines)
+- Cleaned up `loadSettings()` — removed jQuery no-ops targeting elements that no longer exist in the sidebar HTML
+- Settings modal uses `cm_modal_*` prefixed IDs to avoid conflicts with sidebar dashboard elements
+
+## 1.8.0
+
+### Developer
+
+No user-facing changes. Internal refactoring to make the codebase maintainable ahead of the v2.0 UX redesign.
+
+- **ES module imports from lib.js**: `index.js` now imports pure functions from `lib.js` instead of maintaining duplicate copies. `lib.js` is the single source of truth for parsing, escaping, formatting, and migration functions. The sync-check test that verified duplication consistency is removed.
+- **Shared memory editor factory**: New `editor.js` module with `createMemoryEditor()` — encapsulates block state management, undo, and edit-mode tracking. Replaces ~300 lines of duplicated state management across the Consolidation, Conversion, and Reformat dialog editors.
+- **Split setupListeners()**: The 527-line monolithic event-wiring function is now a 7-line coordinator calling `setupConnectionControls()`, `setupExtractionControls()`, `setupToolControls()`, `setupStorageControls()`, and `setupLogControls()`.
+- **Utility extractions**: `getTimestamp()` and `cloneMemoryBlocks()` replace 9 inline timestamp constructions and 3 inline block-clone patterns.
+- **Net result**: `index.js` reduced from ~6,086 to ~5,709 lines. Test count increased from 100 to 117.
+
+## 1.7.0
+
+### New Features
+
+- **Retrieval-optimized memory format**: Extraction prompts now produce topic-tagged memory blocks with a `[Names — description]` tag as the first bullet. This improves vector search discrimination, allowing Vector Storage to retrieve only the most relevant memories instead of thematically similar ones.
+- **Unified Convert tool**: The Convert and Reformat tools are merged into a single Convert tool with a source picker. Select "Current memories" to reformat existing memories to the new topic-tagged format, or "Data Bank file" to import from any file. The conversion prompt is always visible for easy iteration.
+- **Recommended VS settings**: Diagnostics panel now includes a "Recommended Vector Storage Settings" card with optimal chunk size, retrieve chunks, score threshold, and other settings for CharMemory.
+
+### Improvements
+
+- **Tighter memory blocks**: Default bullet limit reduced from 8 to 5 per block (not counting the topic tag). Forces outcome-focused extraction rather than step-by-step narration.
+- **Better consolidation labels**: Consolidation now uses encounter-specific labels (e.g., "Adoption day at the apartment") instead of broad categories (e.g., "Key Events"). Topic tags are preserved and updated during consolidation.
+- **Improved health checks**: Chunk size recommendations now include specific guidance (800-1000 chars). New checks for retrieve chunks and score threshold.
+- **Named participants**: Extraction and consolidation prompts now require specific names instead of generic labels like "a client" or "someone".
+- **Multi-tag block splitting**: When the LLM produces a memory block with multiple topic tags, it is automatically split into separate blocks — one per topic. This ensures clean 1:1 mapping between topic tags and vector chunks.
+
+### Bug Fixes
+
+- **Fix parsing of attributed memory tags**: The LLM sometimes copies `<memory chat="..." date="...">` attributes from existing memories into its response. The extraction regex now handles both bare and attributed `<memory>` tags instead of silently falling through to a single-entry fallback.
+- **Hide redundant mini-log on Log tab**: The always-visible activity log mini-bar is now hidden when the full Log tab is active, avoiding duplicate display.
+
+### Migration
+
+- Existing memories continue to work without changes. Use the **Convert** tool (source: "Current memories") to add topic tags to existing memory files for improved retrieval.
+- Users with customized extraction prompts are unaffected — only the default prompt is updated. Click "Restore Default" to opt into the new format.
 
 ## 1.6.1
 
@@ -21,6 +174,12 @@
 ### Migration
 
 - The standalone **Ollama** preset has been merged into **Local Server**. Existing users with Ollama selected are automatically migrated — your model, system prompt, and URL (`http://localhost:11434/v1`) are preserved.
+
+### Developer
+
+- **Automated test suite**: Three-tier Vitest setup — 90 unit tests for `lib.js` pure functions, 6 snapshot integration tests against a 1000-message chat fixture, and 3 live LLM integration tests that validate extraction output structure against a real OpenAI-compatible endpoint.
+- **Extraction pipeline refactor**: Extracted `stripNonDiegetic()`, `formatChatMessages()`, and `substitutePromptTemplate()` from inline code in `index.js` into testable pure functions in `lib.js`. No behavior change — `index.js` uses local copies.
+- **Live test configuration**: `TEST_LLM_URL`, `TEST_LLM_MODEL`, and `TEST_LLM_KEY` env vars support both local servers (LM Studio, Ollama) and authenticated remote APIs (OpenRouter, NanoGPT).
 
 ## 1.6.0
 

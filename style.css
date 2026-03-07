@@ -8,6 +8,7 @@
 
 .charMemory_buttonRow {
     display: flex;
+    flex-wrap: wrap;
     gap: 8px;
     margin: 8px 0;
 }
@@ -18,16 +19,6 @@
 
 .charMemory_sliderRow input[type="range"] {
     width: 100%;
-}
-
-.charMemory_promptSection {
-    margin: 8px 0;
-}
-
-.charMemory_promptSection textarea {
-    width: 100%;
-    resize: vertical;
-    min-height: 100px;
 }
 
 /* Stats bar */
@@ -161,65 +152,71 @@
     font-size: 0.9em;
 }
 
-/* Tabs */
-.charMemory_tabs {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0;
-    margin-bottom: 6px;
-    border-bottom: 1px solid var(--SmartThemeBorderColor, rgba(128, 128, 128, 0.2));
+/* Dashboard sections */
+.charMemory_dashSection {
+    padding: 6px 0;
+    border-bottom: 1px solid var(--SmartThemeBorderColor);
 }
 
-.charMemory_tab {
-    padding: 6px 10px;
+.charMemory_dashSection:last-child {
+    border-bottom: none;
+}
+
+.charMemory_sectionLabel {
+    opacity: 0.6;
     font-size: 0.85em;
-    background: none;
-    border: none;
-    border-bottom: 2px solid transparent;
+    display: block;
+    margin-bottom: 4px;
+}
+
+.charMemory_dashActivity {
+    max-height: 80px;
+    overflow-y: auto;
+    font-size: 0.85em;
+    font-family: monospace;
+    word-break: break-word;
+}
+
+.charMemory_link {
+    font-size: 0.85em;
     cursor: pointer;
-    opacity: 0.6;
-    color: var(--SmartThemeBodyColor, #ccc);
-    transition: opacity 0.15s, border-color 0.15s;
-    white-space: nowrap;
+    color: var(--SmartThemeQuoteColor);
+    display: inline-block;
+    margin-top: 4px;
 }
 
-.charMemory_tab:hover {
-    opacity: 0.85;
+.charMemory_link:hover {
+    opacity: 0.8;
 }
 
-.charMemory_tab.active {
-    opacity: 1;
-    border-bottom-color: var(--SmartThemeQuoteColor, #888);
+.charMemory_fullWidth {
+    width: 100%;
 }
 
-/* Tool pill sub-navigation */
-.charMemory_toolPills {
+.charMemory_dimText {
+    font-size: 0.85em;
+    opacity: 0.5;
+}
+
+.charMemory_fileInfo {
     display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-    margin-bottom: 8px;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
 }
 
-.charMemory_toolPill {
-    padding: 3px 10px;
-    font-size: 0.8em;
-    background: var(--SmartThemeBorderColor, rgba(128, 128, 128, 0.15));
-    border: 1px solid transparent;
-    border-radius: 12px;
-    cursor: pointer;
-    opacity: 0.6;
-    color: var(--SmartThemeBodyColor, #ccc);
-    transition: opacity 0.15s, background 0.15s;
+.charMemory_dashFileNameText {
+    font-size: 0.9em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 60%;
 }
 
-.charMemory_toolPill:hover {
-    opacity: 0.85;
-}
-
-.charMemory_toolPill.active {
-    opacity: 1;
-    background: var(--SmartThemeQuoteColor, rgba(128, 128, 128, 0.3));
-    border-color: var(--SmartThemeQuoteColor, #888);
+.charMemory_dashDiagHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
 }
 
 /* Helper text */
@@ -229,6 +226,7 @@
     opacity: 0.5;
     margin-top: 2px;
     line-height: 1.3;
+    text-align: left;
 }
 
 /* Section header — label + control on same line */
@@ -252,13 +250,6 @@
 }
 
 /* Diagnostics */
-.charMemory_diagnosticsContent {
-    max-height: 400px;
-    overflow-y: auto;
-    overflow-x: hidden;
-    word-break: break-word;
-}
-
 .charMemory_diagTimestamp {
     font-size: 0.85em;
     opacity: 0.7;
@@ -325,6 +316,112 @@
 .charMemory_drawerHealthNote--yellow {
     color: #e8a33d;
     background: rgba(232, 163, 61, 0.1);
+}
+
+/* ── Token Budget section in injection drawer ─────────────────────────── */
+
+/* Section header override: make room for the inline bar */
+.charMemory_tokenHeader {
+    gap: 8px;
+}
+
+/* Inline stacked bar that lives in the section header */
+.charMemory_tokenBarInline {
+    flex: 1;
+    min-width: 40px;
+    height: 6px;
+    border-radius: 3px;
+    overflow: hidden;
+    background: rgba(128, 128, 128, 0.15);
+    display: flex;
+}
+.charMemory_tokenBarSeg         { height: 100%; }
+.charMemory_tokenBarSeg--mem    { background: #7c6bc9; }
+.charMemory_tokenBarSeg--wi     { background: #e8a33d; }
+.charMemory_tokenBarSeg--ep     { background: #4a8fa8; }
+
+/* Summary label to the right of the bar */
+.charMemory_tokenSummary {
+    font-size: 0.78em;
+    opacity: 0.65;
+    white-space: nowrap;
+    font-weight: normal;
+}
+.charMemory_tokenSummary--over   { color: #c44;    opacity: 1; }
+.charMemory_tokenSummary--heavy  { color: #e8a33d; opacity: 1; }
+
+/* Expanded breakdown body */
+.charMemory_tokenBreakdown {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    font-size: 0.85em;
+}
+.charMemory_tokenRow {
+    display: grid;
+    grid-template-columns: 10px 1fr auto;
+    align-items: center;
+    gap: 6px;
+    line-height: 1.5;
+}
+.charMemory_tokenRow--total {
+    border-top: 1px solid var(--SmartThemeBorderColor, rgba(128, 128, 128, 0.2));
+    margin-top: 2px;
+    padding-top: 3px;
+    font-weight: bold;
+}
+.charMemory_tokenDot {
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    flex-shrink: 0;
+}
+.charMemory_tokenDot--mem { background: #7c6bc9; }
+.charMemory_tokenDot--wi  { background: #e8a33d; }
+.charMemory_tokenDot--ep  { background: #4a8fa8; }
+.charMemory_tokenNote {
+    margin-top: 5px;
+    font-size: 0.82em;
+    opacity: 0.5;
+    line-height: 1.3;
+}
+.charMemory_tokenTipsLink {
+    cursor: pointer;
+    text-decoration: underline;
+    opacity: 0.8;
+    white-space: nowrap;
+}
+.charMemory_tokenTipsLink:hover { opacity: 1; }
+
+/* Full prompt breakdown bar (block-level, taller than the inline header bar) */
+.charMemory_fullPromptBar {
+    display: flex;
+    height: 10px;
+    border-radius: 4px;
+    overflow: hidden;
+    background: rgba(128, 128, 128, 0.15);
+    margin-bottom: 5px;
+}
+.charMemory_fullPromptSummary {
+    font-size: 0.82em;
+    opacity: 0.65;
+    margin-bottom: 4px;
+}
+
+/* Token hint in other section headers (e.g. "CharMemory ~320 tk") */
+.charMemory_drawerTokenHint {
+    margin-left: auto;
+    font-size: 0.78em;
+    opacity: 0.5;
+    font-weight: normal;
+    white-space: nowrap;
+}
+
+/* Meta line under card titles (token count, position) */
+.charMemory_drawerCardMeta {
+    font-size: 0.82em;
+    opacity: 0.55;
+    margin-bottom: 2px;
 }
 
 /* Activity Log */
@@ -395,58 +492,9 @@
     margin-bottom: 6px;
 }
 
-.charMemory_cardTitle {
-    font-weight: bold;
-    font-size: 0.95em;
-}
-
-.charMemory_cardTimestamp {
-    font-size: 0.8em;
-    opacity: 0.6;
-    flex: 1;
-}
-
 .charMemory_cardActions {
     display: flex;
     gap: 4px;
-}
-
-.charMemory_cardBullets {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-.charMemory_bulletRow {
-    display: flex;
-    align-items: flex-start;
-    gap: 8px;
-    padding: 3px 0;
-    border-top: 1px solid var(--SmartThemeBorderColor, rgba(128, 128, 128, 0.15));
-}
-
-.charMemory_bulletRow:first-child {
-    border-top: none;
-}
-
-.charMemory_bulletText {
-    flex: 1;
-    font-size: 0.9em;
-    line-height: 1.4;
-    min-width: 0;
-    word-break: break-word;
-}
-
-.charMemory_bulletActions {
-    display: flex;
-    gap: 4px;
-    flex-shrink: 0;
-}
-
-.charMemory_bulletActions .menu_button_icon {
-    padding: 2px 6px;
-    font-size: 0.85em;
-    min-width: unset;
 }
 
 /* Per-message buttons — inherit .mes_button base styling from ST */
@@ -719,44 +767,10 @@
     opacity: 0.5;
 }
 
-/* Activity Log — always visible */
-.charMemory_miniLog {
-    border-top: 1px solid var(--SmartThemeBorderColor, rgba(255,255,255,0.1));
-    margin-top: 8px;
-    padding-top: 4px;
-}
-
-.charMemory_miniLogContent {
-    font-size: 0.8em;
-    font-family: monospace;
-    height: 60px;
-    overflow-y: auto;
-    overflow-x: hidden;
-    resize: vertical;
-    min-height: 30px;
-    max-height: 400px;
-    word-break: break-word;
-}
-
 .charMemory_miniLogEmpty {
     padding: 2px 0;
     font-size: 0.9em;
     opacity: 0.5;
-}
-
-/* Bottom Diagnostics — always visible */
-.charMemory_bottomDiagnostics {
-    border-top: 1px solid var(--SmartThemeBorderColor, rgba(255,255,255,0.1));
-    margin-top: 8px;
-    padding-top: 4px;
-}
-
-.charMemory_bottomDiagnostics .charMemory_buttonRow {
-    align-items: center;
-}
-
-.charMemory_bottomDiagnostics .charMemory_diagnosticsContent {
-    max-height: 300px;
 }
 
 /* Convert tool */
@@ -1015,4 +1029,1129 @@
     outline: 2px solid var(--SmartThemeQuoteColor, #e8a33d);
     outline-offset: -2px;
     transition: outline-color 1.5s ease;
+}
+
+/* ===== Log Drawer ===== */
+
+.charMemory_logDrawer {
+    position: fixed;
+    top: 0;
+    right: 0;
+    width: 380px;
+    max-width: 45vw;
+    height: 100vh;
+    background: var(--SmartThemeBlurTintColor, #1a1a2e);
+    color: var(--SmartThemeBodyColor, #ccc);
+    border-left: 1px solid var(--SmartThemeBorderColor, rgba(128, 128, 128, 0.3));
+    z-index: 1001;
+    display: flex;
+    flex-direction: column;
+    transform: translateX(100%);
+    transition: transform 0.2s ease;
+    font-size: 0.9em;
+}
+.charMemory_logDrawer.open {
+    transform: translateX(0);
+}
+
+/* ── Phone mode: widen drawers and raise above ST sidebar (z-index 3005) ── */
+/* Applied via body class from JS (auto-detected or user-selected in Settings > Advanced > Display Mode) */
+body.charMemory-phone-mode .charMemory_injectionDrawer,
+body.charMemory-phone-mode .charMemory_logDrawer {
+    max-width: 85vw;
+    z-index: 4000;
+}
+
+.charMemory_logDrawer .charMemory_drawerBody {
+    font-family: monospace;
+    font-size: 0.85em;
+}
+
+/* ── Header Gear Icon ── */
+.charMemory_headerGear {
+    cursor: pointer;
+    opacity: 0.5;
+    padding: 2px 6px;
+    transition: opacity 0.15s;
+    font-size: 0.9em;
+}
+.charMemory_headerGear:hover {
+    opacity: 1;
+}
+
+/* ── Settings / Prompts Modal ── */
+.charMemory_modal {
+    display: flex;
+    min-height: 400px;
+    max-height: 70vh;
+    gap: 0;
+}
+
+.charMemory_modalNav {
+    display: flex;
+    flex-direction: column;
+    min-width: 130px;
+    border-right: 1px solid var(--SmartThemeBorderColor);
+    padding: 8px 0;
+    flex-shrink: 0;
+}
+
+.charMemory_modalNavItem {
+    background: none;
+    border: none;
+    padding: 8px 16px;
+    text-align: left;
+    cursor: pointer;
+    opacity: 0.6;
+    font-size: 0.9em;
+    border-left: 3px solid transparent;
+    color: var(--SmartThemeBodyColor);
+}
+
+.charMemory_modalNavItem:hover {
+    opacity: 0.85;
+    background: rgba(255,255,255,0.03);
+}
+
+.charMemory_modalNavItem.active {
+    opacity: 1;
+    border-left-color: var(--SmartThemeQuoteColor);
+    background: rgba(255,255,255,0.05);
+}
+
+.charMemory_modalContent {
+    flex: 1;
+    padding: 12px 16px;
+    overflow-y: auto;
+    min-width: 0;
+    text-align: left;
+}
+
+.charMemory_modalSection {
+    display: none;
+}
+
+.charMemory_modalSection.active {
+    display: block;
+}
+
+.charMemory_modalSectionTitle {
+    margin: 0 0 8px 0;
+    font-size: 1em;
+    opacity: 0.8;
+}
+
+.charMemory_modalFieldGroup {
+    margin: 10px 0;
+}
+
+.charMemory_modalFieldGroup > label {
+    display: block;
+    margin-bottom: 4px;
+}
+
+.charMemory_modalPromptEntry {
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--SmartThemeBorderColor, rgba(128, 128, 128, 0.1));
+}
+
+.charMemory_modalPromptEntry:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+}
+
+.charMemory_modalPromptEntry .charMemory_helperText {
+    display: block;
+    margin-top: 4px;
+}
+
+.charMemory_modalPromptRow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--SmartThemeBorderColor, rgba(128, 128, 128, 0.1));
+}
+
+.charMemory_modalPromptRow:last-child {
+    border-bottom: none;
+}
+
+.charMemory_modalPromptLabel {
+    flex: 1;
+    font-size: 0.9em;
+}
+
+.charMemory_modalPromptBadge {
+    font-size: 0.75em;
+    opacity: 0.5;
+    margin-left: 8px;
+}
+
+.charMemory_modalPromptBtn {
+    font-size: 0.85em;
+    padding: 3px 10px;
+}
+
+/* ── Prompts Modal ── */
+.charMemory_promptsModal {
+    min-height: 500px;
+}
+
+.charMemory_promptHeader {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8px;
+}
+
+.charMemory_promptHeader h3 {
+    margin: 0;
+    font-size: 1em;
+}
+
+.charMemory_promptBadge {
+    font-size: 0.8em;
+    opacity: 0.6;
+    padding: 2px 8px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 10px;
+}
+
+.charMemory_promptEditor {
+    width: 100%;
+    min-height: 300px;
+    font-family: monospace;
+    font-size: 0.85em;
+    resize: vertical;
+}
+
+/* ── Prompt Update Banner ── */
+.charMemory_promptUpdateBanner {
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, transparent);
+    border: 1px solid var(--SmartThemeQuoteColor);
+    border-radius: 6px;
+    padding: 10px 14px;
+    margin-bottom: 10px;
+    font-size: 0.88em;
+    line-height: 1.5;
+}
+
+.charMemory_promptUpdateBanner > span {
+    display: block;
+    margin-bottom: 8px;
+}
+
+.charMemory_promptUpdateActions {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.charMemory_promptUpdateActions .menu_button {
+    font-size: 0.85em;
+    padding: 4px 12px;
+}
+
+/* ── Nav Update Dot ── */
+.charMemory_navUpdateDot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--SmartThemeQuoteColor);
+    margin-left: 6px;
+    vertical-align: middle;
+}
+
+/* ── Compare & Edit View ── */
+.charMemory_promptCompareWrap {
+    display: flex;
+    gap: 12px;
+}
+
+.charMemory_comparePane {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.charMemory_comparePane > label {
+    font-size: 0.82em;
+    opacity: 0.7;
+    margin-bottom: 4px;
+}
+
+.charMemory_comparePane textarea {
+    width: 100%;
+    min-height: 300px;
+    font-family: monospace;
+    font-size: 0.82em;
+    resize: vertical;
+    flex: 1;
+}
+
+.charMemory_comparePane textarea[readonly] {
+    opacity: 0.7;
+    cursor: default;
+}
+
+/* ── Troubleshooter Modal ── */
+.charMemory_troubleshooter {
+    min-height: 400px;
+}
+
+.charMemory_tsOverallStatus {
+    font-size: 1.1em;
+    font-weight: bold;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.charMemory_tsCheck {
+    padding: 6px 8px;
+    margin: 4px 0;
+    border-radius: 4px;
+    background: var(--SmartThemeBlurTintColor, rgba(0, 0, 0, 0.05));
+}
+
+.charMemory_tsCheckHeader {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.9em;
+    font-weight: 600;
+}
+
+.charMemory_tsCheckDetail {
+    font-size: 0.85em;
+    opacity: 0.8;
+    margin-top: 2px;
+    padding-left: 20px;
+}
+
+.charMemory_tsCheckFix {
+    font-size: 0.82em;
+    opacity: 0.7;
+    padding-left: 20px;
+    margin-top: 2px;
+    color: var(--SmartThemeQuoteColor);
+}
+
+.charMemory_tsFileSize {
+    font-size: 0.8em;
+    opacity: 0.5;
+    margin-left: 4px;
+}
+
+.charMemory_tsFileList {
+    margin: 8px 0;
+}
+
+/* Group chat member sections in Data Bank browser */
+.charMemory_tsMemberSection {
+    margin-bottom: 12px;
+}
+
+.charMemory_tsMemberLabel {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.82em;
+    font-weight: bold;
+    opacity: 0.75;
+    padding: 3px 0;
+    margin-bottom: 2px;
+    border-bottom: 1px solid var(--SmartThemeBorderColor, rgba(128,128,128,0.25));
+}
+
+.charMemory_tsFileRow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--SmartThemeBorderColor, rgba(128, 128, 128, 0.15));
+    gap: 8px;
+}
+
+.charMemory_tsFileRow:last-child {
+    border-bottom: none;
+}
+
+.charMemory_tsFileName {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.9em;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.charMemory_tsFileName > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.charMemory_tsBadge {
+    font-size: 0.75em;
+    padding: 1px 6px;
+    border-radius: 8px;
+    background: var(--SmartThemeQuoteColor, #e8a33d);
+    color: #fff;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.charMemory_tsFileActions {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+/* File editor in Data Bank browser */
+.charMemory_tsFileEditor {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.charMemory_tsFileEditorHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.85em;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--SmartThemeBorderColor, rgba(128, 128, 128, 0.2));
+}
+
+.charMemory_tsFileEditorFooter {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-top: 6px;
+    border-top: 1px solid var(--SmartThemeBorderColor, rgba(128, 128, 128, 0.2));
+}
+
+.charMemory_tsFileActions .menu_button {
+    padding: 3px 7px;
+    font-size: 0.85em;
+}
+
+.charMemory_tsImportRow {
+    margin-top: 10px;
+}
+
+.charMemory_tsResetSection {
+    margin: 12px 0;
+}
+
+.charMemory_tsResetSection .menu_button {
+    margin-bottom: 4px;
+    width: 100%;
+}
+
+.charMemory_reportPre {
+    background: var(--SmartThemeBlurTintColor, rgba(0,0,0,0.2));
+    border: 1px solid var(--SmartThemeBorderColor, #555);
+    border-radius: 4px;
+    padding: 10px;
+    max-height: 280px;
+    overflow-y: auto;
+    font-size: 0.78em;
+    white-space: pre-wrap;
+    word-break: break-all;
+    margin-top: 10px;
+    user-select: text;
+    font-family: monospace;
+    text-align: left;
+}
+
+.charMemory_tsFileEditor {
+    text-align: left;
+}
+
+.charMemory_autoPill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px 3px 8px;
+    border: 1px solid var(--SmartThemeBorderColor, #555);
+    border-radius: 12px;
+    font-size: 0.8em;
+    cursor: pointer;
+    background: var(--SmartThemeBlurTintColor, rgba(0,0,0,0.2));
+    color: inherit;
+    white-space: nowrap;
+    transition: border-color 0.15s, background 0.15s, color 0.15s;
+    flex-shrink: 0;
+}
+
+.charMemory_autoPill.active {
+    border-color: #4a4;
+    background: rgba(74, 170, 74, 0.12);
+    color: #4a4;
+}
+
+.charMemory_reportActions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 8px;
+    flex-wrap: wrap;
+}
+
+.charMemory_reportFilename {
+    flex: 1;
+    min-width: 120px;
+    font-size: 0.85em !important;
+    padding: 3px 8px !important;
+    height: auto !important;
+}
+
+/* ===== Setup Wizard ===== */
+
+.charMemory_wizard {
+    display: flex;
+    flex-direction: column;
+    min-height: 400px;
+    max-height: 70vh;
+    text-align: left;
+}
+
+.charMemory_wizardStep {
+    display: none;
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 0;
+}
+
+.charMemory_wizardStep.active {
+    display: flex;
+    flex-direction: column;
+}
+
+.charMemory_wizardStepIndicator {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 8px 0 12px;
+    font-size: 0.85em;
+    opacity: 0.6;
+}
+
+.charMemory_wizardDot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--SmartThemeBorderColor, #555);
+    transition: background 0.3s;
+}
+
+.charMemory_wizardDot.active {
+    background: var(--SmartThemeQuoteColor, #888);
+    transform: scale(1.3);
+}
+
+.charMemory_wizardDot.completed {
+    background: #4a4;
+}
+
+.charMemory_wizardExplanation {
+    font-size: 0.82em;
+    line-height: 1.5;
+    opacity: 0.85;
+    margin-bottom: 10px;
+    padding: 6px 10px;
+    background: var(--SmartThemeBlurTintColor, rgba(0, 0, 0, 0.05));
+    border-radius: 6px;
+    border-left: 3px solid var(--SmartThemeQuoteColor, #888);
+}
+
+.charMemory_wizConnectRow {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
+.charMemory_wizApiKeyGroup {
+    flex: 1;
+    min-width: 0;
+}
+
+.charMemory_wizApiKeyGroup label {
+    display: block;
+    margin-bottom: 4px;
+}
+
+.charMemory_wizApiKeyGroup .text_pole {
+    width: 100%;
+}
+
+.charMemory_wizConnectRow > .menu_button {
+    flex-shrink: 0;
+    white-space: nowrap;
+    align-self: flex-end;
+}
+
+.charMemory_wizardNav {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding-top: 10px;
+    border-top: 1px solid var(--SmartThemeBorderColor, rgba(128, 128, 128, 0.2));
+    margin-top: auto;
+    flex-shrink: 0;
+}
+
+.charMemory_wizardCheck {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 6px 8px;
+    margin: 3px 0;
+    border-radius: 4px;
+    background: var(--SmartThemeBlurTintColor, rgba(0, 0, 0, 0.05));
+    font-size: 0.9em;
+}
+
+.charMemory_wizardCheck i {
+    margin-top: 2px;
+    flex-shrink: 0;
+}
+
+.charMemory_wizardCheckDetail {
+    flex: 1;
+}
+
+.charMemory_wizardCheckLabel {
+    font-weight: 600;
+}
+
+.charMemory_wizardCheckText {
+    font-size: 0.9em;
+    opacity: 0.8;
+    margin-top: 1px;
+}
+
+.charMemory_wizardCheckFix {
+    font-size: 0.85em;
+    opacity: 0.7;
+    margin-top: 2px;
+    color: var(--SmartThemeQuoteColor);
+}
+
+.charMemory_wizardSummary {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px 10px;
+    background: var(--SmartThemeBlurTintColor, rgba(0, 0, 0, 0.05));
+    border-radius: 6px;
+    font-size: 0.9em;
+    margin-bottom: 10px;
+}
+
+.charMemory_wizardSummaryRow {
+    display: flex;
+    gap: 8px;
+}
+
+.charMemory_wizardSummaryRow .label {
+    opacity: 0.6;
+    min-width: 100px;
+    flex-shrink: 0;
+}
+
+.charMemory_wizardHighlight {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 3px;
+    background: rgba(74, 170, 74, 0.15);
+    color: #4a4;
+    font-size: 0.85em;
+    font-weight: 600;
+}
+
+.charMemory_wizardCallout {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 8px 10px;
+    margin-bottom: 12px;
+    background: rgba(74, 170, 74, 0.08);
+    border: 1px solid rgba(74, 170, 74, 0.2);
+    border-radius: 6px;
+    font-size: 0.875em;
+    line-height: 1.4;
+}
+
+.charMemory_wizardCallout i {
+    color: #4a4;
+    margin-top: 2px;
+    flex-shrink: 0;
+}
+
+.charMemory_wizardCallout--warn {
+    background: rgba(220, 140, 40, 0.08);
+    border-color: rgba(220, 140, 40, 0.3);
+}
+
+.charMemory_wizardCallout--warn i {
+    color: #dc8c28;
+}
+
+.charMemory_wizardExistingMemSection {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px;
+    margin-bottom: 12px;
+    background: rgba(232, 163, 61, 0.08);
+    border: 1px solid rgba(232, 163, 61, 0.2);
+    border-radius: 6px;
+    font-size: 0.875em;
+}
+
+.charMemory_wizardExistingMemSection i {
+    margin-top: 2px;
+    flex-shrink: 0;
+}
+
+.charMemory_wizardScopeNote {
+    font-size: 0.8em;
+    opacity: 0.55;
+    text-align: center;
+    margin-top: 8px;
+    line-height: 1.4;
+}
+
+/* Wizard always-visible model list */
+.charMemory_wizModelPicker {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.charMemory_wizModelSearch {
+    width: 100%;
+    padding: 6px 8px;
+    background: var(--SmartThemeBlurTintColor, rgba(0, 0, 0, 0.4));
+    border: 1px solid var(--SmartThemeBorderColor, #555);
+    border-radius: 4px;
+    color: inherit;
+    font-size: 0.9em;
+    box-sizing: border-box;
+    outline: none;
+}
+
+.charMemory_wizModelSearch:focus {
+    border-color: var(--SmartThemeQuoteColor, #888);
+}
+
+.charMemory_wizModelList {
+    max-height: 130px;
+    overflow-y: auto;
+    border: 1px solid var(--SmartThemeBorderColor, #555);
+    border-radius: 4px;
+    background: var(--SmartThemeBlurTintColor, rgba(0, 0, 0, 0.3));
+}
+
+.charMemory_wizModelList .charMemory_modelGroup {
+    padding: 4px 8px 2px;
+    font-size: 0.8em;
+    font-weight: 600;
+    opacity: 0.6;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.charMemory_wizModelList .charMemory_modelOption {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 10px;
+    cursor: pointer;
+    font-size: 0.875em;
+    line-height: 1.3;
+}
+
+.charMemory_wizModelList .charMemory_modelOption:hover {
+    background: var(--SmartThemeBlurTintColor, rgba(255, 255, 255, 0.1));
+}
+
+.charMemory_wizModelList .charMemory_modelOption.selected {
+    background: rgba(74, 170, 74, 0.12);
+    color: var(--SmartThemeQuoteColor, #aaa);
+}
+
+.charMemory_wizModelList .charMemory_modelEmpty {
+    padding: 10px;
+    text-align: center;
+    font-size: 0.875em;
+    opacity: 0.5;
+}
+
+.charMemory_modelOptionName {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* NanoGPT filter pill row */
+.charMemory_filterRow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 6px;
+}
+
+.charMemory_filterRow .checkbox_label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 10px 3px 8px;
+    border: 1px solid var(--SmartThemeBorderColor, #555);
+    border-radius: 12px;
+    font-size: 0.8em;
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+    background: var(--SmartThemeBlurTintColor, rgba(0, 0, 0, 0.2));
+    transition: border-color 0.15s, background 0.15s;
+}
+
+.charMemory_filterRow .checkbox_label:has(input:checked) {
+    border-color: var(--SmartThemeQuoteColor, #888);
+    background: rgba(74, 170, 74, 0.1);
+}
+
+/* NanoGPT inline model badges */
+.charMemory_modelBadge {
+    display: inline-block;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 0.7em;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    flex-shrink: 0;
+    opacity: 0.85;
+}
+
+.charMemory_modelBadge--sub {
+    background: rgba(114, 137, 218, 0.2);
+    color: #7289da;
+    border: 1px solid rgba(114, 137, 218, 0.3);
+}
+
+.charMemory_modelBadge--open {
+    background: rgba(74, 170, 74, 0.15);
+    color: #4a4;
+    border: 1px solid rgba(74, 170, 74, 0.25);
+}
+
+.charMemory_modelBadge--rp {
+    background: rgba(232, 163, 61, 0.15);
+    color: #e8a33d;
+    border: 1px solid rgba(232, 163, 61, 0.25);
+}
+
+.charMemory_modelBadge--reason {
+    background: rgba(196, 68, 68, 0.15);
+    color: #c77;
+    border: 1px solid rgba(196, 68, 68, 0.25);
+}
+
+/* Wizard step sections */
+.charMemory_wizardSection {
+    margin-bottom: 14px;
+}
+
+.charMemory_wizardSectionTitle {
+    font-size: 0.8em;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    opacity: 0.6;
+    margin-bottom: 6px;
+}
+
+.charMemory_wizardIntervalRow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.9em;
+    margin-bottom: 4px;
+}
+
+.charMemory_wizIntervalInput {
+    width: 60px;
+    text-align: center;
+    padding: 3px 6px;
+    background: var(--SmartThemeBlurTintColor, rgba(0, 0, 0, 0.4));
+    border: 1px solid var(--SmartThemeBorderColor, #555);
+    border-radius: 4px;
+    color: inherit;
+    font-size: inherit;
+}
+
+.charMemory_wizardIssueList {
+    margin: 4px 0 4px 1.2em;
+    padding: 0;
+    font-size: 0.88em;
+    opacity: 0.85;
+}
+
+.charMemory_wizardIssueList li {
+    margin-bottom: 2px;
+}
+
+/* Nudge banner */
+.charMemory_nudgeBanner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    margin-bottom: 6px;
+    background: rgba(232, 163, 61, 0.1);
+    border: 1px solid rgba(232, 163, 61, 0.3);
+    border-radius: 6px;
+    font-size: 0.85em;
+}
+
+.charMemory_nudgeBanner i {
+    color: #e8a33d;
+    flex-shrink: 0;
+}
+
+.charMemory_nudgeBanner span {
+    flex: 1;
+}
+
+.charMemory_nudgeBanner .menu_button {
+    font-size: 0.85em;
+    padding: 2px 10px;
+    flex-shrink: 0;
+}
+
+/* Verification step modal */
+.charMemory_verification {
+    text-align: left;
+    font-size: 0.9em;
+    line-height: 1.5;
+}
+
+.charMemory_verification h4 {
+    margin: 0 0 8px 0;
+}
+
+.charMemory_verification ol {
+    padding-left: 1.5em;
+    margin: 8px 0;
+}
+
+.charMemory_verification li {
+    margin-bottom: 6px;
+}
+
+/* ─── Find & Replace bar ─────────────────────────────────────────────── */
+
+.charMemory_findReplaceBar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--SmartThemeBorderColor, rgba(128,128,128,0.2));
+    flex-wrap: wrap;
+}
+
+.charMemory_findReplaceBar .text_pole {
+    max-width: 200px;
+    min-width: 100px;
+    flex: 1 1 auto;
+    padding: 4px 8px;
+    font-size: 0.9em;
+}
+
+.charMemory_frCaseBtn {
+    min-width: 28px;
+    font-size: 0.8em;
+    font-weight: bold;
+    opacity: 0.5;
+}
+
+.charMemory_frCaseBtn--active {
+    opacity: 1;
+    background: var(--SmartThemeQuoteColor, rgba(255,255,0,0.15));
+}
+
+.charMemory_frMatchCount {
+    font-size: 0.8em;
+    opacity: 0.6;
+    white-space: nowrap;
+}
+
+/* Highlight matches */
+.charMemory_card mark,
+.charMemory_manager mark {
+    background: var(--SmartThemeQuoteColor, rgba(255,255,0,0.35));
+    color: inherit;
+    padding: 0 1px;
+    border-radius: 2px;
+}
+
+/* ─── Tablet Mode Floating Panel ─────────────────────────────────────── */
+
+.charMemory_tabletPanel {
+    position: fixed;
+    top: 50vh;
+    left: 50vw;
+    transform: translate(-50%, -50%) scale(0.95);
+    width: 500px;
+    max-width: 90vw;
+    max-height: 80vh;
+    background: var(--SmartThemeBlurTintColor, #1a1a2e);
+    color: var(--SmartThemeBodyColor, #ccc);
+    border: 1px solid var(--SmartThemeBorderColor, rgba(128, 128, 128, 0.3));
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    z-index: 5000;
+    display: flex;
+    flex-direction: column;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease, transform 0.15s ease;
+    overflow: hidden;
+}
+
+.charMemory_tabletPanel.open {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translate(-50%, -50%) scale(1);
+}
+
+.charMemory_tabletHeader {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--SmartThemeBorderColor, rgba(128, 128, 128, 0.3));
+    flex-shrink: 0;
+}
+
+.charMemory_tabletHeader b {
+    flex: 0 0 auto;
+    font-size: 1.05em;
+}
+
+.charMemory_tabletHeaderIcons {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: auto;
+}
+
+.charMemory_tabletBody {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 16px;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* ─── Touch-Friendly Overrides Inside Tablet Panel ───────────────────── */
+
+/* Header icons: enlarge to 44px touch targets */
+.charMemory_tabletPanel .charMemory_headerGear {
+    padding: 10px 12px;
+    font-size: 1.1em;
+    min-width: 44px;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Close button: 44px touch target */
+.charMemory_tabletPanel .charMemory_drawerClose {
+    min-width: 44px;
+    min-height: 44px;
+    font-size: 1.2em;
+}
+
+/* Buttons: larger padding for touch (Apple HIG 44px) */
+.charMemory_tabletPanel .menu_button,
+.charMemory_tabletPanel input[type="button"] {
+    min-height: 44px;
+    padding: 8px 16px;
+    font-size: 0.95em;
+}
+
+/* Auto pill: larger touch target */
+.charMemory_tabletPanel .charMemory_autoPill {
+    padding: 8px 14px 8px 12px;
+    font-size: 0.9em;
+    min-height: 44px;
+}
+
+/* Stats bar: more breathing room */
+.charMemory_tabletPanel .charMemory_statsBar {
+    gap: 8px;
+    margin: 6px 0 10px;
+}
+
+.charMemory_tabletPanel .charMemory_statItem {
+    padding: 8px 10px;
+    font-size: 0.9em;
+    min-height: 40px;
+}
+
+/* Health dot: slightly larger for touch */
+.charMemory_tabletPanel .charMemory_healthDot {
+    width: 10px;
+    height: 10px;
+}
+
+/* Button rows: larger gap */
+.charMemory_tabletPanel .charMemory_buttonRow {
+    gap: 10px;
+    margin: 10px 0;
+}
+
+/* Section labels */
+.charMemory_tabletPanel .charMemory_sectionLabel {
+    font-size: 0.9em;
+    margin-bottom: 6px;
+}
+
+/* Activity log: taller for reading */
+.charMemory_tabletPanel .charMemory_dashActivity {
+    max-height: 120px;
+    font-size: 0.9em;
+}
+
+/* Links: taller touch targets */
+.charMemory_tabletPanel .charMemory_link {
+    font-size: 0.9em;
+    padding: 6px 0;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+}
+
+/* Nudge banner button */
+.charMemory_tabletPanel .charMemory_nudgeBanner .menu_button {
+    min-height: 38px;
+    padding: 6px 14px;
+}
+
+/* Dashboard sections: more padding */
+.charMemory_tabletPanel .charMemory_dashSection {
+    padding: 10px 0;
 }

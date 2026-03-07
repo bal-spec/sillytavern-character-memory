@@ -2,13 +2,7 @@
 
 ## Git / GitHub
 
-This repo belongs to the `bal-spec` GitHub account. Before any `git push` or `gh` commands, run:
-
-```
-gh auth switch --user bal-spec
-```
-
-Do this at the start of every session — the active account resets to `dsayed` between sessions.
+This repo belongs to the `bal-spec` GitHub account. The `.envrc` file (via direnv) automatically sets `GH_TOKEN` for `bal-spec` when working in this directory — no manual `gh auth switch` needed.
 
 ## What This Is
 
@@ -17,16 +11,19 @@ A SillyTavern extension that automatically extracts structured character memorie
 ## File Structure
 
 ```
-index.js        — All extension logic: extraction, consolidation, provider API calls, UI controllers, event handlers (~3500 lines)
-settings.html   — Extension panel UI (settings, memory manager, diagnostics, batch extract)
-style.css       — All styling
+index.js        — All extension logic: extraction, consolidation, provider API calls, UI controllers, event handlers, modals (~8660 lines)
+lib.js          — Pure utility functions imported by index.js at runtime and used by tests (parsing, serialization, formatting, stripping)
+editor.js       — Shared memory block editor factory (createMemoryEditor) with state management and undo
+settings.html   — Sidebar dashboard HTML (stats bar, extraction controls, tool launchers, activity, diagnostics)
+style.css       — All styling (dashboard, modals, drawers, wizard, troubleshooter)
 manifest.json   — ST extension manifest (version, loading order, author)
 README.md       — User-facing documentation (getting started guide + technical reference, combined)
 CHANGELOG.md    — Version history
 images/         — Screenshots for documentation
+test/           — Vitest test suites (unit, integration/snapshot, integration/live)
 ```
 
-`index.js` is a single-file architecture. All logic lives there — there are no separate modules.
+`index.js` is the main runtime module. `lib.js` is the canonical source for pure utility functions — `index.js` imports them via ES modules. Only `serializeMemories()` is kept local in `index.js` because it uses `getFormatOptions()` for runtime settings.
 
 ## Key Architecture
 
@@ -63,6 +60,17 @@ Per-provider settings (API key, model, system prompt, custom URL) are stored in 
 </memory>
 ```
 
+### UI Layout (v2.0)
+
+The sidebar (`settings.html`) is a single-view dashboard — no tabs. All complex UI is in center-screen modals and drawers built dynamically in `index.js`:
+
+- **Dashboard** (sidebar): Stats bar, file info, extraction toggle, Extract Now, tool launcher buttons (Consolidate, Batch, Format), mini activity log, diagnostics summary
+- **Settings Modal** (`showSettingsModal()`): Left-nav with sections — Connection, Extraction, Storage, Advanced. Uses `cm_modal_*` prefixed IDs to avoid conflicts with sidebar elements.
+- **Prompts Modal** (`showPromptsModal()`): Full-width editor for extraction/consolidation prompts with version tracking and update banners
+- **Log Drawer** (`toggleLogDrawer()`): Slide-out right-side drawer for the full activity log with verbose toggle and export
+- **Troubleshooter Modal** (`showTroubleshooter()`): Health checks, Data Bank file browser, diagnostic report, reset/clear tools
+- **Setup Wizard** (`showSetupWizard()`): 3-step first-run flow — LLM Connection, Vector Storage, Ready
+
 ### Settings Storage
 
 All settings live under `extension_settings.charMemory`. Key fields:
@@ -72,6 +80,7 @@ All settings live under `extension_settings.charMemory`. Key fields:
 - `extractionPrompt` — customizable prompt template
 - `interval`, `cooldownMinutes`, `chunkSize`, `responseLength` — extraction tuning
 - `perChat`, `fileName` — storage options
+- `promptVersions` — tracks which prompt versions the user has seen (for update notifications)
 
 ## Conventions
 
@@ -93,15 +102,44 @@ All settings live under `extension_settings.charMemory`. Key fields:
 
 ## Testing
 
-There are no automated tests. Testing is manual:
+### Automated Tests
+
+Vitest is the test framework. Three tiers:
+
+```bash
+npm test                # Unit tests (97 tests, ~200ms) — pure functions in lib.js
+npm run test:snapshot   # Snapshot tests (6 tests) — extraction pipeline against 1000-message fixture
+npm run test:live       # Live LLM tests (3 tests) — requires a running OpenAI-compatible server
+```
+
+**Unit tests** cover parsing, serialization, escaping, format detection, and the three extracted pipeline functions (`stripNonDiegetic`, `formatChatMessages`, `substitutePromptTemplate`).
+
+**Snapshot tests** process real chat data from `test/fixtures/flux-chat.jsonl` through the pipeline and snapshot the output. Update snapshots with `npm run test:snapshot -- --update` after intentional changes.
+
+**Live LLM tests** send extraction prompts to a real LLM and validate the response structure. Configured via env vars:
+
+- `TEST_LLM_URL` — endpoint (default: `http://127.0.0.1:1234/v1`)
+- `TEST_LLM_MODEL` — model name (default: auto-discover first available)
+- `TEST_LLM_KEY` — API key for authenticated endpoints like OpenRouter (default: none)
+
+Recommended local model: Gemma 2 9B or Qwen 2.5 7B. Avoid thinking models (Qwen3) — their `<think>` tags waste token budget.
+
+### `lib.js` as Single Source of Truth
+
+`lib.js` is the canonical source for pure utility functions. `index.js` imports them via ES modules (`import { ... } from './lib.js'`). When modifying these functions, edit `lib.js` only — `index.js` picks up changes automatically. Exception: `serializeMemories()` in `index.js` is a separate implementation that uses `getFormatOptions()` for runtime format settings.
+
+### Manual Testing
+
+For UI and integration testing that requires SillyTavern:
 1. Install in SillyTavern's `public/scripts/extensions/third-party/CharMemory` (symlink or clone)
 2. Restart SillyTavern
 3. Test extraction with different providers
-4. Check Activity Log (verbose mode) for LLM prompts/responses
-5. Use Diagnostics tab to verify injected memories
+4. Check Activity Log (verbose mode via Log Drawer) for LLM prompts/responses
+5. Open Troubleshooter to verify health checks and injected memories
 
 ## Common Tasks
 
 - **Adding a new provider**: Add entry to `PROVIDER_PRESETS`, no other changes needed if it's OpenAI-compatible with standard `/models` endpoint
-- **Modifying the extraction prompt**: Edit `defaultExtractionPrompt` constant. Users can also customize via the UI, so changes to the default only affect new installations or users who click "Restore Default"
-- **Adding UI elements**: Add HTML to `settings.html`, add event handler in `setupListeners()`, add controller logic. Follow the `charMemory_` ID prefix convention
+- **Modifying the extraction prompt**: Edit `defaultExtractionPrompt` constant. Bump `PROMPT_VERSIONS.extraction` to trigger update notifications for existing users. Users can also customize via the Prompts modal, so changes to the default only affect new installations or users who click "Restore Default"
+- **Adding dashboard UI elements**: Add HTML to `settings.html`, add event handler in the appropriate `setup*Controls()` function. Follow the `charMemory_` ID prefix convention
+- **Adding modal UI elements**: Build the HTML dynamically in the modal's show function (e.g., `showSettingsModal()`). Use `cm_modal_*` or `cm_ts_*` prefixed IDs to avoid conflicts with sidebar elements

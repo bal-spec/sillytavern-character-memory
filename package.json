@@ -1,0 +1,13 @@
+{
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run test/unit/",
+    "test:watch": "vitest watch test/unit/",
+    "test:snapshot": "vitest run test/integration/snapshot",
+    "test:live": "vitest run test/integration/live"
+  },
+  "devDependencies": {
+    "vitest": "^4.0.18"
+  }
+}

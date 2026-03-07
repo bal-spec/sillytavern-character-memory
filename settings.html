@@ -1,12 +1,31 @@
 <div class="charMemory_settings">
     <div class="inline-drawer">
         <div class="inline-drawer-toggle inline-drawer-header">
-            <b>Character Memory</b>
+            <b>CharMemory</b>
+            <span id="charMemory_openWizard" class="charMemory_headerGear" title="Setup Wizard">
+                <i class="fa-solid fa-wand-magic-sparkles fa-sm"></i>
+            </span>
+            <span id="charMemory_openTroubleshooter" class="charMemory_headerGear" title="Troubleshooter">
+                <i class="fa-solid fa-screwdriver-wrench fa-sm"></i>
+            </span>
+            <span id="charMemory_openSettingsModal" class="charMemory_headerGear" title="Open Settings">
+                <i class="fa-solid fa-gear fa-sm"></i>
+            </span>
+            <span id="charMemory_toggleInjectionBtn" class="charMemory_headerGear" title="Toggle Injection Sidebar">
+                <i class="fa-solid fa-syringe fa-sm"></i>
+            </span>
             <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
         </div>
         <div class="inline-drawer-content">
 
-            <!-- Stats bar — always visible -->
+            <!-- Nudge banner -->
+            <div id="charMemory_nudgeBanner" class="charMemory_nudgeBanner" style="display:none;">
+                <i class="fa-solid fa-triangle-exclamation fa-sm"></i>
+                <span>Something needs attention</span>
+                <input type="button" id="charMemory_nudgeFix" class="menu_button" value="View" />
+            </div>
+
+            <!-- Stats bar -->
             <div class="charMemory_statsBar">
                 <div class="charMemory_statItem" title="The Data Bank file where memories are stored for this character">
                     <i class="fa-solid fa-file-lines fa-sm"></i>
@@ -31,387 +50,46 @@
                 </div>
             </div>
 
-            <!-- Top-level tabs -->
-            <div class="charMemory_tabs">
-                <button class="charMemory_tab active" data-tab="main">Main</button>
-                <button class="charMemory_tab" data-tab="tools">Tools</button>
-                <button class="charMemory_tab" data-tab="settings">Settings</button>
-                <button class="charMemory_tab" data-tab="log">Log</button>
-            </div>
-
-            <!-- Main tab (default) -->
-            <div class="charMemory_tabContent" id="charMemory_tabMain">
-                <div class="charMemory_sectionHeader">
-                    <small><b>Memory Extraction</b></small>
-                    <label class="checkbox_label" for="charMemory_enabled" title="When enabled, memories are extracted automatically after a set number of new messages">
-                        <input type="checkbox" id="charMemory_enabled" />
-                        <small>Automatic</small>
-                    </label>
-                </div>
+            <!-- Primary Controls -->
+            <div class="charMemory_dashSection">
                 <div class="charMemory_buttonRow">
                     <input type="button" id="charMemory_extractNow" class="menu_button" value="Extract Now" title="Extract memories from unprocessed messages. If all messages have been processed, use 'Reset Extraction State' first to re-read from the beginning." />
+                    <button id="charMemory_autoExtractPill" class="charMemory_autoPill" title="Toggle automatic extraction — when on, memories are extracted automatically after a set number of new messages">
+                        <i class="fa-solid fa-arrows-rotate fa-xs"></i> Auto
+                    </button>
                     <input type="button" id="charMemory_manageMemories" class="menu_button" value="View / Edit" title="Browse, edit, and delete individual stored memories" />
                 </div>
             </div>
 
-            <!-- Tools tab -->
-            <div class="charMemory_tabContent" id="charMemory_tabTools" style="display:none;">
-                <div class="charMemory_toolPills">
-                    <button class="charMemory_toolPill active" data-tool="consolidate">Consolidate</button>
-                    <button class="charMemory_toolPill" data-tool="batch">Batch</button>
-                    <button class="charMemory_toolPill" data-tool="convert">Convert</button>
-                </div>
-
-                <!-- Consolidate tool -->
-                <div class="charMemory_toolContent" id="charMemory_toolConsolidate">
-                    <div class="charMemory_promptSection">
-                        <label for="charMemory_consolidationStrategy">
-                            <small>Consolidation strategy</small>
-                        </label>
-                        <select id="charMemory_consolidationStrategy" class="text_pole">
-                            <option value="conservative">Conservative — only merge near-exact duplicates</option>
-                            <option value="balanced">Balanced — merge duplicates & related facts (default)</option>
-                            <option value="aggressive">Aggressive — compress heavily, summarize themes</option>
-                        </select>
-                        <small id="charMemory_consolidationPreview" class="charMemory_helperText" style="font-style:italic;"></small>
-                        <details class="charMemory_promptDisclosure" id="charMemory_promptDisclosure">
-                            <summary><small>Show prompt</small></summary>
-                            <textarea id="charMemory_consolidationPrompt" class="text_pole textarea_compact" rows="6" placeholder="Edit the consolidation prompt for this strategy..."></textarea>
-                            <div class="charMemory_buttonRow">
-                                <input type="button" id="charMemory_restorePresetDefault" class="menu_button" value="Restore Default" title="Reset this preset's prompt to its built-in default" style="display:none;" />
-                            </div>
-                        </details>
-                    </div>
-                    <div class="charMemory_buttonRow">
-                        <input type="button" id="charMemory_consolidate" class="menu_button" value="Consolidate" title="Use the LLM to merge duplicate and related memories into fewer, cleaner entries" />
-                        <input type="button" id="charMemory_undoConsolidate" class="menu_button" value="Undo Consolidation" title="Restore memories from before the last consolidation (session only)" disabled />
-                    </div>
-                </div>
-
-                <!-- Batch tool -->
-                <div class="charMemory_toolContent" id="charMemory_toolBatch" style="display:none;">
-                    <div class="charMemory_buttonRow">
-                        <input type="button" id="charMemory_batchRefresh" class="menu_button" value="Refresh" title="Load chat list for this character" />
-                        <input type="button" id="charMemory_batchExtract" class="menu_button" value="Extract Selected" title="Run extraction on all selected chats" disabled />
-                        <input type="button" id="charMemory_batchStop" class="menu_button" value="Stop" title="Cancel batch extraction" style="display:none;" />
-                    </div>
-                    <div id="charMemory_batchProgress" class="charMemory_batchProgress" style="display:none;">
-                        <div class="charMemory_batchProgressText"></div>
-                        <div class="charMemory_batchProgressBar"><div class="charMemory_batchProgressFill"></div></div>
-                    </div>
-                    <div class="charMemory_sectionHeader">
-                        <small><b title="Chat files attached to this character. Select which ones to extract memories from.">Character Attachments</b></small>
-                        <label class="checkbox_label">
-                            <input type="checkbox" id="charMemory_batchSelectAll" />
-                            <small>Select all</small>
-                        </label>
-                    </div>
-                    <div id="charMemory_batchChatList" class="charMemory_batchChatList">
-                        <div class="charMemory_diagEmpty">Click "Refresh" to load chats.</div>
-                    </div>
-                </div>
-
-                <!-- Convert tool -->
-                <div class="charMemory_toolContent" id="charMemory_toolConvert" style="display:none;">
-                    <div class="charMemory_statusRow">
-                        <label for="charMemory_convertSource">
-                            <small>Source file</small>
-                        </label>
-                        <select id="charMemory_convertSource" class="text_pole">
-                            <option value="">— Select a Data Bank file —</option>
-                        </select>
-                        <small class="charMemory_helperText">Select any file from this character's Data Bank to convert into CharMemory format.</small>
-                    </div>
-
-                    <div class="charMemory_statusRow">
-                        <label class="checkbox_label" for="charMemory_convertUseLLM">
-                            <input type="checkbox" id="charMemory_convertUseLLM" />
-                            <span>Use LLM to restructure (for freeform text)</span>
-                        </label>
-                        <small class="charMemory_helperText">When the file has no clear structure, send it to the LLM for intelligent restructuring. Uses your configured extraction provider.</small>
-                        <details class="charMemory_promptDisclosure" id="charMemory_convertPromptDisclosure">
-                            <summary><small>Show prompt</small></summary>
-                            <textarea id="charMemory_convertPrompt" class="text_pole textarea_compact" rows="6" placeholder="Conversion prompt..."></textarea>
-                            <div class="charMemory_buttonRow">
-                                <input type="button" id="charMemory_restoreConvertPrompt" class="menu_button" value="Restore Default" title="Reset conversion prompt to built-in default" />
-                            </div>
-                        </details>
-                    </div>
-
-                    <div class="charMemory_buttonRow">
-                        <input type="button" id="charMemory_convertPreview" class="menu_button" value="Preview Conversion" title="Parse the selected file and show an interactive before/after preview" />
-                    </div>
-                </div>
-            </div>
-
-            <!-- Settings tab -->
-            <div class="charMemory_tabContent" id="charMemory_tabSettings" style="display:none;">
-
-                <!-- LLM Used for Extraction -->
-                <div class="charMemory_statusRow">
-                    <label for="charMemory_source" title="Which LLM to use for memory extraction and consolidation">
-                        <small>LLM Used for Extraction</small>
-                    </label>
-                    <select id="charMemory_source" class="text_pole">
-                        <option value="provider">Dedicated API (recommended)</option>
-                        <option value="webllm">WebLLM (browser-local)</option>
-                        <option value="main_llm">Main LLM</option>
-                    </select>
-                    <small class="charMemory_helperText"><b>Dedicated API is recommended.</b> Main LLM pollutes the extraction prompt with chat context, system prompts, and other instructions that degrade memory quality.</small>
-
-                    <div id="charMemory_providerSettings" style="display:none;">
-                        <div class="charMemory_statusRow">
-                            <label><small>Provider</small></label>
-                            <select id="charMemory_providerSelect" class="text_pole">
-                            </select>
-                        </div>
-                        <div class="charMemory_statusRow" id="charMemory_providerApiKeyRow">
-                            <label><small>API Key <a id="charMemory_providerHelpLink" href="#" target="_blank" style="font-size:0.85em;">(get key)</a></small></label>
-                            <div style="display:flex;gap:5px;align-items:center;">
-                                <input type="password" id="charMemory_providerApiKey" class="text_pole" placeholder="Enter API key" style="flex:1;" />
-                                <button type="button" id="charMemory_providerApiKeyReveal" class="menu_button" title="Show/hide API key" style="padding:3px 8px;">
-                                    <i class="fa-solid fa-eye fa-sm"></i>
-                                </button>
-                            </div>
-                        </div>
-                        <div class="charMemory_statusRow" id="charMemory_providerBaseUrlRow" style="display:none;">
-                            <label><small>Base URL</small></label>
-                            <input type="text" id="charMemory_providerBaseUrl" class="text_pole" placeholder="https://your-server.com/v1" />
-                            <small id="charMemory_providerBaseUrlHint" class="charMemory_helperText"></small>
-                        </div>
-                        <div class="charMemory_statusRow" id="charMemory_providerConnectRow">
-                            <input type="button" id="charMemory_providerConnect" class="menu_button" value="Connect" title="Fetch available models from the server" />
-                        </div>
-                        <small id="charMemory_providerConnectStatus" class="charMemory_helperText" style="display:none;"></small>
-                        <div class="charMemory_statusRow" id="charMemory_providerModelDropdownRow">
-                            <label><small>Model</small></label>
-                            <div id="charMemory_nanogptFilters" style="display:none;">
-                                <div class="charMemory_filterRow" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:4px;">
-                                    <label class="checkbox_label"><input type="checkbox" id="charMemory_nanogptFilterSub" /> <small>Subscription</small></label>
-                                    <label class="checkbox_label"><input type="checkbox" id="charMemory_nanogptFilterOS" /> <small>Open Source</small></label>
-                                    <label class="checkbox_label"><input type="checkbox" id="charMemory_nanogptFilterRP" /> <small>Roleplay</small></label>
-                                    <label class="checkbox_label"><input type="checkbox" id="charMemory_nanogptFilterReasoning" /> <small>Reasoning</small></label>
-                                </div>
-                            </div>
-                            <div style="display:flex;gap:5px;align-items:center;">
-                                <div class="charMemory_modelPicker" style="flex:1;position:relative;">
-                                    <input type="text" id="charMemory_modelSearch" class="text_pole" placeholder="Search models..." autocomplete="off" />
-                                    <input type="hidden" id="charMemory_providerModel" />
-                                    <div id="charMemory_modelDropdown" class="charMemory_modelDropdown"></div>
-                                </div>
-                                <input type="button" id="charMemory_providerRefreshModels" class="menu_button" value="&#x21bb;" title="Refresh model list" />
-                            </div>
-                            <small id="charMemory_providerModelInfo" class="charMemory_helperText"></small>
-                        </div>
-                        <div class="charMemory_statusRow" id="charMemory_providerTestRow">
-                            <div style="display:flex;gap:5px;align-items:center;">
-                                <input type="button" id="charMemory_providerTest" class="menu_button" value="Test Model" title="Send a test prompt to the selected model and verify it responds correctly" />
-                            </div>
-                            <small id="charMemory_providerTestStatus" class="charMemory_helperText" style="display:none;"></small>
-                        </div>
-                        <div class="charMemory_statusRow" id="charMemory_providerModelInputRow" style="display:none;">
-                            <label><small>Model ID</small></label>
-                            <input type="text" id="charMemory_providerModelInput" class="text_pole" placeholder="Enter model identifier" />
-                            <small class="charMemory_helperText">Enter the model ID manually (e.g. claude-sonnet-4-5-20250929).</small>
-                        </div>
-                        <div class="charMemory_statusRow">
-                            <label><small>System prompt (optional)</small></label>
-                            <textarea id="charMemory_providerSystemPrompt" class="text_pole" rows="3" placeholder="Override the default system prompt. Leave blank for default."></textarea>
-                            <small class="charMemory_helperText">Prepended to extraction/consolidation calls. Use for jailbreaks or custom instructions.</small>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Auto-Extraction -->
-                <hr class="charMemory_separator" />
-                <small><b>Auto-Extraction</b></small>
-
-                <div class="charMemory_sliderRow">
-                    <label title="How many new messages trigger an automatic extraction.">
-                        <small>Extract after every N messages</small>
-                    </label>
-                    <input class="neo-range-slider" type="range" id="charMemory_interval" min="3" max="100" step="1" value="20" />
-                    <div class="wide100p">
-                        <input class="neo-range-input" type="number" min="3" max="100" step="1"
-                               data-for="charMemory_interval" id="charMemory_intervalCounter" />
-                    </div>
-                </div>
-
-                <div class="charMemory_sliderRow">
-                    <label title="Minimum time between auto-extractions, even if the message threshold is met.">
-                        <small>Minimum wait between extractions (min)</small>
-                    </label>
-                    <input class="neo-range-slider" type="range" id="charMemory_minCooldown" min="0" max="30" step="1" value="10" />
-                    <div class="wide100p">
-                        <input class="neo-range-input" type="number" min="0" max="30" step="1"
-                               data-for="charMemory_minCooldown" id="charMemory_minCooldownCounter" />
-                    </div>
-                </div>
-
-                <small class="charMemory_helperText">These settings only affect automatic extraction. Manual extraction and batch extraction ignore them.</small>
-
-                <!-- Extraction Settings -->
-                <hr class="charMemory_separator" />
-                <small><b>Extraction Settings</b></small>
-
-                <div class="charMemory_sliderRow">
-                    <label title="How many messages to include in each LLM call.">
-                        <small>Messages per LLM call</small>
-                    </label>
-                    <input class="neo-range-slider" type="range" id="charMemory_maxMessages" min="10" max="200" step="1" value="50" />
-                    <div class="wide100p">
-                        <input class="neo-range-input" type="number" min="10" max="200" step="1"
-                               data-for="charMemory_maxMessages" id="charMemory_maxMessagesCounter" />
-                    </div>
-                </div>
-
-                <div class="charMemory_sliderRow">
-                    <label title="Maximum tokens the LLM can use for its response.">
-                        <small>Max response length</small>
-                    </label>
-                    <input class="neo-range-slider" type="range" id="charMemory_responseLength" min="100" max="4000" step="50" value="1000" />
-                    <div class="wide100p">
-                        <input class="neo-range-input" type="number" min="100" max="4000" step="50"
-                               data-for="charMemory_responseLength" id="charMemory_responseLengthCounter" />
-                    </div>
-                </div>
-
-                <div class="charMemory_statusRow">
-                    <label class="checkbox_label" for="charMemory_mergeChunks" title="When enabled, extraction results from the same chat are merged into a single block. Disable for long chats to keep blocks smaller for consolidation.">
-                        <input type="checkbox" id="charMemory_mergeChunks" />
-                        <span>Merge extraction chunks</span>
-                    </label>
-                    <small class="charMemory_helperText">When enabled, multi-chunk extractions from the same chat are merged into one block. Disable for long chats to keep blocks smaller for consolidation.</small>
-                </div>
-
-                <!-- Memory File Format (advanced) -->
-                <hr class="charMemory_separator" />
-                <small><b>Memory File Format</b></small>
-
-                <div class="charMemory_statusRow">
-                    <label for="charMemory_chunkBoundary" title="Controls how memories are separated in the Data Bank file. Vector Storage splits on the separator to create individual retrievable chunks.">
-                        <small>Chunk boundary</small>
-                    </label>
-                    <select id="charMemory_chunkBoundary" class="text_pole">
-                        <option value="block">Block-level (default)</option>
-                        <option value="bullet">Bullet-level</option>
-                        <option value="custom">Custom</option>
-                    </select>
-                    <small class="charMemory_helperText">Controls how memories are separated in the file. Vector Storage splits on the separator to create retrievable chunks.</small>
-                </div>
-
-                <div class="charMemory_statusRow" id="charMemory_customSeparatorRow" style="display:none;">
-                    <label for="charMemory_customSeparator" title="Characters inserted between chunks. Use \\n for newlines.">
-                        <small>Custom separator</small>
-                    </label>
-                    <input type="text" id="charMemory_customSeparator" class="text_pole" placeholder="\\n\\n" />
-                    <small class="charMemory_helperText">Characters inserted between chunks. Use \n for newlines. Default: \n\n (blank line).</small>
-                </div>
-
-                <div id="charMemory_chunkMetadataRow" style="display:none;">
-                    <label class="checkbox_label" for="charMemory_chunkMetadata" title="When using bullet-level chunking, prefix each bullet with its date and chat ID so standalone bullets retain their context.">
-                        <input type="checkbox" id="charMemory_chunkMetadata" />
-                        <span>Include metadata in chunks</span>
-                    </label>
-                    <small class="charMemory_helperText">Prefix each bullet with [date | chat_id] so standalone chunks retain their provenance.</small>
-                </div>
-
-                <!-- Storage -->
-                <hr class="charMemory_separator" />
-
-                <div class="charMemory_statusRow">
-                    <label class="checkbox_label" for="charMemory_perChat" title="When enabled, each chat gets its own memory file. When disabled, all chats for a character share one file. Applies to both 1:1 and group chats.">
-                        <input type="checkbox" id="charMemory_perChat" />
-                        <span>Separate memories per chat</span>
-                    </label>
-                    <small class="charMemory_helperText">Each conversation gets its own memory file instead of sharing one per character. Applies to both 1:1 and group chats.</small>
-                </div>
-
-                <!-- 1:1 Chat section (hidden in group chats) -->
-                <div id="charMemory_section1v1">
-                    <div class="charMemory_statusRow">
-                        <label for="charMemory_fileName" title="Override the auto-generated file name. Leave blank to use the default (based on character name).">
-                            <small>File name override</small>
-                        </label>
-                        <input type="text" id="charMemory_fileName" class="text_pole" placeholder="(auto-generated from character name)" />
-                        <small class="charMemory_helperText">Current file: <span id="charMemory_resolvedFileName">—</span></small>
-                    </div>
-
-                    <hr class="charMemory_separator" />
-
-                    <div class="charMemory_promptSection">
-                        <label for="charMemory_extractionPrompt" title="The prompt sent to the LLM for memory extraction. Uses {{charName}}, {{charCard}}, {{existingMemories}}, {{recentMessages}}, {{char}}, and {{user}} placeholders.">
-                            <small>Extraction prompt (1:1 chats)</small>
-                        </label>
-                        <textarea id="charMemory_extractionPrompt" class="text_pole textarea_compact" rows="8" placeholder="Enter extraction prompt..."></textarea>
-                        <input type="button" id="charMemory_restorePrompt" class="menu_button" value="Restore Default Prompt" title="Replace the current prompt with the built-in default" />
-                    </div>
-                </div>
-
-                <!-- Group Chat section (hidden in 1:1 chats) -->
-                <div id="charMemory_sectionGroup" style="display:none;">
-                    <div id="charMemory_groupMembersSection">
-                        <label><small>Member memory files</small></label>
-                        <div id="charMemory_groupMembersList" class="charMemory_groupMembersList">
-                            <small class="charMemory_helperText">Open a group chat to see members.</small>
-                        </div>
-                        <small class="charMemory_helperText">Each character's memories are stored in their own Data Bank. Leave blank for auto-naming. If a character already has a memory file, it will be detected automatically.</small>
-                    </div>
-
-                    <hr class="charMemory_separator" />
-
-                    <div class="charMemory_promptSection">
-                        <label for="charMemory_groupExtractionPrompt" title="The prompt sent to the LLM for group chat memory extraction. Uses {{charName}}, {{charCard}}, {{participants}}, {{existingMemories}}, {{recentMessages}}, {{char}}, and {{user}} placeholders.">
-                            <small>Extraction prompt (group chats)</small>
-                        </label>
-                        <textarea id="charMemory_groupExtractionPrompt" class="text_pole textarea_compact" rows="8" placeholder="Enter group extraction prompt..."></textarea>
-                        <input type="button" id="charMemory_restoreGroupPrompt" class="menu_button" value="Restore Default Prompt" title="Replace the group prompt with the built-in default" />
-                    </div>
-                </div>
-
-                <!-- Reset / Clear -->
-                <hr class="charMemory_separator" />
-
-                <div class="charMemory_statusRow">
-                    <input type="button" id="charMemory_resetTracking" class="menu_button" value="Reset Extraction State" title="Reset extraction tracking for the current character's chats" />
-                    <small class="charMemory_helperText">Resets extraction tracking for the current character. Use before 'Extract Now' or 'Batch Extract' to re-process from the beginning.</small>
-                    <input type="button" id="charMemory_resetExtraction" class="menu_button charMemory_dangerBtn" value="Clear All Memories" title="Delete the memory file and reset extraction state for the current character." />
-                    <small class="charMemory_helperText">Deletes the memory file and resets extraction tracking for the current character. This cannot be undone.</small>
-                </div>
-            </div>
-
-            <!-- Log tab -->
-            <div class="charMemory_tabContent" id="charMemory_tabLog" style="display:none;">
+            <!-- Tool Launchers -->
+            <div class="charMemory_dashSection">
+                <small class="charMemory_sectionLabel">Data Bank Tools</small>
                 <div class="charMemory_buttonRow">
-                    <input type="button" id="charMemory_clearLog" class="menu_button" value="Clear" title="Clear the activity log" />
-                    <input type="button" id="charMemory_saveLog" class="menu_button" value="Save Log" title="Download the activity log as a text file" />
-                    <label class="checkbox_label" for="charMemory_verboseLog" title="Show full LLM prompts and responses in the activity log">
-                        <input type="checkbox" id="charMemory_verboseLog" />
-                        <small>Verbose</small>
-                    </label>
-                </div>
-                <div id="charMemory_activityLog" class="charMemory_activityLog" style="max-height:300px;overflow-y:auto;font-size:0.85em;font-family:monospace;">
-                    <div class="charMemory_diagEmpty">No activity yet.</div>
+                    <input type="button" id="charMemory_filesPopover" class="menu_button" value="Data Bank" title="Browse and manage Data Bank files for this character" />
+                    <input type="button" id="charMemory_consolidateBtn" class="menu_button" value="Consolidate" title="Use the LLM to merge duplicate and related memories" />
+                    <input type="button" id="charMemory_batchBtn" class="menu_button" value="Batch" title="Run extraction on multiple chats at once" />
+                    <input type="button" id="charMemory_formatBtn" class="menu_button" value="Reformat" title="Reformat memory file structure for better retrieval" />
                 </div>
             </div>
 
-            <!-- Activity Log — always visible -->
-            <div class="charMemory_miniLog" id="charMemory_miniLog">
-                <small><b>Activity Log</b></small>
-                <div class="charMemory_miniLogContent" id="charMemory_miniLogContent">
+            <!-- Activity (mini log) -->
+            <div class="charMemory_dashSection">
+                <small class="charMemory_sectionLabel">Activity</small>
+                <div id="charMemory_dashActivity" class="charMemory_dashActivity">
                     <div class="charMemory_diagEmpty charMemory_miniLogEmpty">No activity yet.</div>
                 </div>
+                <a id="charMemory_viewFullLog" class="charMemory_link">View full log &rarr;</a>
             </div>
 
-            <!-- Diagnostics — always visible at bottom -->
-            <div class="charMemory_bottomDiagnostics">
-                <div class="charMemory_buttonRow">
-                    <small><b>Diagnostics</b></small>
-                    <input type="button" id="charMemory_refreshDiag" class="menu_button" value="Refresh" title="Capture current diagnostics (lorebook entries, extension prompts, memory file status)" />
+            <!-- Diagnostics summary -->
+            <div class="charMemory_dashSection">
+                <div class="charMemory_dashDiagHeader">
+                    <small class="charMemory_sectionLabel">Diagnostics</small>
                 </div>
-                <div id="charMemory_diagnosticsContent" class="charMemory_diagnosticsContent">
-                    <div class="charMemory_diagEmpty">Click "Refresh" after a generation to see diagnostics.</div>
+                <div id="charMemory_dashDiagSummary">
+                    <div class="charMemory_diagEmpty">No diagnostics yet.</div>
                 </div>
+                <a id="charMemory_viewDiagDetails" class="charMemory_link">View details &rarr;</a>
             </div>
 
         </div>
