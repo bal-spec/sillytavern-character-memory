@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.1.5
+
+### Improvements
+
+- **Unified Context section in injection viewer**: The previous "Context Budget" and "Prompt Breakdown" sections are now a single "Context" section at the top of each injection snapshot. The header shows a compact stacked bar and summary (e.g. `~1,200 / 32,768 tk (4%)`). Expanding loads the full token breakdown — exact per-category counts via ST's Prompt Itemization when available, or injection-only estimates for snapshots from previous sessions.
+- **Accurate Lorebook token estimates**: The "Context Budget" section previously summed truncated entry content (200 chars/entry) from `WORLD_INFO_ACTIVATED`, causing large overestimates for lorebooks with many entries. Token estimates now use the actual injected `worldInfoString` from ST's prompt data, giving accurate numbers that match the Prompt Breakdown view.
+- **Data Bank label consistency**: The injection viewer now labels CharMemory's injected memories as "Data Bank" throughout (section header, breakdown rows, tips popup), matching SillyTavern's own terminology.
+- **Estimated fallback breakdown**: When exact Prompt Itemization data is unavailable (previous session or feature disabled), the Context section body shows an estimated injection-only breakdown using snapshot char counts, with a clear note that the numbers are approximate.
+- **Tips to reduce link in full breakdown**: The "Tips to reduce" link (and tips popup) now appears in all breakdown views — both the exact Prompt Itemization breakdown and the estimated fallback.
+
 ## 2.1.4
 
 ### Improvements

@@ -3114,8 +3114,18 @@ function captureDiagnostics(messageIndex) {
         const dbCharCount = fullDbContent
             ? (typeof fullDbContent === 'string' ? fullDbContent.length : String(fullDbContent).length)
             : 0;
-        const wiTotalChars = lastDiagnostics.worldInfoEntries.reduce(
-            (sum, e) => sum + (e.content?.length || 0), 0);
+        // Use itemizedPrompts for accurate char counts (actual injected strings, not truncated entry content)
+        const itemIdx = itemizedPrompts.findIndex(x => Number(x.mesId) === messageIndex);
+        let wiTotalChars = 0;
+        let dbCharsAccurate = dbCharCount;
+        if (itemIdx !== -1) {
+            const ip = itemizedPrompts[itemIdx];
+            if (typeof ip.worldInfoString === 'string') wiTotalChars = ip.worldInfoString.length;
+            if (typeof ip.dataBankVectorsString === 'string') dbCharsAccurate = ip.dataBankVectorsString.length;
+        } else {
+            // Fall back to summing entry content (may be inaccurate for multi-entry lorebooks)
+            wiTotalChars = lastDiagnostics.worldInfoEntries.reduce((sum, e) => sum + (e.content?.length || 0), 0);
+        }
         const epCharCounts = {};
         for (const [key, value] of Object.entries(context.extensionPrompts || {})) {
             if (value?.value) {
@@ -3139,7 +3149,7 @@ function captureDiagnostics(messageIndex) {
                 depth: p.depth,
             })),
             tokenData: {
-                charMemoryChars: dbCharCount,
+                charMemoryChars: dbCharsAccurate,
                 wiChars: wiTotalChars,
                 epCharCounts,
                 contextMaxTokens: getMainContextMaxTokens(),
@@ -7882,10 +7892,67 @@ function renderPromptBreakdown(params) {
     html += `<div class="charMemory_tokenRow charMemory_tokenRow--total"><span></span><span>Total</span><span>${total.toLocaleString()} tk</span></div>`;
     html += '</div>';
 
-    // Footer: model + tokenizer
+    // Footer: model + tokenizer + tips link
     const meta = [params.modelUsed, params.selectedTokenizer ? `tokenizer: ${params.selectedTokenizer}` : ''].filter(Boolean).join(' · ');
-    if (meta) html += `<div class="charMemory_tokenNote" style="margin-top:6px;">${escapeHtml(meta)}</div>`;
+    const metaStr = meta ? `${escapeHtml(meta)} &middot; ` : '';
+    html += `<div class="charMemory_tokenNote" style="margin-top:6px;">${metaStr}<span class="charMemory_tokenTipsLink">Tips to reduce <i class="fa-solid fa-circle-question fa-xs"></i></span></div>`;
 
+    return html;
+}
+
+/**
+ * Render an estimated token breakdown from snapshot data (for old messages without itemized prompt data).
+ * @param {object} snapshot Injection snapshot from chat_metadata
+ * @returns {string} HTML string
+ */
+function renderEstimatedBreakdown(snapshot) {
+    const td = snapshot.tokenData;
+    const memTk = estimateTokens(td?.charMemoryChars || 0);
+    const wiTk  = estimateTokens(td?.wiChars || 0);
+    const otherEpChars = Object.entries(td?.epCharCounts || {})
+        .filter(([k]) => k !== '4_vectors_data_bank')
+        .reduce((sum, [, v]) => sum + v, 0);
+    const otherEpTk = estimateTokens(otherEpChars);
+    const total = memTk + wiTk + otherEpTk;
+    const maxCtx = td?.contextMaxTokens || null;
+
+    const cats = [
+        { label: 'Data Bank', tokens: memTk, color: '#7c6bc9' },
+        { label: 'Lorebook',  tokens: wiTk,  color: '#e8a33d' },
+        { label: 'Other extensions', tokens: otherEpTk, color: '#4a8fa8' },
+    ].filter(c => c.tokens > 0);
+
+    let html = '';
+    if (total > 0) {
+        html += '<div class="charMemory_fullPromptBar">';
+        for (const cat of cats) {
+            const pct = ((cat.tokens / total) * 100).toFixed(1);
+            html += `<div class="charMemory_tokenBarSeg" style="width:${pct}%;background:${escapeHtml(cat.color)};" title="${escapeHtml(cat.label)}: ~${cat.tokens.toLocaleString()} tk"></div>`;
+        }
+        html += '</div>';
+    }
+
+    const ctxStr = maxCtx ? ` / ${maxCtx.toLocaleString()} tk` : '';
+    html += `<div class="charMemory_fullPromptSummary">~${total.toLocaleString()}${ctxStr} tk &middot; injections estimated</div>`;
+
+    html += '<div class="charMemory_tokenBreakdown" style="margin-top:4px;">';
+    for (const cat of cats) {
+        const pct = total > 0 ? ((cat.tokens / total) * 100).toFixed(1) : '0';
+        html += '<div class="charMemory_tokenRow">';
+        html += `<span class="charMemory_tokenDot" style="background:${escapeHtml(cat.color)};"></span>`;
+        html += `<span>${escapeHtml(cat.label)}</span>`;
+        html += `<span>~${cat.tokens.toLocaleString()} tk (${pct}%)</span>`;
+        html += '</div>';
+    }
+    const totalStr = maxCtx
+        ? `~${total.toLocaleString()} / ${maxCtx.toLocaleString()}`
+        : `~${total.toLocaleString()}`;
+    html += `<div class="charMemory_tokenRow charMemory_tokenRow--total"><span></span><span>Total tracked</span><span>${totalStr} tk</span></div>`;
+    html += '</div>';
+
+    html += '<div class="charMemory_tokenNote" style="margin-top:6px;">Estimates (~4 chars/token) for injections only. '
+        + 'Exact counts unavailable — previous session or Prompt Itemization disabled. '
+        + '<span class="charMemory_tokenTipsLink">Tips to reduce <i class="fa-solid fa-circle-question fa-xs"></i></span></div>';
     return html;
 }
 
@@ -7910,7 +7977,7 @@ function showTokenTipsPopup() {
             These are injections only — char card, system prompt, and chat history
             also consume context and are not shown here.
         </p>
-        ${section('CharMemory', '#7c6bc9', [
+        ${section('Data Bank', '#7c6bc9', [
             ['Consolidate', 'Use the <strong>Consolidate</strong> button on the dashboard to compress memories into fewer, denser bullets.'],
             ['Retrieve chunks', 'Lower <strong>Vector Storage → Data Bank files → Retrieve chunks</strong> to inject fewer chunks per generation. Also raise <strong>Score threshold</strong> to filter out low-relevance results.'],
             ['Per-chat isolation', 'Enable <strong>Settings → Storage → Per-chat isolation</strong> so only memories from the current chat are retrieved, not the entire character file.'],
@@ -7993,25 +8060,16 @@ function showInjectionDrawer(messageIndex) {
         }
 
         html += '<div class="charMemory_drawerSection">';
-        html += '<div class="charMemory_drawerSectionHeader charMemory_tokenHeader" data-section="tokenbudget">';
+        html += `<div class="charMemory_drawerSectionHeader charMemory_tokenHeader" data-section="context" data-mesid="${messageIndex}">`;
         html += '<i class="fa-solid fa-chevron-down charMemory_drawerChevron collapsed"></i>';
-        html += '<strong>Context Budget</strong>';
+        html += '<strong>Context</strong>';
         html += `<div class="charMemory_tokenBarInline" title="Injected token estimates vs context limit">${barSegsHtml}</div>`;
         html += `<span class="charMemory_tokenSummary ${summaryClass}">${escapeHtml(summaryText)}</span>`;
         html += '</div>';
-        // Body starts collapsed
+        // Body starts collapsed — lazy-loaded on first expand
         html += '<div class="charMemory_drawerSectionBody" style="display:none;">';
-        html += '<div class="charMemory_tokenBreakdown">';
-        html += `<div class="charMemory_tokenRow"><span class="charMemory_tokenDot charMemory_tokenDot--mem"></span><span>CharMemory</span><span>~${memTokens.toLocaleString()} tk</span></div>`;
-        html += `<div class="charMemory_tokenRow"><span class="charMemory_tokenDot charMemory_tokenDot--wi"></span><span>Lorebook</span><span>~${wiTokens.toLocaleString()} tk</span></div>`;
-        html += `<div class="charMemory_tokenRow"><span class="charMemory_tokenDot charMemory_tokenDot--ep"></span><span>Other extensions</span><span>~${otherEpTokens.toLocaleString()} tk</span></div>`;
-        const totalLabel = maxCtx
-            ? `~${totalTracked.toLocaleString()} / ${maxCtx.toLocaleString()}`
-            : `~${totalTracked.toLocaleString()}`;
-        html += `<div class="charMemory_tokenRow charMemory_tokenRow--total"><span></span><span>Total tracked</span><span>${totalLabel} tk</span></div>`;
-        html += '<div class="charMemory_tokenNote">Estimates (~4 chars/token). Char card, system prompt, and chat history not counted. '
-            + '<span class="charMemory_tokenTipsLink">Tips to reduce <i class="fa-solid fa-circle-question fa-xs"></i></span></div>';
-        html += '</div></div></div>';
+        html += '<div class="charMemory_diagEmpty">Expand to load full token breakdown…</div>';
+        html += '</div></div>';
 
         // Health notes based on token budget
         if (maxCtx) {
@@ -8053,7 +8111,7 @@ function showInjectionDrawer(messageIndex) {
     html += '<div class="charMemory_drawerSection">';
     html += '<div class="charMemory_drawerSectionHeader" data-section="memories">';
     html += '<i class="fa-solid fa-chevron-down charMemory_drawerChevron"></i> ';
-    html += `<strong>CharMemory</strong> <span class="charMemory_drawerCount">(${memCount})</span>`;
+    html += `<strong>Data Bank</strong> <span class="charMemory_drawerCount">(${memCount})</span>`;
     if (memTokens > 0) html += `<span class="charMemory_drawerTokenHint">~${memTokens.toLocaleString()} tk</span>`;
     html += '</div>';
     html += '<div class="charMemory_drawerSectionBody">';
@@ -8126,16 +8184,6 @@ function showInjectionDrawer(messageIndex) {
     }
     html += '</div></div>';
 
-    // ── Prompt Breakdown section (lazy-loaded) ────────────────────────────
-    html += '<div class="charMemory_drawerSection">';
-    html += `<div class="charMemory_drawerSectionHeader" data-section="fullprompt" data-mesid="${messageIndex}">`;
-    html += '<i class="fa-solid fa-chevron-down charMemory_drawerChevron collapsed"></i>';
-    html += '<strong>Prompt Breakdown</strong>';
-    html += '<span class="charMemory_drawerCount">exact tokens · click to load</span>';
-    html += '</div>';
-    html += '<div class="charMemory_drawerSectionBody" style="display:none;">';
-    html += '<div class="charMemory_diagEmpty">Expand to compute the full token breakdown for this message.</div>';
-    html += '</div></div>';
 
     $body.html(html);
     $toolbar.html(`<span>Captured at ${escapeHtml(snapshot.timestamp)}</span><span class="charMemory_drawerDiagLink" title="Open CharMemory panel and scroll to Diagnostics">Diagnostics</span>`);
@@ -8609,8 +8657,8 @@ jQuery(async function () {
         showTokenTipsPopup();
     });
 
-    // Prompt Breakdown section — lazy-load token data on first expand
-    $(document).on('click', '.charMemory_drawerSectionHeader[data-section="fullprompt"]', async function () {
+    // Context section — lazy-load full token breakdown on first expand
+    $(document).on('click', '.charMemory_drawerSectionHeader[data-section="context"]', async function () {
         const $header = $(this);
         const $body = $header.next('.charMemory_drawerSectionBody');
         if ($body.data('cm-loaded')) return;
@@ -8621,12 +8669,18 @@ jQuery(async function () {
 
         try {
             const idx = itemizedPrompts.findIndex(x => Number(x.mesId) === mesId);
-            if (idx === -1) {
-                $body.html('<div class="charMemory_diagEmpty">Prompt data not available for this message — it may be from a previous session, or the Prompt Itemization feature may be disabled in ST settings.</div>');
-                return;
+            if (idx !== -1) {
+                // Exact counts from ST's prompt itemization
+                const params = await itemizedParams(itemizedPrompts, idx, mesId);
+                $body.html(renderPromptBreakdown(params));
+            } else {
+                // Fall back to snapshot-based estimates (previous session or itemization disabled)
+                ensureMetadata();
+                const snapshot = chat_metadata[MODULE_NAME]?.injectionData?.[mesId];
+                $body.html(snapshot
+                    ? renderEstimatedBreakdown(snapshot)
+                    : '<div class="charMemory_diagEmpty">Prompt data not available for this message — it may be from a previous session, or Prompt Itemization may be disabled in ST settings.</div>');
             }
-            const params = await itemizedParams(itemizedPrompts, idx, mesId);
-            $body.html(renderPromptBreakdown(params));
         } catch (err) {
             console.error(LOG_PREFIX, 'Failed to load prompt breakdown:', err);
             $body.html('<div class="charMemory_diagEmpty">Error computing token counts.</div>');
