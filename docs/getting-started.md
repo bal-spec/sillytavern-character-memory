@@ -85,6 +85,70 @@ See SillyTavern's [User Settings documentation](https://docs.sillytavern.app/usa
 
 ---
 
+## I'm set up — now what?
+
+You've finished the wizard. Here's what to expect and how to get the most out of CharMemory.
+
+### What happens automatically
+
+**You don't need to do anything.** Just chat normally. CharMemory works in the background:
+
+- Every 20 character messages (by default), it reads through the recent conversation, picks out the important things that happened, and saves them as bullet points in a file attached to the character.
+- When the character generates their next message, SillyTavern's Vector Storage searches that file for memories relevant to what's being discussed and includes them in the prompt. The character has no idea this is happening — it just has extra context available.
+
+You'll see a small counter in the CharMemory panel (e.g., `3/20 msgs`) tracking progress toward the next extraction. When it fires, a toast notification tells you how many memories were saved.
+
+### Make sure Vector Storage is enabled
+
+This is the one thing that can silently break everything. Without Vector Storage, CharMemory will extract and save memories just fine — but the character will never actually recall them. The memories sit in a file that nobody reads.
+
+If you went through the Setup Wizard and it showed **green** for Vector Storage, you're good. If you skipped it, aren't sure, or see a **red health dot** in the CharMemory panel, here's the minimum setup:
+
+1. Open the **Extensions** panel — click the **puzzle piece icon** (🧩) in SillyTavern's top bar
+2. Scroll down in the extensions list and click **Vector Storage** to expand it — it's a built-in extension, not something you need to install
+3. Scroll down within Vector Storage to the **File vectorization settings** section
+4. Check **Enable for files** — this is the critical checkbox
+5. For the embedding source, any option works. If you have an **OpenAI-compatible API key** (which you probably do if you set up CharMemory), select **OpenAI** and enter the key. If not, **Local (Transformers)** works without any API key — it downloads a small model to your machine
+
+That's the minimum. The defaults for everything else are fine to start with. If you want to tune retrieval quality later, see [Retrieval & Prompts](retrieval-and-prompts.md).
+
+> **How do I know it's working?** After your first extraction, generate a couple more messages and check the **health dot** in the CharMemory panel. Green means memories are being retrieved and injected. You can also click the **syringe icon** (Injection Viewer) to see exactly which memories the character can see.
+
+### Will the character remember things in a new chat?
+
+**Yes — that's the whole point.** Memories are attached to the character, not to a specific chat. If you chat with a character across multiple conversations, they build up a memory file over time. Start a fresh chat and bring up something that happened before — the character should be able to reference it.
+
+It's not perfect recall. Vector Storage retrieves the memories most *relevant* to the current conversation. If you're talking about the beach trip from last week, memories about that trip will surface. Memories about an unrelated cooking lesson probably won't — unless something connects them. This is by design: dumping every memory into every prompt would waste your context window.
+
+### What does "relevant" mean?
+
+Vector Storage converts text into numerical representations (called "embeddings") that capture meaning. When the character is about to respond, it compares the current conversation against all stored memories and picks the closest matches — even if they don't share exact words. "We went swimming at the coast" would match memories about "the beach trip" because the *meaning* is similar.
+
+This is why Vector Storage settings matter. If retrieval is too strict (high score threshold), few memories come back. Too loose, and irrelevant ones crowd out the important ones. The [Retrieval & Prompts](retrieval-and-prompts.md) guide covers tuning, but the defaults work for most setups.
+
+### Tips for getting good results
+
+- **Let it build up.** A single extraction from 20 messages produces a handful of memories. After a few hundred messages you'll have a rich memory file and retrieval becomes much more useful.
+- **Check what's being injected.** Click the **syringe icon** (Injection Viewer) to see exactly which memories the character has access to for the current message. This is the fastest way to understand whether retrieval is working. See [Injection Viewer](injection-viewer.md).
+- **Watch the health dot.** The colored dot in the stats bar tells you at a glance whether memories are being injected. Green = working. Yellow = something could be better. Red = memories aren't getting through. Click it for details.
+- **Edit memories if they're wrong.** Click **View / Edit** to open the Memory Manager. Memories are just bullet points — delete bad ones, fix inaccurate ones, add things the LLM missed. The character will use whatever's in the file.
+- **Don't over-extract.** More memories isn't always better. If the file gets very large with repetitive content, use **Consolidate** to merge duplicates and trim noise.
+
+### The buttons in the panel — quick reference
+
+| Button | What it does |
+|--------|-------------|
+| **Extract Now** | Run extraction immediately on all unprocessed messages (don't wait for the counter) |
+| **View / Edit** | Open the Memory Manager to read, edit, or delete individual memories |
+| **Consolidate** | Ask the LLM to merge duplicate/redundant memories and tighten the file |
+| **Batch** | Extract memories from ALL of this character's chats at once (useful for existing characters) |
+| **Reformat** | Convert an existing memory file to CharMemory's structured format |
+| **Data Bank** | Browse and edit the raw memory file(s) in the character's Data Bank |
+
+You don't need most of these day-to-day. **Extract Now** and **View / Edit** are the ones you'll use most.
+
+---
+
 ## Your first extraction
 
 After setup, chat normally. The **stats bar** at the top of the CharMemory panel tracks your progress:
