@@ -2716,7 +2716,7 @@ async function extractMemories({
 
             // Collect messages for this chunk (shared across all targets)
             const { text: recentMessages, endIndex: chunkEndIndex } = collectRecentMessages({
-                endIndex: endIndex,
+                endIndex: effectiveEnd - 1,
                 chatArray: chatArray,
                 lastExtractedIdx: currentLastExtracted,
             });

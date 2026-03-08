@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.1.7
+
+### Bug Fixes
+
+- **Fix "Protect Recent Messages" not actually protecting**: The protection buffer calculated a reduced end boundary (`effectiveEnd`) but never passed it to `collectRecentMessages()`, which independently used `chat.length` — extracting the "protected" messages anyway. Now the collection boundary respects the protection, so the most recent N messages are genuinely excluded from auto-extraction. Fixes [#3](https://github.com/bal-spec/sillytavern-character-memory/issues/3) regression.
+
 ## 2.1.6
 
 ### Improvements
