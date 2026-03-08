@@ -25,6 +25,20 @@ CharMemory and lorebook-based memory extensions can coexist — they use differe
 
 CharMemory does not touch your lorebooks so if those contain information about the character's world, they can supplement Data Bank memories. CharMemory does use its own structured markdown format for new Data Bank files. It will optionally process your existing files into the same format.
 
+## How it works
+
+CharMemory gives your characters persistent memory across chats. Here's the short version:
+
+1. **You chat normally.** Every 20 messages (configurable), CharMemory sends the recent conversation to an LLM and asks it to pick out the important stuff — relationships, events, facts, emotional moments.
+
+2. **Memories are saved as a plain text file** attached to the character (in SillyTavern's "Data Bank"). You can read and edit this file at any time — it's just bullet points in markdown.
+
+3. **When the character speaks, relevant memories are retrieved automatically.** SillyTavern's Vector Storage acts like a search engine for the memory file. It finds the memories most relevant to the current conversation and quietly includes them in the prompt the LLM sees. The character doesn't "know" it's reading memories — it just has relevant context available, like how a person recalls things related to what's being discussed.
+
+**The key benefit: start a new chat with the same character, and they can reference things that happened before.** It's not perfect photographic recall — it's closer to how people actually remember, where relevant details surface based on what's being talked about.
+
+> **What is Vector Storage?** It's a built-in SillyTavern feature (not part of CharMemory) that works like a search engine for text files. It converts text into numerical representations ("embeddings") so it can find passages that are *semantically similar* to the current conversation, even if they don't share exact words. Without it, memories are stored but never retrieved — the character won't recall anything. See [Getting Started → Make sure Vector Storage is enabled](docs/getting-started.md#make-sure-vector-storage-is-enabled) for setup steps.
+
 ## Feature Highlights
 
 - **Automatic extraction** — automatically extracts memories from your current chat. No manual steps after setup.
@@ -67,7 +81,7 @@ CharMemory stores memories as plain files in the character's Data Bank. Tools li
 
 | | |
 |---|---|
-| [Getting Started](docs/getting-started.md) | Setup Wizard, first extraction, verifying it works |
+| [Getting Started](docs/getting-started.md) | Setup Wizard, "now what?", first extraction, verifying it works |
 | [Injection Viewer](docs/injection-viewer.md) | See what memories are going into the prompt in real time |
 | [Group Chats](docs/group-chats.md) | Multi-character extraction, Data Bank viewer for all members |
 | [Managing Memories](docs/managing-memories.md) | View/Edit, Consolidate, Batch, Reformat, Data Bank tools |
