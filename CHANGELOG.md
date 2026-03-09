@@ -5,6 +5,7 @@
 ### Bug Fixes
 
 - **Fix "Protect Recent Messages" not actually protecting**: The protection buffer calculated a reduced end boundary (`effectiveEnd`) but never passed it to `collectRecentMessages()`, which independently used `chat.length` — extracting the "protected" messages anyway. Now the collection boundary respects the protection, so the most recent N messages are genuinely excluded from auto-extraction. Fixes [#3](https://github.com/bal-spec/sillytavern-character-memory/issues/3) regression.
+- **Fix 404 when custom base URL includes /chat/completions**: Users who pasted the full completions endpoint (e.g. `https://example.com/v1/chat/completions`) as their custom base URL would get a 404 on model fetching, since `/models` was appended to the completions path. The suffix is now stripped automatically.
 
 ## 2.1.6
 
