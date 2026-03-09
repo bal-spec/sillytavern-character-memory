@@ -2092,7 +2092,7 @@ function buildProviderHeaders(preset, apiKey) {
  */
 function resolveBaseUrl(preset, providerSettings) {
     if (preset.allowCustomUrl && providerSettings.customBaseUrl) {
-        return providerSettings.customBaseUrl.replace(/\/+$/, '');
+        return providerSettings.customBaseUrl.replace(/\/+$/, '').replace(/\/chat\/completions\/?$/i, '');
     }
     return preset.baseUrl;
 }
