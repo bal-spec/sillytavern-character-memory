@@ -2,6 +2,10 @@
 
 ## 2.1.7
 
+### Improvements
+
+- **Convert button opens preview directly**: The convert button (rotate arrows) in the Troubleshooter's Data Bank file browser now opens the conversion preview dialog immediately, instead of showing a confusing toast asking the user to find the Convert section manually.
+
 ### Bug Fixes
 
 - **Fix "Protect Recent Messages" not actually protecting**: The protection buffer calculated a reduced end boundary (`effectiveEnd`) but never passed it to `collectRecentMessages()`, which independently used `chat.length` — extracting the "protected" messages anyway. Now the collection boundary respects the protection, so the most recent N messages are genuinely excluded from auto-extraction. Fixes [#3](https://github.com/bal-spec/sillytavern-character-memory/issues/3) regression.

@@ -5944,14 +5944,13 @@ async function showTroubleshooter(initialSection = 'health') {
         }
     });
 
-    // Data Bank: Convert file
+    // Data Bank: Convert file — set the source and open conversion preview directly
     $modal.on('click', '.charMemory_tsConvertBtn', function () {
         const $row = $(this).closest('.charMemory_tsFileRow');
         const url = $row.data('url');
-        // Select 'databank' source in the Convert tool and set the file
         $('input[name="charMemory_formatSource"][value="databank"]').prop('checked', true);
         $('#charMemory_convertSource').val(url);
-        toastr.info('File selected in Convert tool. Open the Convert section to proceed.', 'CharMemory', { timeOut: 4000 });
+        previewConversion();
     });
 
     // Data Bank: Import file
