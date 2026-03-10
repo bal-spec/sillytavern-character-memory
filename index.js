@@ -766,13 +766,13 @@ async function previewConvert() {
  * Parse the selected source file and show an interactive conversion preview dialog.
  * The dialog uses the same editable-card pattern as the consolidation feature.
  */
-async function previewConversion() {
+async function previewConversion(sourceFileUrl) {
     if (inApiCall) {
         toastr.warning('An API call is already in progress.', 'CharMemory');
         return;
     }
 
-    const fileUrl = $('#charMemory_convertSource').val();
+    const fileUrl = sourceFileUrl || $('#charMemory_convertSource').val();
     if (!fileUrl) {
         toastr.warning('Select a source file first.', 'CharMemory');
         return;
@@ -5944,13 +5944,11 @@ async function showTroubleshooter(initialSection = 'health') {
         }
     });
 
-    // Data Bank: Convert file — set the source and open conversion preview directly
+    // Data Bank: Convert file — open conversion preview directly
     $modal.on('click', '.charMemory_tsConvertBtn', function () {
         const $row = $(this).closest('.charMemory_tsFileRow');
         const url = $row.data('url');
-        $('input[name="charMemory_formatSource"][value="databank"]').prop('checked', true);
-        $('#charMemory_convertSource').val(url);
-        previewConversion();
+        previewConversion(url);
     });
 
     // Data Bank: Import file
