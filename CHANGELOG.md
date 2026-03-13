@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.1.7
+
+### Fixes
+
+- **NanoGPT model list CORS error**: Fixed "cross-origin request blocked" error when fetching NanoGPT models. Model list requests are now routed through the SillyTavern server proxy, matching the approach already used for local server providers.
+
 ## 2.1.6
 
 ### Improvements
