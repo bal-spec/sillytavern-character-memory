@@ -2017,10 +2017,26 @@ let currentModelList = [];
 async function fetchNanoGptModels() {
     if (cachedNanoGptModels) return cachedNanoGptModels;
 
-    // Fetch full model list and subscription model list in parallel
+    // Route through ST server proxy to avoid CORS issues with nano-gpt.com
+    const proxyHeaders = getRequestHeaders();
+
     const [modelsResponse, subResponse] = await Promise.all([
-        fetch('https://nano-gpt.com/api/models'),
-        fetch('https://nano-gpt.com/api/subscription/v1/models').catch(() => null),
+        fetch('/api/backends/chat-completions/status', {
+            method: 'POST',
+            headers: proxyHeaders,
+            body: JSON.stringify({
+                chat_completion_source: 'custom',
+                custom_url: 'https://nano-gpt.com/api',
+            }),
+        }),
+        fetch('/api/backends/chat-completions/status', {
+            method: 'POST',
+            headers: proxyHeaders,
+            body: JSON.stringify({
+                chat_completion_source: 'custom',
+                custom_url: 'https://nano-gpt.com/api/subscription/v1',
+            }),
+        }).catch(() => null),
     ]);
 
     if (!modelsResponse.ok) {
