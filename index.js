@@ -766,13 +766,13 @@ async function previewConvert() {
  * Parse the selected source file and show an interactive conversion preview dialog.
  * The dialog uses the same editable-card pattern as the consolidation feature.
  */
-async function previewConversion() {
+async function previewConversion(sourceFileUrl) {
     if (inApiCall) {
         toastr.warning('An API call is already in progress.', 'CharMemory');
         return;
     }
 
-    const fileUrl = $('#charMemory_convertSource').val();
+    const fileUrl = sourceFileUrl || $('#charMemory_convertSource').val();
     if (!fileUrl) {
         toastr.warning('Select a source file first.', 'CharMemory');
         return;
@@ -2108,7 +2108,7 @@ function buildProviderHeaders(preset, apiKey) {
  */
 function resolveBaseUrl(preset, providerSettings) {
     if (preset.allowCustomUrl && providerSettings.customBaseUrl) {
-        return providerSettings.customBaseUrl.replace(/\/+$/, '');
+        return providerSettings.customBaseUrl.replace(/\/+$/, '').replace(/\/chat\/completions\/?$/i, '');
     }
     return preset.baseUrl;
 }
@@ -2732,7 +2732,7 @@ async function extractMemories({
 
             // Collect messages for this chunk (shared across all targets)
             const { text: recentMessages, endIndex: chunkEndIndex } = collectRecentMessages({
-                endIndex: endIndex,
+                endIndex: effectiveEnd - 1,
                 chatArray: chatArray,
                 lastExtractedIdx: currentLastExtracted,
             });
@@ -5960,14 +5960,11 @@ async function showTroubleshooter(initialSection = 'health') {
         }
     });
 
-    // Data Bank: Convert file
+    // Data Bank: Convert file — open conversion preview directly
     $modal.on('click', '.charMemory_tsConvertBtn', function () {
         const $row = $(this).closest('.charMemory_tsFileRow');
         const url = $row.data('url');
-        // Select 'databank' source in the Convert tool and set the file
-        $('input[name="charMemory_formatSource"][value="databank"]').prop('checked', true);
-        $('#charMemory_convertSource').val(url);
-        toastr.info('File selected in Convert tool. Open the Convert section to proceed.', 'CharMemory', { timeOut: 4000 });
+        previewConversion(url);
     });
 
     // Data Bank: Import file
