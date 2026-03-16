@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.1.8
+
+### New Features
+
+- **Connection Profile extraction source**: New "Connection Profile" option in Settings → Connection lets you reuse saved SillyTavern connection profiles for memory extraction instead of configuring a dedicated API. Uses ST's ConnectionManagerRequestService — all credentials, model selection, and API routing are handled by the profile. Includes test connection button, system prompt override, and health check integration. The existing Dedicated API source is unchanged. Addresses [#7](https://github.com/bal-spec/sillytavern-character-memory/issues/7).
+
 ## 2.1.7
 
 ### Improvements
