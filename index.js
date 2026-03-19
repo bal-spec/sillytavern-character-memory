@@ -634,7 +634,7 @@ async function offerReformat() {
         for (const target of targets) {
             await reformatExistingMemories(target.avatar, target.fileName);
         }
-        toastr.success(`Reformatted ${totalBullets} memories.`, 'CharMemory');
+        toastr.success(`已重新格式化 ${totalBullets} 條記憶。`, 'CharMemory');
         updateStatusDisplay();
     }
 }
@@ -735,7 +735,7 @@ function buildConversionDialog(sourceContent, formatLabel, method, convertedBloc
         <div class="charMemory_convOutputSection">
             <div class="charMemory_convertWarning">
                 <i class="fa-solid fa-triangle-exclamation fa-sm"></i>
-                The original file will <b>not</b> be deleted. Hide or remove it from the Data Bank to avoid duplicate memories.
+                原始檔案<b>不會</b>被刪除。從 Data Bank 中隱藏或移除它以避免重複的記憶。
             </div>
             <div class="charMemory_convDestRow">
                 <small><b>Output to:</b></small>
@@ -771,13 +771,13 @@ async function previewConvert() {
  */
 async function previewConversion(sourceFileUrl) {
     if (inApiCall) {
-        toastr.warning('An API call is already in progress.', 'CharMemory');
+        toastr.warning('API 呼叫正在進行中。', 'CharMemory');
         return;
     }
 
     const fileUrl = sourceFileUrl || $('#charMemory_convertSource').val();
     if (!fileUrl) {
-        toastr.warning('Select a source file first.', 'CharMemory');
+        toastr.warning('請先選擇來源檔案。', 'CharMemory');
         return;
     }
 
@@ -786,11 +786,11 @@ async function previewConversion(sourceFileUrl) {
         sourceContent = await getFileAttachment(fileUrl);
     } catch (err) {
         console.error(LOG_PREFIX, 'Failed to read source file:', err);
-        toastr.error('Could not read the selected file.', 'CharMemory');
+        toastr.error('無法讀取所選檔案。', 'CharMemory');
         return;
     }
     if (!sourceContent) {
-        toastr.error('Could not read the selected file.', 'CharMemory');
+        toastr.error('無法讀取所選檔案。', 'CharMemory');
         return;
     }
 
@@ -811,14 +811,14 @@ async function previewConversion(sourceFileUrl) {
         inApiCall = true;
         if (useLLM && format !== 'memory_tags') {
             const charName = getCharacterName() || 'Character';
-            toastr.info('Sending to LLM for restructuring...', 'CharMemory', { timeOut: 3000 });
+            toastr.info('正在傳送至 LLM 進行重組...', 'CharMemory', { timeOut: 3000 });
             result = await convertWithLLM(sourceContent, charName);
         } else {
             result = convertHeuristic(sourceContent, format);
         }
     } catch (err) {
         console.error(LOG_PREFIX, 'Conversion failed:', err);
-        toastr.error(`Conversion failed: ${err.message || 'Unknown error'}`, 'CharMemory');
+        toastr.error(`轉換失敗：${err.message || '未知錯誤'}`, 'CharMemory');
         return;
     } finally {
         inApiCall = false;
@@ -834,7 +834,7 @@ async function previewConversion(sourceFileUrl) {
     }
 
     if (result.blocks.length === 0) {
-        toastr.warning('No memories could be extracted from the file.', 'CharMemory');
+        toastr.warning('無法從檔案中提取記憶。', 'CharMemory');
         return;
     }
 
@@ -862,7 +862,7 @@ async function previewConversion(sourceFileUrl) {
     const initBlocks = editor.getBlocks();
     const initEditing = editor.getEditingSet();
     const dialogHtml = buildConversionDialog(sourceContent, formatLabel, method, initBlocks, initEditing, useLLM && format !== 'memory_tags');
-    const popup = callGenericPopup(dialogHtml, POPUP_TYPE.CONFIRM, '', { wide: true, allowVerticalScrolling: true, okButton: 'Save', cancelButton: 'Cancel' });
+    const popup = callGenericPopup(dialogHtml, POPUP_TYPE.CONFIRM, '', { wide: true, allowVerticalScrolling: true, okButton: '儲存', cancelButton: '取消' });
 
     // === Find/Replace bar ===
     const cleanupConvFR = wireFindReplaceEvents(editor, refreshEditor, 'charMemory_convFR', '.charMemoryConvFR');
@@ -938,7 +938,7 @@ async function previewConversion(sourceFileUrl) {
             }
         } catch (err) {
             console.error(LOG_PREFIX, 'Re-run conversion failed:', err);
-            toastr.error(`Re-run failed: ${err.message || 'Unknown error'}`, 'CharMemory');
+            toastr.error(`重新執行失敗：${err.message || '未知錯誤'}`, 'CharMemory');
             newResult = null;
         } finally {
             inApiCall = false;
@@ -1002,14 +1002,14 @@ async function previewConversion(sourceFileUrl) {
         .filter(b => b.bullets.length > 0);
 
     if (cleanBlocks.length === 0) {
-        toastr.warning('No memories to save.', 'CharMemory');
+        toastr.warning('沒有記憶需要儲存。', 'CharMemory');
         return;
     }
 
     const context = getContext();
     const avatar = characters[context.characterId]?.avatar;
     if (!avatar) {
-        toastr.error('No character selected.', 'CharMemory');
+        toastr.error('未選擇角色。', 'CharMemory');
         return;
     }
 
@@ -1018,7 +1018,7 @@ async function previewConversion(sourceFileUrl) {
     if (destType === 'custom') {
         destFileName = destCustomName.trim();
         if (!destFileName) {
-            toastr.warning('Enter a filename for custom output.', 'CharMemory');
+            toastr.warning('請輸入自訂輸出的檔案名稱。', 'CharMemory');
             return;
         }
     } else {
@@ -1036,7 +1036,7 @@ async function previewConversion(sourceFileUrl) {
     await writeMemoriesForCharacter(serializeMemories(allBlocks), avatar, destFileName);
 
     const count = countMemories(cleanBlocks);
-    toastr.success(`Converted ${count} memories to ${destFileName}. Remember to hide or remove the original file from Data Bank to avoid duplicates.`, 'CharMemory', { timeOut: 8000 });
+    toastr.success(`已將 ${count} 條記憶轉換至 ${destFileName}。請記得隱藏或從 Data Bank 中移除原始檔案以避免重複。`, 'CharMemory', { timeOut: 8000 });
     logActivity(`Converted ${count} memories from Data Bank file to ${destFileName}`);
 
     // Refresh source dropdown so it reflects the new file state
@@ -1584,7 +1584,7 @@ function updateStatusDisplay() {
     } else if (targets.length === 1) {
         $('#charMemory_statFile').text(targets[0].fileName).attr('title', targets[0].fileName);
     } else {
-        $('#charMemory_statFile').text('No character').attr('title', 'No character selected');
+        $('#charMemory_statFile').text('無角色').attr('title', '未選擇角色');
     }
 
     // Stats bar: memory count (total bullets across all targets, async)
@@ -1630,7 +1630,7 @@ function updateDashboardDiagSummary() {
 
     computeHealthScore().then(result => {
         if (result.level === 'unknown') {
-            $summary.html('<div class="charMemory_diagEmpty">No character selected.</div>');
+            $summary.html('<div class="charMemory_diagEmpty">未選擇角色。</div>');
             return;
         }
 
@@ -2789,9 +2789,9 @@ async function extractMemories({
         console.log(LOG_PREFIX, 'No new messages to extract');
         logActivity('No new messages to extract — nothing unprocessed', 'warning');
         if (force) {
-            toastr.info('No unprocessed messages. Use "Reset Extraction State" to re-read from the beginning.', 'CharMemory', { timeOut: 5000 });
+            toastr.info('沒有未處理的訊息。使用「重置提取狀態」從頭開始重新讀取。', 'CharMemory', { timeOut: 5000 });
         } else {
-            toastr.info('No new messages to extract.', 'CharMemory');
+            toastr.info('沒有新訊息需要提取。', 'CharMemory');
         }
         return noopResult;
     }
@@ -2843,7 +2843,7 @@ async function extractMemories({
             // Check abort signal
             if (abortSignal?.aborted) {
                 logActivity(`Extraction aborted after ${chunksProcessed} chunk(s)`, 'warning');
-                toastr.warning(`Extraction stopped after ${chunksProcessed} of ${totalChunks} chunks.`, 'CharMemory');
+                toastr.warning(`提取在處理 ${chunksProcessed} / ${totalChunks} 個區塊後停止。`, 'CharMemory');
                 break;
             }
 
@@ -2873,10 +2873,10 @@ async function extractMemories({
                 const prefix = progressLabel ? `${progressLabel} — ` : '';
                 if (isMultiTarget) {
                     const stepInfo = `${target.name} (${stepsCompleted}/${totalSteps})`;
-                    toastr.info(`${prefix}Extracting for ${stepInfo} via ${sourceLabel}...`, 'CharMemory', { timeOut: 3000 });
+                    toastr.info(`${prefix}正在透過 ${sourceLabel} 為 ${stepInfo} 提取...`, 'CharMemory', { timeOut: 3000 });
                 } else {
                     const chunkInfo = totalChunks > 1 ? ` (chunk ${chunk + 1}/${totalChunks})` : '';
-                    toastr.info(`${prefix}Extracting via ${sourceLabel}${chunkInfo}...`, 'CharMemory', { timeOut: 3000 });
+                    toastr.info(`${prefix}正在透過 ${sourceLabel}${chunkInfo} 提取...`, 'CharMemory', { timeOut: 3000 });
                 }
 
                 if (onProgress) {
@@ -2910,7 +2910,7 @@ async function extractMemories({
                         continue; // Skip this target, try next
                     }
                     if (llmErr.message?.includes('WebLLM is not available')) {
-                        toastr.error('WebLLM is not available in this browser.', 'CharMemory');
+                        toastr.error('此瀏覽器不支援 WebLLM。', 'CharMemory');
                         return { totalMemories, chunksProcessed, lastExtractedIndex: currentLastExtracted };
                     }
                     throw llmErr;
@@ -3041,21 +3041,21 @@ async function extractMemories({
 
         if (totalMemories > 0) {
             const suffix = isMultiTarget ? ` across ${targets.length} characters` : '';
-            toastr.success(`${totalMemories} memor${totalMemories === 1 ? 'y' : 'ies'} saved${suffix} from ${chunksProcessed} chunk(s).`, 'CharMemory');
+            toastr.success(`已從 ${chunksProcessed} 個區塊中儲存 ${totalMemories} 條記憶${suffix}。`, 'CharMemory');
 
             // Post-first-extraction verification nudge
             if (!extension_settings[MODULE_NAME].verificationSeen) {
                 showVerificationStep();
             }
         } else if (chunksProcessed > 0) {
-            toastr.info('No new memories found.', 'CharMemory');
+            toastr.info('未找到新記憶。', 'CharMemory');
         }
 
         return { totalMemories, chunksProcessed, lastExtractedIndex: currentLastExtracted };
     } catch (err) {
         console.error(LOG_PREFIX, 'Extraction failed:', err);
         logActivity(`Extraction failed: ${err.message}`, 'error');
-        toastr.error('Memory extraction failed. Check console for details.', 'CharMemory');
+        toastr.error('記憶提取失敗。請查看控制台了解詳情。', 'CharMemory');
         return { totalMemories, chunksProcessed, lastExtractedIndex: currentLastExtracted };
     } finally {
         inApiCall = false;
@@ -3656,7 +3656,7 @@ function renderHealthDiagnosticsCard(result) {
 
     const colors = { green: '#4a4', yellow: '#e8a33d', red: '#c44', unknown: 'var(--SmartThemeBorderColor, #555)' };
     const icons = { green: 'fa-circle-check', yellow: 'fa-triangle-exclamation', red: 'fa-circle-xmark', unknown: 'fa-circle-question' };
-    const titles = { green: 'All checks passed', yellow: 'Warnings detected', red: 'Issues found', unknown: 'No character selected' };
+    const titles = { green: '所有檢查通過', yellow: '偵測到警告', red: '發現問題', unknown: '未選擇角色' };
 
     let html = `<strong style="color:${colors[result.level]};">
         <i class="fa-solid ${icons[result.level]} fa-sm"></i>
@@ -3770,50 +3770,50 @@ async function showSettingsModal() {
 
     // Connection section HTML
     const connectionHtml = `
-        <h4 class="charMemory_modalSectionTitle">LLM Connection</h4>
+        <h4 class="charMemory_modalSectionTitle">LLM 連線</h4>
         <div class="charMemory_modalFieldGroup">
-            <label for="cm_modal_source"><small>LLM Used for Extraction</small></label>
+            <label for="cm_modal_source"><small>用於提取的 LLM</small></label>
             <select id="cm_modal_source" class="text_pole">${sourceOptions}</select>
-            <small class="charMemory_helperText"><b>Dedicated API is recommended.</b> Main LLM pollutes the extraction prompt with chat context.</small>
+            <small class="charMemory_helperText"><b>建議使用專用 API。</b>主要 LLM 會用聊天上下文污染提取提示詞。</small>
         </div>
         <div id="cm_modal_providerSettings" style="${s.source === 'provider' ? '' : 'display:none;'}">
             <div class="charMemory_modalFieldGroup">
-                <label><small>Provider</small></label>
+                <label><small>供應商</small></label>
                 <select id="cm_modal_providerSelect" class="text_pole">${providerOptions}</select>
             </div>
             <div class="charMemory_modalFieldGroup" id="cm_modal_apiKeyRow" style="${preset.requiresApiKey ? '' : 'display:none;'}">
-                <label><small>API Key <a id="cm_modal_helpLink" href="${escapeAttr(preset.helpUrl || '#')}" target="_blank" style="font-size:0.85em;${preset.helpUrl ? '' : 'display:none;'}">(get key)</a></small></label>
+                <label><small>API 金鑰 <a id="cm_modal_helpLink" href="${escapeAttr(preset.helpUrl || '#')}" target="_blank" style="font-size:0.85em;${preset.helpUrl ? '' : 'display:none;'}">(取得金鑰)</a></small></label>
                 <div style="display:flex;gap:5px;align-items:center;">
-                    <input type="password" id="cm_modal_apiKey" class="text_pole" placeholder="Enter API key" style="flex:1;" value="${escapeAttr(providerSettings.apiKey || '')}" />
-                    <button type="button" id="cm_modal_apiKeyReveal" class="menu_button" title="Show/hide API key" style="padding:3px 8px;">
+                    <input type="password" id="cm_modal_apiKey" class="text_pole" placeholder="輸入 API 金鑰" style="flex:1;" value="${escapeAttr(providerSettings.apiKey || '')}" />
+                    <button type="button" id="cm_modal_apiKeyReveal" class="menu_button" title="顯示/隱藏 API 金鑰" style="padding:3px 8px;">
                         <i class="fa-solid fa-eye fa-sm"></i>
                     </button>
                 </div>
             </div>
             <div class="charMemory_modalFieldGroup" id="cm_modal_baseUrlRow" style="${preset.allowCustomUrl ? '' : 'display:none;'}">
-                <label><small>Base URL</small></label>
+                <label><small>基礎 URL</small></label>
                 <input type="text" id="cm_modal_baseUrl" class="text_pole" placeholder="${preset.authStyle === 'none' ? 'http://127.0.0.1:1234/v1' : 'https://your-server.com/v1'}" value="${escapeAttr(providerSettings.customBaseUrl || preset.baseUrl || '')}" />
-                <small id="cm_modal_baseUrlHint" class="charMemory_helperText">${preset.allowCustomUrl ? (preset.authStyle === 'none' ? 'http://IP:port/v1 — the /v1 suffix is required' : 'OpenAI-compatible base URL ending in /v1') : ''}</small>
+                <small id="cm_modal_baseUrlHint" class="charMemory_helperText">${preset.allowCustomUrl ? (preset.authStyle === 'none' ? 'http://IP:port/v1 — 必須包含 /v1 後綴' : '以 /v1 結尾的 OpenAI 相容基礎 URL') : ''}</small>
             </div>
             <div class="charMemory_modalFieldGroup" id="cm_modal_connectRow" style="${preset.modelsEndpoint === 'standard' || preset.modelsEndpoint === 'custom' ? '' : 'display:none;'}">
-                <input type="button" id="cm_modal_connect" class="menu_button" value="Connect" title="Fetch available models from the server" />
+                <input type="button" id="cm_modal_connect" class="menu_button" value="連線" title="從伺服器獲取可用模型" />
             </div>
             <small id="cm_modal_connectStatus" class="charMemory_helperText" style="display:none;"></small>
             <div class="charMemory_modalFieldGroup" id="cm_modal_modelDropdownRow" style="${preset.modelsEndpoint === 'standard' || preset.modelsEndpoint === 'custom' ? '' : 'display:none;'}">
-                <label><small>Model</small></label>
+                <label><small>模型</small></label>
                 <div id="cm_modal_nanogptFilters" style="${providerKey === 'nanogpt' ? '' : 'display:none;'}">
                     <div class="charMemory_filterRow" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:4px;">
-                        <label class="checkbox_label"><input type="checkbox" id="cm_modal_nanogptFilterSub" ${providerSettings.nanogptFilterSubscription ? 'checked' : ''} /> <small>Subscription</small></label>
-                        <label class="checkbox_label"><input type="checkbox" id="cm_modal_nanogptFilterOS" ${providerSettings.nanogptFilterOpenSource ? 'checked' : ''} /> <small>Open Source</small></label>
-                        <label class="checkbox_label"><input type="checkbox" id="cm_modal_nanogptFilterRP" ${providerSettings.nanogptFilterRoleplay ? 'checked' : ''} /> <small>Roleplay</small></label>
-                        <label class="checkbox_label"><input type="checkbox" id="cm_modal_nanogptFilterReasoning" ${providerSettings.nanogptFilterReasoning ? 'checked' : ''} /> <small>Reasoning</small></label>
+                        <label class="checkbox_label"><input type="checkbox" id="cm_modal_nanogptFilterSub" ${providerSettings.nanogptFilterSubscription ? 'checked' : ''} /> <small>訂閱</small></label>
+                        <label class="checkbox_label"><input type="checkbox" id="cm_modal_nanogptFilterOS" ${providerSettings.nanogptFilterOpenSource ? 'checked' : ''} /> <small>開源</small></label>
+                        <label class="checkbox_label"><input type="checkbox" id="cm_modal_nanogptFilterRP" ${providerSettings.nanogptFilterRoleplay ? 'checked' : ''} /> <small>角色扮演</small></label>
+                        <label class="checkbox_label"><input type="checkbox" id="cm_modal_nanogptFilterReasoning" ${providerSettings.nanogptFilterReasoning ? 'checked' : ''} /> <small>推理</small></label>
                     </div>
                 </div>
                 <div class="charMemory_wizModelPicker">
                     <div style="display:flex;gap:5px;align-items:center;">
-                        <input type="text" id="cm_modal_modelSearch" class="charMemory_wizModelSearch" style="flex:1;" placeholder="${providerSettings.model ? 'Search models...' : 'Click Connect to fetch models'}" autocomplete="off" value="${escapeAttr(providerSettings.model || '')}" />
+                        <input type="text" id="cm_modal_modelSearch" class="charMemory_wizModelSearch" style="flex:1;" placeholder="${providerSettings.model ? '搜尋模型...' : '點擊連線以獲取模型'}" autocomplete="off" value="${escapeAttr(providerSettings.model || '')}" />
                         <input type="hidden" id="cm_modal_providerModel" value="${escapeAttr(providerSettings.model || '')}" />
-                        <input type="button" id="cm_modal_refreshModels" class="menu_button" value="&#x21bb;" title="Refresh model list" />
+                        <input type="button" id="cm_modal_refreshModels" class="menu_button" value="&#x21bb;" title="重新整理模型清單" />
                     </div>
                     <div id="cm_modal_modelList" class="charMemory_wizModelList" style="${currentModelList.length > 0 ? '' : 'display:none;'}"></div>
                 </div>
@@ -3821,51 +3821,51 @@ async function showSettingsModal() {
             </div>
             <div class="charMemory_modalFieldGroup" id="cm_modal_testRow">
                 <div style="display:flex;gap:5px;align-items:center;">
-                    <input type="button" id="cm_modal_testModel" class="menu_button" value="Test Model" title="Send a test prompt and verify it responds correctly" />
+                    <input type="button" id="cm_modal_testModel" class="menu_button" value="測試模型" title="傳送測試提示詞並驗證其回應是否正確" />
                 </div>
                 <small id="cm_modal_testStatus" class="charMemory_helperText" style="display:none;"></small>
             </div>
             <div class="charMemory_modalFieldGroup" id="cm_modal_modelInputRow" style="${preset.modelsEndpoint === 'standard' || preset.modelsEndpoint === 'custom' ? 'display:none;' : ''}">
-                <label><small>Model ID</small></label>
-                <input type="text" id="cm_modal_modelInput" class="text_pole" placeholder="Enter model identifier" value="${escapeAttr(providerSettings.model || '')}" />
-                <small class="charMemory_helperText">Enter the model ID manually (e.g. claude-sonnet-4-5-20250929).</small>
+                <label><small>模型 ID</small></label>
+                <input type="text" id="cm_modal_modelInput" class="text_pole" placeholder="輸入模型識別碼" value="${escapeAttr(providerSettings.model || '')}" />
+                <small class="charMemory_helperText">手動輸入模型 ID（例如 claude-sonnet-4-5-20250929）。</small>
             </div>
             <div class="charMemory_modalFieldGroup">
-                <label><small>System prompt (optional)</small></label>
-                <textarea id="cm_modal_systemPrompt" class="text_pole" rows="3" placeholder="Override the default system prompt. Leave blank for default.">${escapeHtml(providerSettings.systemPrompt || '')}</textarea>
-                <small class="charMemory_helperText">Prepended to extraction/consolidation calls. Use for jailbreaks or custom instructions.</small>
+                <label><small>系統提示詞（可選）</small></label>
+                <textarea id="cm_modal_systemPrompt" class="text_pole" rows="3" placeholder="覆蓋預設的系統提示詞。留空使用預設值。">${escapeHtml(providerSettings.systemPrompt || '')}</textarea>
+                <small class="charMemory_helperText">在提取/合併呼叫之前加入。用於越獄或自訂指示。</small>
             </div>
         </div>
         <div id="cm_modal_profileSettings" style="${s.source === 'profile' ? '' : 'display:none;'}">
             <div class="charMemory_modalFieldGroup">
-                <label><small>Connection Profile</small></label>
+                <label><small>連線設定檔</small></label>
                 <select id="cm_modal_profileSelect" class="text_pole">
-                    <option value="">— Select a profile —</option>
+                    <option value="">— 選擇設定檔 —</option>
                 </select>
-                <small class="charMemory_helperText">Uses credentials and settings from your saved SillyTavern connection profile.</small>
+                <small class="charMemory_helperText">使用您儲存的 SillyTavern 連線設定檔中的憑證和設定。</small>
             </div>
             <div class="charMemory_modalFieldGroup" id="cm_modal_profileTestRow">
                 <div style="display:flex;gap:5px;align-items:center;">
-                    <input type="button" id="cm_modal_profileTest" class="menu_button" value="Test Connection" title="Send a test prompt via the selected profile" />
+                    <input type="button" id="cm_modal_profileTest" class="menu_button" value="測試連線" title="透過所選設定檔傳送測試提示詞" />
                 </div>
                 <small id="cm_modal_profileTestStatus" class="charMemory_helperText" style="display:none;"></small>
             </div>
             <div class="charMemory_modalFieldGroup">
-                <label><small>System prompt (optional)</small></label>
-                <textarea id="cm_modal_profileSystemPrompt" class="text_pole" rows="3" placeholder="Override the default system prompt. Leave blank for default.">${escapeHtml(s.profileSystemPrompt || '')}</textarea>
-                <small class="charMemory_helperText">Prepended to extraction/consolidation calls. Use for jailbreaks or custom instructions.</small>
+                <label><small>系統提示詞（可選）</small></label>
+                <textarea id="cm_modal_profileSystemPrompt" class="text_pole" rows="3" placeholder="覆蓋預設的系統提示詞。留空使用預設值。">${escapeHtml(s.profileSystemPrompt || '')}</textarea>
+                <small class="charMemory_helperText">在提取/合併呼叫之前加入。用於越獄或自訂指示。</small>
             </div>
         </div>
         <hr class="charMemory_separator" />
-        <a id="cm_modal_runWizard" class="charMemory_link">Run Setup Wizard</a>
+        <a id="cm_modal_runWizard" class="charMemory_link">執行設定精靈</a>
     `;
 
     // Extraction section HTML
     const extractionHtml = `
-        <h4 class="charMemory_modalSectionTitle">Auto-Extraction</h4>
+        <h4 class="charMemory_modalSectionTitle">自動提取</h4>
         <div class="charMemory_sliderRow">
-            <label title="How many new messages trigger an automatic extraction.">
-                <small>Extract after every N messages</small>
+            <label title="多少條新訊息會觸發自動提取。">
+                <small>每 N 條訊息後提取</small>
             </label>
             <input class="neo-range-slider" type="range" id="cm_modal_interval" min="3" max="100" step="1" value="${s.interval}" />
             <div class="wide100p">
@@ -3874,8 +3874,8 @@ async function showSettingsModal() {
             </div>
         </div>
         <div class="charMemory_sliderRow">
-            <label title="Minimum time between auto-extractions.">
-                <small>Minimum wait between extractions (min)</small>
+            <label title="自動提取之間的最短時間間隔。">
+                <small>提取之間的最短等待時間（分鐘）</small>
             </label>
             <input class="neo-range-slider" type="range" id="cm_modal_minCooldown" min="0" max="30" step="1" value="${s.minCooldownMinutes}" />
             <div class="wide100p">
@@ -3883,17 +3883,17 @@ async function showSettingsModal() {
                        data-for="cm_modal_minCooldown" id="cm_modal_minCooldownCounter" value="${s.minCooldownMinutes}" />
             </div>
         </div>
-        <small class="charMemory_helperText">These settings only affect automatic extraction. Manual and batch extraction ignore them.</small>
+        <small class="charMemory_helperText">這些設定僅影響自動提取。手動和批次提取會忽略它們。</small>
         <div class="charMemory_statusRow" style="margin-top: 12px;">
-            <label class="checkbox_label" for="cm_modal_protectRecent" title="Excludes the most recent messages from auto-extraction so swipes and regenerations aren't constrained by just-extracted memories.">
+            <label class="checkbox_label" for="cm_modal_protectRecent" title="從自動提取中排除最近的訊息，以便輪換和重新生成不受剛提取的記憶約束。">
                 <input type="checkbox" id="cm_modal_protectRecent" ${s.protectRecentMessages ? 'checked' : ''} />
-                <span>Protect recent messages</span>
+                <span>保護最近訊息</span>
             </label>
-            <small class="charMemory_helperText">Excludes the most recent messages from auto-extraction, so swipes and regenerations aren't constrained by just-extracted memories. Skipped messages are picked up on the next cycle.</small>
+            <small class="charMemory_helperText">從自動提取中排除最近的訊息，以便輪換和重新生成不受剛提取的記憶約束。跳過的訊息將在下一個週期被處理。</small>
         </div>
         <div class="charMemory_sliderRow" id="cm_modal_protectRecentCountRow" style="display: ${s.protectRecentMessages ? 'flex' : 'none'};">
-            <label title="How many recent messages to skip during auto-extraction.">
-                <small>Messages to protect</small>
+            <label title="自動提取期間要跳過多少條最近的訊息。">
+                <small>要保護的訊息數</small>
             </label>
             <input class="neo-range-slider" type="range" id="cm_modal_protectRecentCount" min="1" max="20" step="1" value="${s.protectRecentMessagesCount}" />
             <div class="wide100p">
@@ -3903,10 +3903,10 @@ async function showSettingsModal() {
         </div>
 
         <hr class="charMemory_separator" />
-        <h4 class="charMemory_modalSectionTitle">Extraction Settings</h4>
+        <h4 class="charMemory_modalSectionTitle">提取設定</h4>
         <div class="charMemory_sliderRow">
-            <label title="How many messages to include in each LLM call.">
-                <small>Messages per LLM call</small>
+            <label title="每次 LLM 呼叫中包含多少條訊息。">
+                <small>每次 LLM 呼叫的訊息數</small>
             </label>
             <input class="neo-range-slider" type="range" id="cm_modal_maxMessages" min="10" max="200" step="1" value="${s.maxMessagesPerExtraction}" />
             <div class="wide100p">
@@ -3915,8 +3915,8 @@ async function showSettingsModal() {
             </div>
         </div>
         <div class="charMemory_sliderRow">
-            <label title="Maximum tokens the LLM can use for its response.">
-                <small>Max response length</small>
+            <label title="LLM 回應可使用的最大 token 數。">
+                <small>最大回應長度</small>
             </label>
             <input class="neo-range-slider" type="range" id="cm_modal_responseLength" min="100" max="4000" step="50" value="${s.responseLength}" />
             <div class="wide100p">
@@ -3925,76 +3925,76 @@ async function showSettingsModal() {
             </div>
         </div>
         <div class="charMemory_statusRow">
-            <label class="checkbox_label" for="cm_modal_mergeChunks" title="When enabled, extraction results from the same chat are merged into a single block.">
+            <label class="checkbox_label" for="cm_modal_mergeChunks" title="啟用時，來自同一聊天的提取結果會合併為單一區塊。">
                 <input type="checkbox" id="cm_modal_mergeChunks" ${s.mergeChunks ? 'checked' : ''} />
-                <span>Merge extraction chunks</span>
+                <span>合併提取區塊</span>
             </label>
-            <small class="charMemory_helperText">When enabled, multiple LLM calls from one extraction session are merged into a single memory block. Keep off for long chats — separate blocks give Vector Storage better retrieval granularity.</small>
+            <small class="charMemory_helperText">啟用時，一次提取會話中的多次 LLM 呼叫會合併為單一記憶區塊。長聊天時請關閉此功能 — 分離的區塊能讓向量儲存有更好的檢索粒度。</small>
         </div>
 
     `;
 
     // Storage section HTML
     const storageHtml = `
-        <h4 class="charMemory_modalSectionTitle">Storage</h4>
+        <h4 class="charMemory_modalSectionTitle">儲存</h4>
         <div class="charMemory_statusRow">
-            <label class="checkbox_label" for="cm_modal_perChat" title="Store memories in separate files per chat.">
+            <label class="checkbox_label" for="cm_modal_perChat" title="為每個聊天儲存獨立的記憶檔案。">
                 <input type="checkbox" id="cm_modal_perChat" ${s.perChat ? 'checked' : ''} />
-                <span>Separate memory files per chat</span>
+                <span>每個聊天使用獨立的記憶檔案</span>
             </label>
-            <small class="charMemory_helperText">Each conversation stores memories in its own file. The character still sees all memories during generation.</small>
+            <small class="charMemory_helperText">每個對話將記憶儲存在自己的檔案中。在生成時角色仍然可以看到所有記憶。</small>
         </div>
         <div id="cm_modal_section1v1" style="${isGroupChat() ? 'display:none;' : ''}">
             <div class="charMemory_statusRow">
                 <label for="cm_modal_fileName">
-                    <small>File name override</small>
+                    <small>檔案名稱覆蓋</small>
                 </label>
-                <input type="text" id="cm_modal_fileName" class="text_pole" placeholder="(auto-generated from character name)" value="${escapeAttr(s.fileName || '')}" />
-                <small class="charMemory_helperText">Current file: <span id="cm_modal_resolvedFileName">${escapeHtml(getCharacterName() ? getMemoryFileName() : '—')}</span></small>
+                <input type="text" id="cm_modal_fileName" class="text_pole" placeholder="（從角色名稱自動生成）" value="${escapeAttr(s.fileName || '')}" />
+                <small class="charMemory_helperText">目前檔案：<span id="cm_modal_resolvedFileName">${escapeHtml(getCharacterName() ? getMemoryFileName() : '—')}</span></small>
             </div>
         </div>
         <div id="cm_modal_sectionGroup" style="${isGroupChat() ? '' : 'display:none;'}">
             <div id="cm_modal_groupMembersSection">
-                <label><small>Member memory files</small></label>
+                <label><small>成員記憶檔案</small></label>
                 <div id="cm_modal_groupMembersList" class="charMemory_groupMembersList">
-                    <small class="charMemory_helperText">Open a group chat to see members.</small>
+                    <small class="charMemory_helperText">開啟群組聊天以查看成員。</small>
                 </div>
-                <small class="charMemory_helperText">Each character's memories are stored in their own Data Bank. Leave blank for auto-naming.</small>
+                <small class="charMemory_helperText">每個角色的記憶都儲存在自己的 Data Bank 中。留空以自動命名。</small>
             </div>
         </div>
     `;
 
     // Prompts overview section HTML
     const promptsHtml = `
-        <h4 class="charMemory_modalSectionTitle">Prompts</h4>
-        <small class="charMemory_helperText" style="margin-bottom:12px;display:block;">CharMemory uses four separate prompts. Click View / Edit to customize any of them.</small>
+        <h4 class="charMemory_modalSectionTitle">提示詞</h4>
+        <small class="charMemory_helperText" style="margin-bottom:12px;display:block;">CharMemory 使用四個獨立的提示詞。點擊查看/編輯以自訂任何一個。</small>
         <div class="charMemory_modalPromptEntry">
             <div class="charMemory_modalPromptRow">
-                <span class="charMemory_modalPromptLabel">Extraction — 1:1 chats</span>
-                <input type="button" class="menu_button charMemory_modalPromptBtn" id="cm_modal_promptsViewExtraction" value="View / Edit" />
+                <span class="charMemory_modalPromptLabel">提取 — 1對1 聊天</span>
+                <input type="button" class="menu_button charMemory_modalPromptBtn" id="cm_modal_promptsViewExtraction" value="查看/編輯" />
             </div>
-            <small class="charMemory_helperText">Used every time CharMemory reads messages from a 1:1 chat. Sent to the LLM along with recent messages, existing memories, and the character card. Controls what gets extracted and the memory bullet format.</small>
+            <small class="charMemory_helperText">每次 CharMemory 從 1對1 聊天讀取訊息時使用。與最近的訊息、現有記憶和角色卡一起傳送給 LLM。控制提取的內容和記憶項目符號格式。</small>
         </div>
         <div class="charMemory_modalPromptEntry">
             <div class="charMemory_modalPromptRow">
-                <span class="charMemory_modalPromptLabel">Extraction — group chats</span>
-                <input type="button" class="menu_button charMemory_modalPromptBtn" id="cm_modal_promptsViewGroup" value="View / Edit" />
+                <span class="charMemory_modalPromptLabel">提取 — 群組聊天</span>
+                <input type="button" class="menu_button charMemory_modalPromptBtn" id="cm_modal_promptsViewGroup" value="查看/編輯" />
             </div>
-            <small class="charMemory_helperText">Same as above, but used in group chats where multiple characters are present. Includes context about all active characters.</small>
+            <small class="charMemory_helperText">與上述相同，但用於有多個角色的群組聊天。包含所有活躍角色的上下文。</small>
         </div>
         <div class="charMemory_modalPromptEntry">
             <div class="charMemory_modalPromptRow">
-                <span class="charMemory_modalPromptLabel">Consolidation</span>
-                <input type="button" class="menu_button charMemory_modalPromptBtn" id="cm_modal_promptsViewConsolidation" value="View / Edit" />
+                <span class="charMemory_modalPromptLabel">合併</span>
+                <input type="button" class="menu_button charMemory_modalPromptBtn" id="cm_modal_promptsViewConsolidation" value="查看/編輯" />
             </div>
-            <small class="charMemory_helperText">Used by the Consolidate tool (Data Bank Tools). Instructs the LLM to merge duplicate or near-duplicate memories into fewer entries. Has two presets (Balanced / Aggressive) in the Consolidate tool.</small>
+            <small class="charMemory_helperText">由合併工具（Data Bank 工具）使用。指示 LLM 將重複或近乎重複的記憶合併為較少的條目。在合併工具中有兩個預設值（平衡/積極）。</small>
         </div>
         <div class="charMemory_modalPromptEntry">
             <div class="charMemory_modalPromptRow">
-                <span class="charMemory_modalPromptLabel">Conversion</span>
-                <input type="button" class="menu_button charMemory_modalPromptBtn" id="cm_modal_promptsViewConversion" value="View / Edit" />
+                <span class="charMemory_modalPromptLabel">轉換</span>
+                <input type="button" class="menu_button charMemory_modalPromptBtn" id="cm_modal_promptsViewConversion" value="查看/編輯" />
             </div>
-            <small class="charMemory_helperText">Used by the Reformat tool (Data Bank Tools). Converts memories in non-standard formats (e.g., plain prose) into CharMemory's structured bullet-point format with topic tags.</small>
+            <small class="charMemory_helperText">由重新格式化工具（Data Bank 工具）使用。將非標準格式的記憶（例如純文字）轉換為 CharMemory 的結構化項目符號格式並帶有主題標籤。</small>
         </div>
     `;
 
@@ -4003,72 +4003,72 @@ async function showSettingsModal() {
     // Normalize legacy values for the dropdown
     const normalizedMode = { on: 'tablet', off: 'desktop' }[displayModeVal] || displayModeVal;
     const displayModeOptions = [
-        { val: 'auto', label: 'Auto (detect)' },
-        { val: 'desktop', label: 'Desktop (sidebar)' },
-        { val: 'tablet', label: 'Tablet (floating panel)' },
-        { val: 'phone', label: 'Phone (panel + wide drawers)' },
+        { val: 'auto', label: '自動（偵測）' },
+        { val: 'desktop', label: '桌面（側邊欄）' },
+        { val: 'tablet', label: '平板（浮動面板）' },
+        { val: 'phone', label: '手機（面板 + 寬抽屜）' },
     ].map(o => `<option value="${o.val}" ${normalizedMode === o.val ? 'selected' : ''}>${o.label}</option>`).join('');
 
     const advancedHtml = `
-        <h4 class="charMemory_modalSectionTitle">Display</h4>
+        <h4 class="charMemory_modalSectionTitle">顯示</h4>
         <div class="charMemory_statusRow">
             <label for="cm_modal_displayMode">
-                <small>Display Mode</small>
+                <small>顯示模式</small>
             </label>
             <select id="cm_modal_displayMode" class="text_pole">${displayModeOptions}</select>
-            <small class="charMemory_helperText">Controls dashboard layout. "Auto" detects your device. Desktop uses the sidebar; Tablet uses a floating panel; Phone adds wider drawers on top.</small>
+            <small class="charMemory_helperText">控制儀表板佈局。「自動」偵測您的裝置。桌面使用側邊欄；平板使用浮動面板；手機在上方添加更寬的抽屜。</small>
         </div>
         <hr class="charMemory_separator" />
-        <h4 class="charMemory_modalSectionTitle">Memory File Format</h4>
+        <h4 class="charMemory_modalSectionTitle">記憶檔案格式</h4>
         <div class="charMemory_statusRow">
             <label for="cm_modal_chunkBoundary">
-                <small>Chunk boundary</small>
+                <small>區塊邊界</small>
             </label>
             <select id="cm_modal_chunkBoundary" class="text_pole">${chunkOptions}</select>
-            <small class="charMemory_helperText">Controls how memories are separated in the file. Vector Storage splits on the separator to create retrievable chunks.</small>
+            <small class="charMemory_helperText">控制記憶在檔案中如何分隔。向量儲存會在分隔符號處分割以建立可檢索的區塊。</small>
         </div>
         <div class="charMemory_statusRow" id="cm_modal_customSeparatorRow" style="${(s.chunkBoundary || 'block') === 'custom' ? '' : 'display:none;'}">
             <label for="cm_modal_customSeparator">
-                <small>Custom separator</small>
+                <small>自訂分隔符號</small>
             </label>
             <input type="text" id="cm_modal_customSeparator" class="text_pole" placeholder="\\n\\n" value="${escapeAttr(s.customSeparator || '\\n\\n')}" />
-            <small class="charMemory_helperText">Characters inserted between chunks. Use \\n for newlines.</small>
+            <small class="charMemory_helperText">在區塊之間插入的字元。使用 \\n 表示換行。</small>
         </div>
         <div id="cm_modal_chunkMetadataRow" style="${(s.chunkBoundary || 'block') === 'bullet' || (s.chunkBoundary || 'block') === 'custom' ? '' : 'display:none;'}">
             <label class="checkbox_label" for="cm_modal_chunkMetadata">
                 <input type="checkbox" id="cm_modal_chunkMetadata" ${s.chunkMetadata ? 'checked' : ''} />
-                <span>Include metadata in chunks</span>
+                <span>在區塊中包含中繼資料</span>
             </label>
-            <small class="charMemory_helperText">Prefix each bullet with [date | chat_id] so standalone chunks retain their provenance.</small>
+            <small class="charMemory_helperText">為每個項目符號加上 [日期 | 聊天ID] 前綴，以便獨立區塊保留其來源。</small>
         </div>
 
         <hr class="charMemory_separator" />
-        <h4 class="charMemory_modalSectionTitle">Reset</h4>
+        <h4 class="charMemory_modalSectionTitle">重置</h4>
         <div class="charMemory_statusRow">
-            <input type="button" id="cm_modal_resetThisChat" class="menu_button" value="Reset This Chat"
-                title="Resets the extraction pointer for the active chat — next 'Extract Now' re-reads from the first message. In group chats all characters share one pointer, so all are reset together." />
+            <input type="button" id="cm_modal_resetThisChat" class="menu_button" value="重置此聊天"
+                title="重置活躍聊天的提取指標 — 下次「立即提取」將從第一條訊息重新讀取。在群組聊天中，所有角色共用一個指標，因此會一起重置。" />
             <small class="charMemory_helperText">
-                Resets the extraction pointer for the active chat. Next "Extract Now" will re-read all messages in this chat from the first.
-                ${isGroupChat() ? '<br><i class="fa-solid fa-people-group fa-xs"></i> <em>Group chat:</em> all members share one extraction pointer, so this resets all of them at once.' : ''}
+                重置活躍聊天的提取指標。下次「立即提取」將從頭重新讀取此聊天中的所有訊息。
+                ${isGroupChat() ? '<br><i class="fa-solid fa-people-group fa-xs"></i> <em>群組聊天：</em>所有成員共用一個提取指標，因此此操作會同時重置所有成員。' : ''}
             </small>
-            <input type="button" id="cm_modal_resetBatchProgress" class="menu_button" value="Reset Batch Progress"
-                title="Clears batch extraction records for all of this character's chats. Use before re-running Batch Extract to start fresh. Does not affect regular (non-batch) extraction for non-active chats." />
+            <input type="button" id="cm_modal_resetBatchProgress" class="menu_button" value="重置批次進度"
+                title="清除此角色所有聊天的批次提取記錄。在重新執行批次提取之前使用，以重新開始。不影響非活躍聊天的常規（非批次）提取。" />
             <small class="charMemory_helperText">
-                The Batch tool remembers the last message it processed in each chat file so future runs only extract new messages. Reset this to make Batch treat all of ${escapeHtml(getCharacterName() || 'this character')}'s chats as unprocessed — for example, after changing the extraction prompt. Does not affect Extract Now or auto-extraction.
+                批次工具會記住它在每個聊天檔案中處理的最後一條訊息，以便未來執行時只提取新訊息。重置此選項會使批次將 ${escapeHtml(getCharacterName() || '此角色')} 的所有聊天視為未處理 — 例如，在更改提取提示詞後。不影響「立即提取」或自動提取。
             </small>
-            <input type="button" id="cm_modal_resetExtraction" class="menu_button charMemory_dangerBtn" value="Clear All Memories" title="Delete this character's memory file and reset extraction tracking — cannot be undone" />
-            <small class="charMemory_helperText">Deletes this character's memory file (contains memories from all their chats) and resets extraction tracking. Cannot be undone.</small>
+            <input type="button" id="cm_modal_resetExtraction" class="menu_button charMemory_dangerBtn" value="清除所有記憶" title="刪除此角色的記憶檔案並重置提取追蹤 — 無法復原" />
+            <small class="charMemory_helperText">刪除此角色的記憶檔案（包含其所有聊天的記憶）並重置提取追蹤。無法復原。</small>
         </div>
     `;
 
     // Assemble modal HTML
     const html = `<div class="charMemory_modal">
         <div class="charMemory_modalNav">
-            <button class="charMemory_modalNavItem active" data-section="connection">Connection</button>
-            <button class="charMemory_modalNavItem" data-section="extraction">Extraction</button>
-            <button class="charMemory_modalNavItem" data-section="storage">Storage</button>
-            <button class="charMemory_modalNavItem" data-section="prompts">Prompts</button>
-            <button class="charMemory_modalNavItem" data-section="advanced">Advanced</button>
+            <button class="charMemory_modalNavItem active" data-section="connection">連線</button>
+            <button class="charMemory_modalNavItem" data-section="extraction">提取</button>
+            <button class="charMemory_modalNavItem" data-section="storage">儲存</button>
+            <button class="charMemory_modalNavItem" data-section="prompts">提示詞</button>
+            <button class="charMemory_modalNavItem" data-section="advanced">進階</button>
         </div>
         <div class="charMemory_modalContent">
             <div class="charMemory_modalSection active" data-section="connection">${connectionHtml}</div>
@@ -4429,8 +4429,8 @@ async function showSettingsModal() {
             ? `<br><small>This is a group chat — all members share one extraction pointer and will all be reset together.</small>`
             : '';
         const confirmed = await callGenericPopup(
-            `The extraction pointer for the active chat will be reset for <strong>${escapeHtml(charName)}</strong>. Next "Extract Now" will re-read all messages in this chat from the first.${scopeNote}`,
-            POPUP_TYPE.CONFIRM, 'Reset This Chat',
+            `${scopeNote ? scopeNote : ''}活躍聊天的提取指標將被重置為<strong>${escapeHtml(charName)}</strong>。下次「立即提取」將從頭重新讀取此聊天中的所有訊息。${scopeNote}`,
+            POPUP_TYPE.CONFIRM, '重置此聊天',
         );
         if (!confirmed) return;
         resetCurrentChatTracking();
@@ -4439,8 +4439,8 @@ async function showSettingsModal() {
     $('#cm_modal_resetBatchProgress').off('click').on('click', async function () {
         const charName = getCharacterName() || 'this character';
         const confirmed = await callGenericPopup(
-            `The Batch tool's record of which messages it has already processed will be cleared for all of <strong>${escapeHtml(charName)}</strong>'s chats. The next Batch run will re-read every message from the start, which may create duplicate memories unless you clear existing memories first. Extract Now and auto-extraction are not affected.`,
-            POPUP_TYPE.CONFIRM, 'Reset Batch Progress',
+            `批次工具已處理訊息的記錄將被清除，適用於<strong>${escapeHtml(charName)}</strong>的所有聊天。下次批次執行將從頭重新讀取每條訊息，除非您先清除現有記憶，否則可能會建立重複記憶。「立即提取」和自動提取不受影響。`,
+            POPUP_TYPE.CONFIRM, '重置批次進度',
         );
         if (!confirmed) return;
         resetBatchProgress();
@@ -4454,7 +4454,7 @@ async function showSettingsModal() {
             : `This includes memories from all of ${escapeHtml(charName)}'s chats.`;
         const confirmed = await callGenericPopup(
             `<strong>${escapeHtml(charName)}'s</strong> memory file will be deleted and extraction tracking will be reset. This cannot be undone.<br><br>${scopeNote}`,
-            POPUP_TYPE.CONFIRM, 'Clear All Memories',
+            POPUP_TYPE.CONFIRM, '清除所有記憶',
         );
         if (!confirmed) return;
         await clearAllMemories();
@@ -4756,7 +4756,7 @@ async function showPromptsModal(activePrompt = 'extraction') {
         }
         syncSidebarPrompt(key);
         refreshSectionUI($section, key);
-        toastr.success('Prompt saved.');
+        toastr.success('提示詞已儲存。');
     });
 
     // Restore Default button
@@ -4778,7 +4778,7 @@ async function showPromptsModal(activePrompt = 'extraction') {
         acknowledgePromptVersion(key);
         syncSidebarPrompt(key);
         refreshSectionUI($section, key);
-        toastr.success('Prompt restored to default.');
+        toastr.success('提示詞已恢復為預設值。');
     });
 
     // "Keep mine" — dismiss notification, acknowledge the new version
@@ -4790,7 +4790,7 @@ async function showPromptsModal(activePrompt = 'extraction') {
         $section.find('.charMemory_promptCompareWrap').hide();
         $section.find('.charMemory_promptEditorWrap').show();
         $section.find('.charMemory_promptDoneCompare').hide();
-        toastr.info('Notification dismissed. Your custom prompt is unchanged.');
+        toastr.info('通知已關閉。您的自訂提示詞保持不變。');
     });
 
     // "Use new default" — replace prompt with new default, acknowledge version
@@ -4807,7 +4807,7 @@ async function showPromptsModal(activePrompt = 'extraction') {
         $section.find('.charMemory_promptCompareWrap').hide();
         $section.find('.charMemory_promptEditorWrap').show();
         $section.find('.charMemory_promptDoneCompare').hide();
-        toastr.success('Prompt updated to new default.');
+        toastr.success('提示詞已更新為新的預設值。');
     });
 
     // "Compare & Edit" — show side-by-side panes
@@ -5047,52 +5047,52 @@ async function showSetupWizard(startStep = 1) {
         <div class="charMemory_wizardStep" data-step="1">
             <div id="cm_wiz_noChatWarn" class="charMemory_wizardCallout charMemory_wizardCallout--warn" style="${noChatWarnStyle}">
                 <i class="fa-solid fa-triangle-exclamation fa-sm"></i>
-                <span><strong>Not in a chat.</strong> CharMemory needs an active character to extract memories. You can configure it now \u2014 just open a chat before clicking Extract Now.</span>
+                <span><strong>不在聊天中。</strong>CharMemory 需要一個活躍的角色來提取記憶。您現在可以進行設定 — 只需在點擊「立即提取」之前開啟聊天。</span>
             </div>
             <div class="charMemory_wizardExplanation">
-                <strong>CharMemory</strong> automatically extracts structured memories from your roleplay chats and stores them so your characters can recall past events.
-                It needs access to an LLM to read your messages and create memory summaries.
+                <strong>CharMemory</strong> 會自動從您的角色扮演聊天中提取結構化記憶並儲存它們，以便您的角色可以回憶過去的事件。
+                它需要存取 LLM 來讀取您的訊息並建立記憶摘要。
             </div>
             <div class="charMemory_modalFieldGroup">
-                <label><small>Connection type</small></label>
+                <label><small>連線類型</small></label>
                 <div class="charMemory_wizSourceToggle">
-                    <button type="button" class="menu_button charMemory_wizSourceBtn${!showProfile ? ' active' : ''}" data-source="provider">Dedicated API</button>
-                    <button type="button" class="menu_button charMemory_wizSourceBtn${showProfile ? ' active' : ''}" data-source="profile" ${!cmAvailable ? 'disabled title="Enable the Connection Manager extension to use saved profiles"' : ''}>Connection Profile</button>
+                    <button type="button" class="menu_button charMemory_wizSourceBtn${!showProfile ? ' active' : ''}" data-source="provider">專用 API</button>
+                    <button type="button" class="menu_button charMemory_wizSourceBtn${showProfile ? ' active' : ''}" data-source="profile" ${!cmAvailable ? 'disabled title="啟用連線管理器擴充功能以使用已儲存的設定檔"' : ''}>連線設定檔</button>
                 </div>
             </div>
             <div id="cm_wiz_providerSection" style="${showProfile ? 'display:none;' : ''}">
             <div class="charMemory_modalFieldGroup">
-                <label><small>Provider</small></label>
+                <label><small>供應商</small></label>
                 <select id="cm_wiz_provider" class="text_pole">${providerOptions}</select>
                 <small id="cm_wiz_providerHint" class="charMemory_helperText"></small>
             </div>
             <div class="charMemory_modalFieldGroup" id="cm_wiz_baseUrlRow" style="${preset.allowCustomUrl ? '' : 'display:none;'}">
-                <label><small>Base URL</small></label>
+                <label><small>基礎 URL</small></label>
                 <input type="text" id="cm_wiz_baseUrl" class="text_pole" placeholder="${preset.authStyle === 'none' ? 'http://127.0.0.1:1234/v1' : 'https://your-server.com/v1'}" value="${escapeAttr(providerSettings.customBaseUrl || preset.baseUrl || '')}" />
             </div>
             <div class="charMemory_wizConnectRow">
                 <div class="charMemory_wizApiKeyGroup" id="cm_wiz_apiKeyRow" style="${preset.requiresApiKey ? '' : 'display:none;'}">
-                    <label><small>API Key <a id="cm_wiz_helpLink" href="${escapeAttr(preset.helpUrl || '#')}" target="_blank" style="font-size:0.85em;${preset.helpUrl ? '' : 'display:none;'}">(get key)</a></small></label>
+                    <label><small>API 金鑰 <a id="cm_wiz_helpLink" href="${escapeAttr(preset.helpUrl || '#')}" target="_blank" style="font-size:0.85em;${preset.helpUrl ? '' : 'display:none;'}">(取得金鑰)</a></small></label>
                     <div style="display:flex;gap:5px;align-items:center;">
-                        <input type="password" id="cm_wiz_apiKey" class="text_pole" placeholder="Enter API key" value="${escapeAttr(providerSettings.apiKey || '')}" style="flex:1;" />
-                        <button type="button" id="cm_wiz_apiKeyReveal" class="menu_button" title="Show/hide API key" style="padding:3px 8px;flex-shrink:0;"><i class="fa-solid fa-eye fa-sm"></i></button>
+                        <input type="password" id="cm_wiz_apiKey" class="text_pole" placeholder="輸入 API 金鑰" value="${escapeAttr(providerSettings.apiKey || '')}" style="flex:1;" />
+                        <button type="button" id="cm_wiz_apiKeyReveal" class="menu_button" title="顯示/隱藏 API 金鑰" style="padding:3px 8px;flex-shrink:0;"><i class="fa-solid fa-eye fa-sm"></i></button>
                     </div>
                 </div>
-                <input type="button" id="cm_wiz_connect" class="menu_button${preset.requiresApiKey ? '' : ' charMemory_fullWidth'}" value="Connect &amp; Test" />
+                <input type="button" id="cm_wiz_connect" class="menu_button${preset.requiresApiKey ? '' : ' charMemory_fullWidth'}" value="連線並測試" />
             </div>
             <small id="cm_wiz_connectStatus" class="charMemory_helperText" style="display:none;margin-bottom:6px;"></small>
             <div class="charMemory_modalFieldGroup" id="cm_wiz_modelRow" style="display:none;">
-                <label><small>Model</small></label>
+                <label><small>模型</small></label>
                 <div id="cm_wiz_nanogptFilters" style="display:none;">
                     <div class="charMemory_filterRow">
-                        <label class="checkbox_label"><input type="checkbox" id="cm_wiz_nanogptFilterSub" /> <small>Subscription</small></label>
-                        <label class="checkbox_label"><input type="checkbox" id="cm_wiz_nanogptFilterOS" /> <small>Open Source</small></label>
-                        <label class="checkbox_label"><input type="checkbox" id="cm_wiz_nanogptFilterRP" /> <small>Roleplay</small></label>
-                        <label class="checkbox_label"><input type="checkbox" id="cm_wiz_nanogptFilterReasoning" /> <small>Reasoning</small></label>
+                        <label class="checkbox_label"><input type="checkbox" id="cm_wiz_nanogptFilterSub" /> <small>訂閱</small></label>
+                        <label class="checkbox_label"><input type="checkbox" id="cm_wiz_nanogptFilterOS" /> <small>開源</small></label>
+                        <label class="checkbox_label"><input type="checkbox" id="cm_wiz_nanogptFilterRP" /> <small>角色扮演</small></label>
+                        <label class="checkbox_label"><input type="checkbox" id="cm_wiz_nanogptFilterReasoning" /> <small>推理</small></label>
                     </div>
                 </div>
                 <div class="charMemory_wizModelPicker">
-                    <input type="text" id="cm_wiz_modelSearch" class="charMemory_wizModelSearch" placeholder="Search models..." autocomplete="off" value="" />
+                    <input type="text" id="cm_wiz_modelSearch" class="charMemory_wizModelSearch" placeholder="搜尋模型..." autocomplete="off" value="" />
                     <input type="hidden" id="cm_wiz_modelValue" value="" />
                     <div id="cm_wiz_modelList" class="charMemory_wizModelList"></div>
                 </div>
@@ -5101,19 +5101,19 @@ async function showSetupWizard(startStep = 1) {
             </div>
             <div id="cm_wiz_profileSection" style="${showProfile ? '' : 'display:none;'}">
                 <div class="charMemory_modalFieldGroup">
-                    <label><small>Connection Profile</small></label>
+                    <label><small>連線設定檔</small></label>
                     <select id="cm_wiz_profileSelect" class="text_pole">
-                        <option value="">Select a Connection Profile</option>
+                        <option value="">選擇連線設定檔</option>
                     </select>
-                    <small class="charMemory_helperText">Uses credentials and settings from your saved SillyTavern connection profile.</small>
+                    <small class="charMemory_helperText">使用您儲存的 SillyTavern 連線設定檔中的憑證和設定。</small>
                 </div>
                 <div class="charMemory_modalFieldGroup">
-                    <input type="button" id="cm_wiz_profileTest" class="menu_button charMemory_fullWidth" value="Test Connection" />
+                    <input type="button" id="cm_wiz_profileTest" class="menu_button charMemory_fullWidth" value="測試連線" />
                     <small id="cm_wiz_profileTestStatus" class="charMemory_helperText" style="display:none;margin-bottom:6px;"></small>
                 </div>
             </div>
             <div class="charMemory_wizardNav">
-                <input type="button" id="cm_wiz_next1" class="menu_button" value="Next \u2192" disabled />
+                <input type="button" id="cm_wiz_next1" class="menu_button" value="下一步 →" disabled />
             </div>
         </div>`;
 
@@ -5121,39 +5121,39 @@ async function showSetupWizard(startStep = 1) {
     const step2Html = `
         <div class="charMemory_wizardStep" data-step="2">
             <div class="charMemory_wizardSection">
-                <div class="charMemory_wizardSectionTitle">Memory Storage</div>
+                <div class="charMemory_wizardSectionTitle">記憶儲存</div>
                 <div class="charMemory_wizardExplanation" style="margin-top:0;">
-                    Each character gets their own memory file in their Data Bank
-                    (e.g., <code>Flux_the_Cat-memories.md</code>). Memories from all of that character's chats are
-                    stored together. You can change storage options in Settings later.
+                    每個角色在其 Data Bank 中都有自己的記憶檔案
+                    （例如，<code>Flux_the_Cat-memories.md</code>）。該角色所有聊天的記憶都會
+                    儲存在一起。您可以稍後在設定中更改儲存選項。
                 </div>
             </div>
             <div class="charMemory_wizardSection">
-                <div class="charMemory_wizardSectionTitle">Extraction Frequency</div>
+                <div class="charMemory_wizardSectionTitle">提取頻率</div>
                 <div class="charMemory_wizardIntervalRow">
-                    <span>Extract memories every</span>
+                    <span>每</span>
                     <input type="number" id="cm_wiz_interval" class="charMemory_wizIntervalInput" min="3" max="200" step="1" value="${s.interval || 20}" />
-                    <span>messages.</span>
+                    <span>條訊息提取記憶。</span>
                 </div>
-                <small class="charMemory_helperText">Lower = more frequent, more API calls. Higher = less frequent, bigger batches. 20 is a good starting point.</small>
+                <small class="charMemory_helperText">較低 = 更頻繁，更多 API 呼叫。較高 = 較不頻繁，更大批次。20 是一個不錯的起點。</small>
             </div>
             <div class="charMemory_wizardSection">
-                <div class="charMemory_wizardSectionTitle">Retrieval (Vector Storage)</div>
+                <div class="charMemory_wizardSectionTitle">檢索（向量儲存）</div>
                 <div class="charMemory_wizardExplanation" style="margin-top:0;">
-                    Vector Storage finds the right memories at the right time and injects them into the prompt
-                    when your character speaks. Without it, memories are stored but never used.
+                    向量儲存在適當的時機找到正確的記憶，並在您的角色說話時將它們注入提示詞。
+                    沒有它，記憶會被儲存但永遠不會被使用。
                 </div>
                 <div id="cm_wiz_vsStatus"></div>
             </div>
             <div id="cm_wiz_vsAdvisory" style="display:none;">
                 <small class="charMemory_helperText" style="color:#e8a33d;">
                     <i class="fa-solid fa-triangle-exclamation fa-xs"></i>
-                    You can continue without fixing these \u2014 memories will be stored but not retrieved until Vector Storage is configured.
+                    您可以在不修正這些問題的情況下繼續 — 記憶將被儲存但在設定向量儲存之前不會被檢索。
                 </small>
             </div>
             <div class="charMemory_wizardNav">
-                <input type="button" id="cm_wiz_back2" class="menu_button" value="\u2190 Back" />
-                <input type="button" id="cm_wiz_next2" class="menu_button" value="Next \u2192" />
+                <input type="button" id="cm_wiz_back2" class="menu_button" value="← 上一步" />
+                <input type="button" id="cm_wiz_next2" class="menu_button" value="下一步 →" />
             </div>
         </div>`;
 
@@ -5164,28 +5164,28 @@ async function showSetupWizard(startStep = 1) {
             <div id="cm_wiz_nextSteps"></div>
             <div class="charMemory_wizardCallout">
                 <i class="fa-solid fa-circle-info fa-sm"></i>
-                <span>Once you have memories, open the <strong>Injection Sidebar</strong> (<i class="fa-solid fa-syringe fa-sm"></i>) to see which ones are being injected into the prompt in real time.</span>
+                <span>一旦您有了記憶，開啟<strong>注入側邊欄</strong>（<i class="fa-solid fa-syringe fa-sm"></i>）即可即時查看哪些記憶正在被注入提示詞。</span>
             </div>
             <div id="cm_wiz_existingMemories" style="display:none;">
                 <div class="charMemory_wizardExistingMemSection">
                     <i class="fa-solid fa-database fa-sm" style="color:#e8a33d;"></i>
                     <div>
-                        <strong>Existing memories found</strong>
+                        <strong>發現現有記憶</strong>
                         <div id="cm_wiz_existingMemDetail" class="charMemory_wizardCheckText"></div>
                         <div style="margin-top:6px;display:flex;gap:8px;">
-                            <input type="button" id="cm_wiz_convertNow" class="menu_button" value="Convert Now" title="Reformat memories for better retrieval" />
-                            <input type="button" id="cm_wiz_convertSkip" class="menu_button" value="Skip \u2014 I'll do this later" />
+                            <input type="button" id="cm_wiz_convertNow" class="menu_button" value="立即轉換" title="重新格式化記憶以獲得更好的檢索效果" />
+                            <input type="button" id="cm_wiz_convertSkip" class="menu_button" value="跳過 — 稍後再做" />
                         </div>
                     </div>
                 </div>
             </div>
             <div class="charMemory_wizardNav">
-                <input type="button" id="cm_wiz_back3" class="menu_button" value="\u2190 Back" />
-                <input type="button" id="cm_wiz_done" class="menu_button" value="Get Started" />
+                <input type="button" id="cm_wiz_back3" class="menu_button" value="← 上一步" />
+                <input type="button" id="cm_wiz_done" class="menu_button" value="開始使用" />
             </div>
             <div class="charMemory_wizardScopeNote">
                 <i class="fa-solid fa-circle-info fa-xs"></i>
-                Tools like Clear Memories and Reset Extraction State only affect the current character.
+                清除記憶和重置提取狀態等工具僅影響目前角色。
             </div>
         </div>`;
 
@@ -5803,14 +5803,14 @@ async function showSetupWizard(startStep = 1) {
             $nextSteps.html(`
                 <div class="charMemory_wizardCallout">
                     <i class="fa-solid fa-check-circle fa-sm"></i>
-                    <span>You're in a chat with <strong>${escapeHtml(wizCharName)}</strong>. After closing, click <strong>Extract Now</strong> in the CharMemory panel to create your first memories.</span>
+                    <span>您正在與<strong>${escapeHtml(wizCharName)}</strong>聊天。關閉後，點擊 CharMemory 面板中的<strong>立即提取</strong>以建立您的第一批記憶。</span>
                 </div>
             `);
         } else {
             $nextSteps.html(`
                 <div class="charMemory_wizardCallout charMemory_wizardCallout--warn">
                     <i class="fa-solid fa-triangle-exclamation fa-sm"></i>
-                    <span><strong>Open a chat first.</strong> CharMemory needs an active character to extract from. Start a chat with a character, then click <strong>Extract Now</strong> in the panel.</span>
+                    <span><strong>請先開啟聊天。</strong>CharMemory 需要一個活躍的角色來提取。開始與角色聊天，然後點擊面板中的<strong>立即提取</strong>。</span>
                 </div>
             `);
         }
@@ -5854,9 +5854,9 @@ async function showSetupWizard(startStep = 1) {
             }
             const doneCharName = getCharacterName();
             if (!doneCharName) {
-                toastr.info('Open a chat with a character, then click <b>Extract Now</b> to start building memories.', 'CharMemory', { timeOut: 7000, escapeHtml: false });
+                toastr.info('開啟一個與角色的聊天，然後點擊<b>立即提取</b>開始建立記憶。', 'CharMemory', { timeOut: 7000, escapeHtml: false });
             } else {
-                toastr.success(`Click <b>Extract Now</b> in the panel to extract your first memories for ${escapeHtml(doneCharName)}.`, 'CharMemory', { timeOut: 7000, escapeHtml: false });
+                toastr.success(`點擊面板中的<b>立即提取</b>為 ${escapeHtml(doneCharName)} 提取第一批記憶。`, 'CharMemory', { timeOut: 7000, escapeHtml: false });
             }
         }, 400);
     });
@@ -5943,7 +5943,7 @@ async function showTroubleshooter(initialSection = 'health') {
     // Build health checks HTML
     const colors = { green: '#4a4', yellow: '#e8a33d', red: '#c44', unknown: 'var(--SmartThemeBorderColor, #555)' };
     const icons = { green: 'fa-circle-check', yellow: 'fa-triangle-exclamation', red: 'fa-circle-xmark', unknown: 'fa-circle-question' };
-    const titles = { green: 'All checks passed', yellow: 'Warnings detected', red: 'Issues found', unknown: 'No character selected' };
+    const titles = { green: '所有檢查通過', yellow: '偵測到警告', red: '發現問題', unknown: '未選擇角色' };
 
     let healthHtml = `<div class="charMemory_tsOverallStatus" style="color:${colors[healthResult.level]};">
         <i class="fa-solid ${icons[healthResult.level]}"></i>
@@ -5953,7 +5953,7 @@ async function showTroubleshooter(initialSection = 'health') {
     // Fix hints for checks that have actionable solutions
     const fixHints = {
         vec_files_enabled: 'Enable "Files" in the Vector Storage extension settings.',
-        memory_file_exists: 'Use "Extract Now" on the dashboard to create this character\'s memory file.',
+        memory_file_exists: '使用儀表板上的「立即提取」來建立此角色的記憶檔案。',
         file_vectorized: 'Send a message in the chat to trigger automatic vectorization, or open Extensions \u2192 Vector Storage \u2192 Files tab to vectorize the file manually.',
         chunk_overlap: 'Set overlap to 10-25% in Vector Storage settings.',
         chunk_size: 'Set chunk size to 800-1000 chars in Vector Storage settings.',
@@ -5981,7 +5981,7 @@ async function showTroubleshooter(initialSection = 'health') {
         const attachments = (extension_settings.character_attachments[t.avatar] || [])
             .filter(att => !disabledUrls.has(att.url));
         if (attachments.length === 0) {
-            return '<div class="charMemory_diagEmpty" style="margin:4px 0 8px;">No Data Bank files yet — run <b>Extract Now</b> to create memories.</div>';
+            return '<div class="charMemory_diagEmpty" style="margin:4px 0 8px;">尚無 Data Bank 檔案 — 執行<b>立即提取</b>以建立記憶。</div>';
         }
         let html = '<div class="charMemory_tsFileList">';
         for (const att of attachments) {
@@ -6007,12 +6007,12 @@ async function showTroubleshooter(initialSection = 'health') {
     };
 
     let dataBankHtml = '';
-    let dataBankSubtitle = 'No character selected';
+    let dataBankSubtitle = '未選擇角色';
     if (!targets.length) {
-        dataBankHtml = '<div class="charMemory_diagEmpty">No character selected.</div>';
+        dataBankHtml = '<div class="charMemory_diagEmpty">未選擇角色。</div>';
     } else if (targets.length > 1) {
         // Group chat: labeled section per member
-        dataBankSubtitle = `Group Data Bank \u2014 ${targets.length} characters`;
+        dataBankSubtitle = `群組 Data Bank — ${targets.length} 個角色`;
         for (const t of targets) {
             const avatarImg = `<img class="charMemory_groupAvatar" src="/thumbnail?type=avatar&file=${encodeURIComponent(t.avatar)}" alt="" onerror="this.style.display='none'" />`;
             dataBankHtml += `<div class="charMemory_tsMemberSection">
@@ -6023,7 +6023,7 @@ async function showTroubleshooter(initialSection = 'health') {
     } else {
         const displayName = charName || target.name;
         const avatarImg = `<img class="charMemory_groupAvatar" src="/thumbnail?type=avatar&file=${encodeURIComponent(target.avatar)}" alt="" onerror="this.style.display='none'" style="vertical-align:middle;" />`;
-        dataBankSubtitle = `${avatarImg} ${escapeHtml(displayName)}'s Data Bank files`;
+        dataBankSubtitle = `${avatarImg} ${escapeHtml(displayName)} 的 Data Bank 檔案`;
         dataBankHtml = buildMemberFileList(target);
     }
 
@@ -6073,14 +6073,14 @@ async function showTroubleshooter(initialSection = 'health') {
                 <div class="charMemory_tsResetSection">
                     <button class="menu_button" id="cm_ts_resetThisChat">Reset This Chat</button>
                     <small class="charMemory_helperText">
-                        Resets the extraction pointer for the active chat. Next "Extract Now" will re-read all messages in this chat from the first.
+                        重置活躍聊天的提取指標。下次「立即提取」將從頭重新讀取此聊天中的所有訊息。
                         ${isGroupChat() ? '<br><i class="fa-solid fa-people-group fa-xs"></i> <em>Group chat:</em> all members share one extraction pointer, so this resets all of them at once.' : ''}
                     </small>
                 </div>
                 <div class="charMemory_tsResetSection">
                     <button class="menu_button" id="cm_ts_resetBatchProgress">Reset Batch Progress</button>
                     <small class="charMemory_helperText">
-                        The Batch tool remembers the last message it processed in each chat file so future runs only extract new messages. Reset this to make Batch treat all of ${escapeHtml(charName || 'this character')}'s chats as unprocessed — for example, after changing the extraction prompt. Does not affect Extract Now or auto-extraction.
+                        批次工具會記住它在每個聊天檔案中處理的最後一條訊息，以便未來執行時只提取新訊息。重置此選項會使批次將 ${escapeHtml(charName || '此角色')} 的所有聊天視為未處理 — 例如，在更改提取提示詞後。不影響「立即提取」或自動提取。
                     </small>
                 </div>
                 <div class="charMemory_tsResetSection">
@@ -6146,7 +6146,7 @@ async function showTroubleshooter(initialSection = 'health') {
         try {
             const content = await getFileAttachment(url);
             if (!content) {
-                toastr.warning('File is empty or could not be read.', 'CharMemory');
+                toastr.warning('檔案為空或無法讀取。', 'CharMemory');
                 return;
             }
 
@@ -6160,7 +6160,7 @@ async function showTroubleshooter(initialSection = 'health') {
                 const viewHtml = `<div style="max-height:60vh;overflow:auto;text-align:left;">
                     <pre style="white-space:pre-wrap;word-break:break-word;font-size:0.85em;">${escapeHtml(displayContent)}</pre>
                 </div>`;
-                callGenericPopup(viewHtml, POPUP_TYPE.TEXT, escapeHtml(name || 'File contents'), { wide: true, allowVerticalScrolling: true });
+                callGenericPopup(viewHtml, POPUP_TYPE.TEXT, escapeHtml(name || '檔案內容'), { wide: true, allowVerticalScrolling: true });
                 return;
             }
 
@@ -6192,7 +6192,7 @@ async function showTroubleshooter(initialSection = 'health') {
                 </div>
             </div>`;
 
-            const savePopup = callGenericPopup(editorHtml, POPUP_TYPE.CONFIRM, '', { wide: true, allowVerticalScrolling: true, okButton: 'Save', cancelButton: 'Cancel' });
+            const savePopup = callGenericPopup(editorHtml, POPUP_TYPE.CONFIRM, '', { wide: true, allowVerticalScrolling: true, okButton: '儲存', cancelButton: '取消' });
 
             // Find/Replace bar
             const cleanupTsFR = wireFindReplaceEvents(tsEditor, refreshTsEditor, 'cm_ts_fileFR', '.charMemoryTsFR');
@@ -6252,16 +6252,16 @@ async function showTroubleshooter(initialSection = 'health') {
                     .filter(b => b.bullets.length > 0);
 
                 if (cleanBlocks.length === 0) {
-                    toastr.warning('No memories to save.', 'CharMemory');
+                    toastr.warning('沒有記憶需要儲存。', 'CharMemory');
                 } else {
                     await writeMemoriesForCharacter(serializeMemories(cleanBlocks), avatar, name);
-                    toastr.success(`Saved ${countMemories(cleanBlocks)} memories to ${name}.`, 'CharMemory');
+                    toastr.success(`已將 ${countMemories(cleanBlocks)} 條記憶儲存至 ${name}。`, 'CharMemory');
                     updateStatusDisplay();
                 }
             }
         } catch (err) {
             console.error(LOG_PREFIX, 'Failed to read file:', err);
-            toastr.error('Could not read file.', 'CharMemory');
+            toastr.error('無法讀取檔案。', 'CharMemory');
         }
     });
 
@@ -6273,7 +6273,7 @@ async function showTroubleshooter(initialSection = 'health') {
         try {
             const content = await getFileAttachment(url);
             if (!content) {
-                toastr.warning('File is empty or could not be read.', 'CharMemory');
+                toastr.warning('檔案為空或無法讀取。', 'CharMemory');
                 return;
             }
             const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
@@ -6284,10 +6284,10 @@ async function showTroubleshooter(initialSection = 'health') {
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(a.href);
-            toastr.success(`Downloaded: ${name}`, 'CharMemory');
+            toastr.success(`已下載：${name}`, 'CharMemory');
         } catch (err) {
             console.error(LOG_PREFIX, 'Failed to export file:', err);
-            toastr.error('Could not export file.', 'CharMemory');
+            toastr.error('無法匯出檔案。', 'CharMemory');
         }
     });
 
@@ -6297,7 +6297,7 @@ async function showTroubleshooter(initialSection = 'health') {
         const url = $row.data('url');
         const name = $row.data('name') || url;
         const confirmed = await callGenericPopup(
-            `Delete "${escapeHtml(name)}" from the Data Bank?\n\nThis cannot be undone.`,
+            `從 Data Bank 刪除「${escapeHtml(name)}」？\n\n此操作無法復原。`,
             POPUP_TYPE.CONFIRM,
         );
         if (!confirmed) return;
@@ -6310,11 +6310,11 @@ async function showTroubleshooter(initialSection = 'health') {
                 (extension_settings.character_attachments[avatar] || []).filter(a => a.url !== url);
             saveSettingsDebounced();
             $row.fadeOut(200, () => $row.remove());
-            toastr.success(`Deleted: ${name}`, 'CharMemory');
+            toastr.success(`已刪除：${name}`, 'CharMemory');
             updateStatusDisplay();
         } catch (err) {
             console.error(LOG_PREFIX, 'Failed to delete file:', err);
-            toastr.error('Could not delete file.', 'CharMemory');
+            toastr.error('無法刪除檔案。', 'CharMemory');
         }
     });
 
@@ -6334,7 +6334,7 @@ async function showTroubleshooter(initialSection = 'health') {
         if (!file) return;
         const avatar = target?.avatar;
         if (!avatar) {
-            toastr.warning('No character selected.', 'CharMemory');
+            toastr.warning('未選擇角色。', 'CharMemory');
             return;
         }
         try {
@@ -6352,7 +6352,7 @@ async function showTroubleshooter(initialSection = 'health') {
                 created: Date.now(),
             });
             saveSettingsDebounced();
-            toastr.success(`Imported: ${file.name}`, 'CharMemory');
+            toastr.success(`已匯入：${file.name}`, 'CharMemory');
             // Append new file row to the Data Bank list
             const sizeText = `<span class="charMemory_tsFileSize">${(text.length / 1024).toFixed(1)} KB</span>`;
             const newRow = `<div class="charMemory_tsFileRow" data-url="${escapeAttr(fileUrl)}" data-name="${escapeAttr(file.name)}">
@@ -6378,7 +6378,7 @@ async function showTroubleshooter(initialSection = 'health') {
             $list.append(newRow);
         } catch (err) {
             console.error(LOG_PREFIX, 'Failed to import file:', err);
-            toastr.error('Could not import file.', 'CharMemory');
+            toastr.error('無法匯入檔案。', 'CharMemory');
         }
         // Reset input so the same file can be re-imported
         $(this).val('');
@@ -6400,7 +6400,7 @@ async function showTroubleshooter(initialSection = 'health') {
             setTimeout(() => $status.fadeOut(300), 2000);
         } catch (err) {
             console.error(LOG_PREFIX, 'Failed to copy report:', err);
-            toastr.error('Could not copy report to clipboard.', 'CharMemory');
+            toastr.error('無法將報告複製到剪貼簿。', 'CharMemory');
         }
     });
 
@@ -6431,8 +6431,8 @@ async function showTroubleshooter(initialSection = 'health') {
             ? `<br><small>This is a group chat — all members share one extraction pointer and will all be reset together.</small>`
             : '';
         const confirmed = await callGenericPopup(
-            `The extraction pointer for the active chat will be reset for <strong>${escapeHtml(charName)}</strong>. Next "Extract Now" will re-read all messages in this chat from the first.${scopeNote}`,
-            POPUP_TYPE.CONFIRM, 'Reset This Chat',
+            `${scopeNote ? scopeNote : ''}活躍聊天的提取指標將被重置為<strong>${escapeHtml(charName)}</strong>。下次「立即提取」將從頭重新讀取此聊天中的所有訊息。${scopeNote}`,
+            POPUP_TYPE.CONFIRM, '重置此聊天',
         );
         if (!confirmed) return;
         resetCurrentChatTracking();
@@ -6441,8 +6441,8 @@ async function showTroubleshooter(initialSection = 'health') {
     $('#cm_ts_resetBatchProgress').off('click').on('click', async function () {
         const charName = getCharacterName() || 'this character';
         const confirmed = await callGenericPopup(
-            `The Batch tool's record of which messages it has already processed will be cleared for all of <strong>${escapeHtml(charName)}</strong>'s chats. The next Batch run will re-read every message from the start, which may create duplicate memories unless you clear existing memories first. Extract Now and auto-extraction are not affected.`,
-            POPUP_TYPE.CONFIRM, 'Reset Batch Progress',
+            `批次工具已處理訊息的記錄將被清除，適用於<strong>${escapeHtml(charName)}</strong>的所有聊天。下次批次執行將從頭重新讀取每條訊息，除非您先清除現有記憶，否則可能會建立重複記憶。「立即提取」和自動提取不受影響。`,
+            POPUP_TYPE.CONFIRM, '重置批次進度',
         );
         if (!confirmed) return;
         resetBatchProgress();
@@ -6455,7 +6455,7 @@ async function showTroubleshooter(initialSection = 'health') {
             : `This includes memories from all of ${escapeHtml(charName)}'s chats.`;
         const confirmed = await callGenericPopup(
             `<strong>${escapeHtml(charName)}'s</strong> memory file will be deleted and extraction tracking will be reset. This cannot be undone.<br><br>${scopeNote}`,
-            POPUP_TYPE.CONFIRM, 'Clear All Memories',
+            POPUP_TYPE.CONFIRM, '清除所有記憶',
         );
         if (!confirmed) return;
         await clearAllMemories();
@@ -6603,7 +6603,7 @@ ${logLines || '  No activity logged'}
 async function showMemoryManager() {
     const targets = getMemoryTargets();
     if (targets.length === 0) {
-        callGenericPopup('No character selected.', POPUP_TYPE.TEXT);
+        callGenericPopup('未選擇角色。', POPUP_TYPE.TEXT);
         return;
     }
 
@@ -6622,7 +6622,7 @@ async function showMemoryManager() {
         const pickerHtml = targetData.map((t, i) =>
             `<label class="checkbox_label"><input type="radio" name="charMemory_mmTarget" value="${i}" ${i === 0 ? 'checked' : ''} /> ${escapeHtml(t.name)} <small style="opacity:0.5;">(${t.count} memories)</small></label>`,
         ).join('<br>');
-        const picked = await callGenericPopup(`Select a character to view/edit memories for:<br><br>${pickerHtml}`, POPUP_TYPE.CONFIRM);
+        const picked = await callGenericPopup(`選擇一個角色以查看/編輯記憶：<br><br>${pickerHtml}`, POPUP_TYPE.CONFIRM);
         if (!picked) return;
         const selectedIdx = Number($('input[name="charMemory_mmTarget"]:checked').val()) || 0;
         target = targets[selectedIdx];
@@ -6632,7 +6632,7 @@ async function showMemoryManager() {
     const blocks = parseMemories(content || '');
 
     if (blocks.length === 0) {
-        callGenericPopup('No memories yet.', POPUP_TYPE.TEXT);
+        callGenericPopup('尚無記憶。', POPUP_TYPE.TEXT);
         return;
     }
 
@@ -6663,7 +6663,7 @@ async function showMemoryManager() {
         </div>
     </div>`;
 
-    const popup = callGenericPopup(editorHtml, POPUP_TYPE.CONFIRM, '', { wide: true, allowVerticalScrolling: true, okButton: 'Save', cancelButton: 'Cancel' });
+    const popup = callGenericPopup(editorHtml, POPUP_TYPE.CONFIRM, '', { wide: true, allowVerticalScrolling: true, okButton: '儲存', cancelButton: '取消' });
 
     // Find/Replace bar
     const cleanupMmFR = wireFindReplaceEvents(editor, refreshEditor, 'charMemory_mmFR', '.charMemoryMmFR');
@@ -6725,13 +6725,13 @@ async function showMemoryManager() {
         .filter(b => b.bullets.length > 0);
 
     if (cleanBlocks.length === 0) {
-        toastr.warning('No memories to save.', 'CharMemory');
+        toastr.warning('沒有記憶需要儲存。', 'CharMemory');
         return;
     }
 
     await writeMemoriesForCharacter(serializeMemories(cleanBlocks), target.avatar, target.fileName);
     const savedCount = countMemories(cleanBlocks);
-    toastr.success(`Saved ${savedCount} memories.`, 'CharMemory');
+    toastr.success(`已儲存 ${savedCount} 條記憶。`, 'CharMemory');
     updateStatusDisplay();
 }
 
@@ -6744,9 +6744,9 @@ async function showMemoryManager() {
  */
 function buildFindReplaceBar(idPrefix) {
     return `<div class="charMemory_findReplaceBar">
-        <input type="text" id="${idPrefix}_findInput" class="text_pole" placeholder="Find..." />
-        <input type="text" id="${idPrefix}_replaceInput" class="text_pole" placeholder="Replace with..." />
-        <button id="${idPrefix}_caseSensitive" class="menu_button menu_button_icon charMemory_frCaseBtn" title="Case sensitive">Aa</button>
+        <input type="text" id="${idPrefix}_findInput" class="text_pole" placeholder="尋找..." />
+        <input type="text" id="${idPrefix}_replaceInput" class="text_pole" placeholder="取代為..." />
+        <button id="${idPrefix}_caseSensitive" class="menu_button menu_button_icon charMemory_frCaseBtn" title="區分大小寫">Aa</button>
         <button id="${idPrefix}_replaceAllBtn" class="menu_button" disabled>Replace All</button>
         <span id="${idPrefix}_matchCount" class="charMemory_frMatchCount"></span>
     </div>`;
@@ -6798,7 +6798,7 @@ function wireFindReplaceEvents(editor, refreshFn, idPrefix, namespace) {
         const result = editor.findAndReplaceAll(find, replace, caseSensitive);
         refreshFn(null);
         updateCount();
-        toastr.success(`Replaced ${result.replacements} occurrence${result.replacements === 1 ? '' : 's'}.`, 'CharMemory');
+        toastr.success(`已替換 ${result.replacements} 處。`, 'CharMemory');
     });
 
     return function cleanup() {
@@ -6924,15 +6924,15 @@ function buildConsolidationDialog(beforeBlocks, beforeCount, consolidatedBlocks,
 
 async function undoConsolidation() {
     if (!consolidationBackup) {
-        toastr.warning('No consolidation to undo.', 'CharMemory');
+        toastr.warning('沒有要撤銷的合併操作。', 'CharMemory');
         return;
     }
-    const confirm = await callGenericPopup('Undo the last consolidation and restore previous memories?', POPUP_TYPE.CONFIRM);
+    const confirm = await callGenericPopup('撤銷上次的合併並恢復先前的記憶？', POPUP_TYPE.CONFIRM);
     if (!confirm) return;
 
     await writeMemoriesForCharacter(consolidationBackup.content, consolidationBackup.avatar, consolidationBackup.fileName);
     consolidationBackup = null;
-    toastr.success('Consolidation undone. Memories restored.', 'CharMemory');
+    toastr.success('合併已撤銷。記憶已恢復。', 'CharMemory');
     updateStatusDisplay();
 }
 
@@ -7002,7 +7002,7 @@ async function runConsolidationLLM(memories, charName) {
     try {
         inApiCall = true;
         const sourceLabel = getSourceLabel();
-        toastr.info(`Consolidating via ${sourceLabel}...`, 'CharMemory', { timeOut: 3000 });
+        toastr.info(`正在透過 ${sourceLabel} 合併...`, 'CharMemory', { timeOut: 3000 });
 
         const verbose = extension_settings[MODULE_NAME].verboseLogging;
         if (verbose) {
@@ -7028,7 +7028,7 @@ async function runConsolidationLLM(memories, charName) {
 
         if (!cleanResult) {
             logActivity('Consolidation returned empty result', 'warning');
-            toastr.warning('Consolidation returned empty result.', 'CharMemory');
+            toastr.warning('合併返回空結果。', 'CharMemory');
             return null;
         }
 
@@ -7066,7 +7066,7 @@ async function runConsolidationLLM(memories, charName) {
     } catch (err) {
         console.error(LOG_PREFIX, 'Consolidation failed:', err);
         logActivity(`Consolidation failed: ${err.message}`, 'error');
-        toastr.error('Memory consolidation failed. Check console for details.', 'CharMemory');
+        toastr.error('記憶合併失敗。請查看控制台了解詳情。', 'CharMemory');
         return null;
     } finally {
         inApiCall = false;
@@ -7075,7 +7075,7 @@ async function runConsolidationLLM(memories, charName) {
 
 async function consolidateMemories() {
     if (inApiCall) {
-        toastr.warning('An API call is already in progress.', 'CharMemory');
+        toastr.warning('API 呼叫正在進行中。', 'CharMemory');
         return;
     }
 
@@ -7093,7 +7093,7 @@ async function consolidateMemories() {
         const pickerHtml = targets.map((t, i) =>
             `<label class="checkbox_label"><input type="radio" name="charMemory_consolTarget" value="${i}" ${i === 0 ? 'checked' : ''} /> ${escapeHtml(t.name)}</label>`,
         ).join('<br>');
-        const picked = await callGenericPopup(`Select a character to consolidate memories for:<br><br>${pickerHtml}`, POPUP_TYPE.CONFIRM);
+        const picked = await callGenericPopup(`選擇一個角色以合併記憶：<br><br>${pickerHtml}`, POPUP_TYPE.CONFIRM);
         if (!picked) return;
         const selectedIdx = Number($('input[name="charMemory_consolTarget"]:checked').val()) || 0;
         target = targets[selectedIdx];
@@ -7103,7 +7103,7 @@ async function consolidateMemories() {
     const memories = parseMemories(content);
 
     if (memories.length < 2) {
-        toastr.info('Not enough memories to consolidate.', 'CharMemory');
+        toastr.info('記憶數量不足，無法合併。', 'CharMemory');
         return;
     }
 
@@ -7141,7 +7141,7 @@ async function consolidateMemories() {
     const initBlocks = editor.getBlocks();
     const initEditing = editor.getEditingSet();
     const dialogHtml = buildConsolidationDialog(memories, beforeCount, initBlocks, initEditing);
-    const popup = callGenericPopup(dialogHtml, POPUP_TYPE.CONFIRM, '', { wide: true, allowVerticalScrolling: true, okButton: 'Save', cancelButton: 'Cancel' });
+    const popup = callGenericPopup(dialogHtml, POPUP_TYPE.CONFIRM, '', { wide: true, allowVerticalScrolling: true, okButton: '儲存', cancelButton: '取消' });
 
     // Set up the strategy dropdown and prompt viewer to match current setting
     const currentStrategy = extension_settings[MODULE_NAME].consolidationStrategy || 'balanced';
@@ -7284,13 +7284,13 @@ async function consolidateMemories() {
 
     if (!confirmed) {
         logActivity('Consolidation cancelled by user');
-        toastr.info('Consolidation cancelled.', 'CharMemory');
+        toastr.info('合併已取消。', 'CharMemory');
         updateConsolidationStrategyUI();
         return;
     }
 
     if (inApiCall) {
-        toastr.warning('Cannot save while a re-run is in progress.', 'CharMemory');
+        toastr.warning('正在重新執行，無法儲存。', 'CharMemory');
         return;
     }
 
@@ -7300,7 +7300,7 @@ async function consolidateMemories() {
         .filter(b => b.bullets.length > 0);
 
     if (cleanBlocks.length === 0) {
-        toastr.warning('No memories to save. Memories unchanged.', 'CharMemory');
+        toastr.warning('沒有記憶需要儲存。記憶未變更。', 'CharMemory');
         return;
     }
 
@@ -7309,7 +7309,7 @@ async function consolidateMemories() {
 
     const afterCount = countMemories(cleanBlocks);
     logActivity(`Consolidation complete: ${beforeCount} → ${afterCount} memories`, 'success');
-    toastr.success(`Consolidated ${beforeCount} → ${afterCount} memories.`, 'CharMemory');
+    toastr.success(`已將 ${beforeCount} 條記憶合併為 ${afterCount} 條。`, 'CharMemory');
     updateStatusDisplay();
     updateConsolidationStrategyUI();
 }
@@ -7386,7 +7386,7 @@ async function showReformatPreview(originalBlocks, reformattedBlocks, charName, 
     const initBlocks = editor.getBlocks();
     const initEditing = editor.getEditingSet();
     const dialogHtml = buildReformatDialog(originalBlocks, originalCount, initBlocks, initEditing);
-    const popup = callGenericPopup(dialogHtml, POPUP_TYPE.CONFIRM, '', { wide: true, allowVerticalScrolling: true, okButton: 'Save', cancelButton: 'Cancel' });
+    const popup = callGenericPopup(dialogHtml, POPUP_TYPE.CONFIRM, '', { wide: true, allowVerticalScrolling: true, okButton: '儲存', cancelButton: '取消' });
 
     // === Find/Replace bar ===
     const cleanupRefFR = wireFindReplaceEvents(editor, refreshEditor, 'charMemory_refFR', '.charMemoryRefFR');
@@ -7445,7 +7445,7 @@ async function showReformatPreview(originalBlocks, reformattedBlocks, charName, 
             newResult = await convertWithLLM(content, charName);
         } catch (err) {
             console.error(LOG_PREFIX, 'Re-run reformat failed:', err);
-            toastr.error(`Re-run failed: ${err.message || 'Unknown error'}`, 'CharMemory');
+            toastr.error(`重新執行失敗：${err.message || '未知錯誤'}`, 'CharMemory');
             newResult = null;
         } finally {
             inApiCall = false;
@@ -7494,7 +7494,7 @@ async function showReformatPreview(originalBlocks, reformattedBlocks, charName, 
 
     // Guard: if a re-run is still in flight, don't save stale state
     if (inApiCall) {
-        toastr.warning('Cannot save while a re-run is in progress.', 'CharMemory');
+        toastr.warning('正在重新執行，無法儲存。', 'CharMemory');
         return null;
     }
 
@@ -7512,7 +7512,7 @@ async function showReformatPreview(originalBlocks, reformattedBlocks, charName, 
  */
 async function reformatMemories() {
     if (inApiCall) {
-        toastr.warning('An API call is already in progress.', 'CharMemory');
+        toastr.warning('API 呼叫正在進行中。', 'CharMemory');
         return;
     }
 
@@ -7530,7 +7530,7 @@ async function reformatMemories() {
         const pickerHtml = targets.map((t, i) =>
             `<label class="checkbox_label"><input type="radio" name="charMemory_reformatTarget" value="${i}" ${i === 0 ? 'checked' : ''} /> ${escapeHtml(t.name)}</label>`,
         ).join('<br>');
-        const picked = await callGenericPopup(`Select a character to reformat memories for:<br><br>${pickerHtml}`, POPUP_TYPE.CONFIRM);
+        const picked = await callGenericPopup(`選擇一個角色以重新格式化記憶：<br><br>${pickerHtml}`, POPUP_TYPE.CONFIRM);
         if (!picked) return;
         const selectedIdx = Number($('input[name="charMemory_reformatTarget"]:checked').val()) || 0;
         target = targets[selectedIdx];
@@ -7540,7 +7540,7 @@ async function reformatMemories() {
     const originalBlocks = parseMemories(content);
 
     if (originalBlocks.length === 0) {
-        toastr.info('No memories found to reformat.', 'CharMemory');
+        toastr.info('未找到需要重新格式化的記憶。', 'CharMemory');
         return;
     }
 
@@ -7568,11 +7568,11 @@ async function reformatMemories() {
         inApiCall = true;
         const charName = target.name || 'Character';
         const sourceLabel = getSourceLabel();
-        toastr.info(`Sending to ${sourceLabel} for reformatting...`, 'CharMemory', { timeOut: 3000 });
+        toastr.info(`正在傳送至 ${sourceLabel} 進行重新格式化...`, 'CharMemory', { timeOut: 3000 });
         result = await convertWithLLM(content, charName);
     } catch (err) {
         console.error(LOG_PREFIX, 'Reformat failed:', err);
-        toastr.error(`Reformat failed: ${err.message || 'Unknown error'}`, 'CharMemory');
+        toastr.error(`重新格式化失敗：${err.message || '未知錯誤'}`, 'CharMemory');
         return;
     } finally {
         inApiCall = false;
@@ -7584,7 +7584,7 @@ async function reformatMemories() {
     }
 
     if (result.blocks.length === 0) {
-        toastr.warning('LLM returned no usable memories. Reformat aborted.', 'CharMemory');
+        toastr.warning('LLM 未返回可用的記憶。重新格式化已中止。', 'CharMemory');
         return;
     }
 
@@ -7593,7 +7593,7 @@ async function reformatMemories() {
 
     if (!editedBlocks) {
         logActivity('Reformat cancelled by user');
-        toastr.info('Reformat cancelled.', 'CharMemory');
+        toastr.info('重新格式化已取消。', 'CharMemory');
         return;
     }
 
@@ -7605,14 +7605,14 @@ async function reformatMemories() {
         await writeMemoriesForCharacter(serializeMemories(editedBlocks), target.avatar, target.fileName);
     } catch (err) {
         console.error(LOG_PREFIX, 'Reformat save failed:', err);
-        toastr.error('Failed to save reformatted memories.', 'CharMemory');
+        toastr.error('無法儲存重新格式化的記憶。', 'CharMemory');
         reformatBackup = null;
         return;
     }
 
     const afterCount = countMemories(editedBlocks);
     logActivity(`Reformat complete: ${beforeCount} → ${afterCount} memories in ${editedBlocks.length} blocks`, 'success');
-    toastr.success(`Reformatted ${beforeCount} → ${afterCount} memories.`, 'CharMemory');
+    toastr.success(`已將 ${beforeCount} 條記憶重新格式化為 ${afterCount} 條。`, 'CharMemory');
     updateStatusDisplay();
 }
 
@@ -7621,18 +7621,18 @@ async function reformatMemories() {
  */
 async function undoReformat() {
     if (!reformatBackup) {
-        toastr.warning('No reformat to undo.', 'CharMemory');
+        toastr.warning('沒有要撤銷的重新格式化操作。', 'CharMemory');
         return;
     }
     const confirm = await callGenericPopup(
-        'Undo the last reformat and restore original memories?',
+        '撤銷上次的重新格式化並恢復原始記憶？',
         POPUP_TYPE.CONFIRM,
     );
     if (!confirm) return;
 
     await writeMemoriesForCharacter(reformatBackup.content, reformatBackup.avatar, reformatBackup.fileName);
     reformatBackup = null;
-    toastr.info('Reformat undone — original memories restored.', 'CharMemory');
+    toastr.info('重新格式化已撤銷 — 原始記憶已恢復。', 'CharMemory');
     logActivity('Reformat undone');
     updateStatusDisplay();
 }
@@ -7664,7 +7664,7 @@ function registerSlashCommands() {
             captureDiagnostics();
             console.log(LOG_PREFIX, 'Diagnostics:', lastDiagnostics);
             console.log(LOG_PREFIX, 'History:', diagnosticsHistory);
-            toastr.info('Diagnostics captured. Check console and Diagnostics panel.', 'CharMemory');
+            toastr.info('診斷資訊已捕獲。請查看控制台和診斷面板。', 'CharMemory');
             return '';
         },
         helpString: 'Capture and display CharMemory diagnostics data.',
@@ -7766,7 +7766,7 @@ function resetCurrentChatTracking() {
     updateStatusDisplay();
     const msg = isGroupChat()
         ? 'Extraction state reset for this group chat. All members will re-process from the beginning.'
-        : 'Extraction state reset. Next "Extract Now" will re-read all messages.';
+        : '提取狀態已重置。下次「立即提取」將重新讀取所有訊息。';
     toastr.success(msg, 'CharMemory');
 }
 
@@ -7779,7 +7779,7 @@ function resetCurrentChatTracking() {
 function resetBatchProgress() {
     const charName = getCharacterName();
     if (!charName || !extension_settings[MODULE_NAME].batchState) {
-        toastr.info('No batch progress to clear.', 'CharMemory');
+        toastr.info('沒有批次進度需要清除。', 'CharMemory');
         return;
     }
     const prefix = `${charName}:`;
@@ -7792,9 +7792,9 @@ function resetBatchProgress() {
     }
     saveSettingsDebounced();
     if (count > 0) {
-        toastr.success(`Batch progress cleared for ${count} chat${count !== 1 ? 's' : ''}.`, 'CharMemory');
+        toastr.success(`已清除 ${count} 個聊天的批次進度。`, 'CharMemory');
     } else {
-        toastr.info('No batch progress to clear.', 'CharMemory');
+        toastr.info('沒有批次進度需要清除。', 'CharMemory');
     }
 }
 
@@ -7837,7 +7837,7 @@ async function clearAllMemories() {
     $('#charMemory_statCount').text('0 memories');
     $('#charMemory_statProgress').text(`0/${extension_settings[MODULE_NAME].interval} msgs`);
     updateStatusDisplay();
-    toastr.success('Memories cleared and extraction state reset for all chats. Next extraction will start from the beginning.', 'CharMemory');
+    toastr.success('已清除所有聊天的記憶並重置提取狀態。下次提取將從頭開始。', 'CharMemory');
 }
 
 function setupListeners() {
@@ -7997,11 +7997,11 @@ async function onPinMemoryClick() {
     // Strip HTML tags from message text
     const plainText = msg.mes.replace(/<[^>]*>/g, '').trim();
     if (!plainText) {
-        toastr.warning('Message has no text content.', 'CharMemory');
+        toastr.warning('訊息沒有文字內容。', 'CharMemory');
         return;
     }
 
-    const edited = await callGenericPopup('Edit text to save as a memory:', POPUP_TYPE.INPUT, plainText, { rows: 6 });
+    const edited = await callGenericPopup('編輯文字以儲存為記憶：', POPUP_TYPE.INPUT, plainText, { rows: 6 });
     if (edited === null || edited === false) return; // cancelled
 
     const text = String(edited).trim();
@@ -8030,7 +8030,7 @@ async function onPinMemoryClick() {
     blocks.push({ chat: chatId, date: timestamp, bullets });
     await writeMemoriesForCharacter(serializeMemories(blocks), target.avatar, target.fileName);
 
-    toastr.success(`${bullets.length} memor${bullets.length === 1 ? 'y' : 'ies'} pinned${targets.length > 1 ? ` to ${target.name}` : ''}!`, 'CharMemory');
+    toastr.success(`已釘選 ${bullets.length} 條記憶${targets.length > 1 ? `至 ${target.name}` : ''}！`, 'CharMemory');
     updateStatusDisplay();
 }
 
@@ -8599,7 +8599,7 @@ async function showBatchPopup() {
     `;
 
     // Show the popup (non-blocking)
-    const popup = callGenericPopup(batchHtml, POPUP_TYPE.TEXT, 'Batch Extraction', { wide: true, okButton: 'Close' });
+    const popup = callGenericPopup(batchHtml, POPUP_TYPE.TEXT, '批次提取', { wide: true, okButton: '關閉' });
 
     // Wire batch controls after DOM is inserted
     setTimeout(() => {
@@ -8887,7 +8887,7 @@ jQuery(async function () {
     });
     $('#charMemory_logDrawerSave').on('click', function () {
         if (activityLog.length === 0) {
-            toastr.info('Activity log is empty.', 'CharMemory');
+            toastr.info('活動記錄為空。', 'CharMemory');
             return;
         }
         const lines = activityLog.map(e => `[${e.timestamp}] [${e.type}] ${e.message}`).join('\n');

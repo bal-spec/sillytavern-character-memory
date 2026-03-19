@@ -49,7 +49,7 @@ export function createMemoryEditor({ blocks }) {
         addBlock(timestamp) {
             saveVersion();
             editorBlocks.push({
-                chat: 'New Group',
+                chat: '新群組',
                 date: timestamp || getTimestamp(),
                 bullets: [''],
             });
