@@ -3064,9 +3064,16 @@ async function extractMemories({
 
 /**
  * Event handler for CHARACTER_MESSAGE_RENDERED.
+ * @param {number} _messageIndex - Index of the rendered message (unused directly).
+ * @param {string} [type] - Generation type ('swipe', 'continue', etc.). Swipes re-render an
+ *   existing message slot without adding a new message, so they must not count toward the
+ *   extraction interval.
  */
-function onCharacterMessageRendered() {
+function onCharacterMessageRendered(_messageIndex, type) {
     if (!extension_settings[MODULE_NAME].enabled) return;
+
+    // Swipes replace an existing message slot — no new content added to chat history.
+    if (type === 'swipe') return;
 
     const context = getContext();
     if (context.characterId === undefined && !context.groupId) return;

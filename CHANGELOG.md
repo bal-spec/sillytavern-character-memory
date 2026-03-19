@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.1.9
+
+### Bug Fixes
+
+- **Fix message swipes counting toward extraction interval**: Swiping to a different AI response variant was incrementing the extraction counter as if a new message had been sent, causing extraction to trigger sooner than the configured interval. The `CHARACTER_MESSAGE_RENDERED` event handler now checks the `type` argument ST passes and returns early when `type === 'swipe'`. Fixes [#9](https://github.com/bal-spec/sillytavern-character-memory/issues/9).
+
 ## 2.1.8
 
 ### New Features
