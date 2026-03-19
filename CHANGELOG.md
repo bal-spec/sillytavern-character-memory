@@ -5,6 +5,7 @@
 ### Bug Fixes
 
 - **Fix message swipes counting toward extraction interval**: Swiping to a different AI response variant was incrementing the extraction counter as if a new message had been sent, causing extraction to trigger sooner than the configured interval. The `CHARACTER_MESSAGE_RENDERED` event handler now checks the `type` argument ST passes and returns early when `type === 'swipe'`. Fixes [#9](https://github.com/bal-spec/sillytavern-character-memory/issues/9).
+- **Fix Settings and Troubleshooter modals cramped on mobile**: The left-nav layout used a fixed-width sidebar that consumed nearly half the popup width on narrow screens, leaving the content panel too narrow for readable text. In phone mode, the nav now switches to horizontal tabs above the content panel, giving it the full popup width.
 
 ## 2.1.8
 

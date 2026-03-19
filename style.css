@@ -1062,6 +1062,35 @@ body.charMemory-phone-mode .charMemory_logDrawer {
     z-index: 4000;
 }
 
+/* ── Phone mode: stack modal nav above content instead of side-by-side ── */
+body.charMemory-phone-mode .charMemory_modal {
+    flex-direction: column;
+    min-height: 300px;
+}
+
+body.charMemory-phone-mode .charMemory_modalNav {
+    flex-direction: row;
+    min-width: 0;
+    border-right: none;
+    border-bottom: 1px solid var(--SmartThemeBorderColor);
+    padding: 4px 0 0;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+body.charMemory-phone-mode .charMemory_modalNavItem {
+    padding: 6px 12px;
+    font-size: 0.82em;
+    white-space: nowrap;
+    border-left: none;
+    border-bottom: 2px solid transparent;
+}
+
+body.charMemory-phone-mode .charMemory_modalNavItem.active {
+    border-left-color: transparent;
+    border-bottom-color: var(--SmartThemeQuoteColor);
+}
+
 .charMemory_logDrawer .charMemory_drawerBody {
     font-family: monospace;
     font-size: 0.85em;
