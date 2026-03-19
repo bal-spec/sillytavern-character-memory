@@ -45,6 +45,12 @@ CharMemory extracts automatically while you chat. The **Auto** pill in the panel
 
 Both settings only affect automatic extraction. Extract Now, Extract Here, and Batch always run immediately regardless of interval or cooldown.
 
+### Protect recent messages
+
+When enabled (Settings → Extraction), this excludes the most recent messages from auto-extraction. This prevents the character's next response from being constrained by memories that were just extracted from the conversation in progress — swipes and regenerations stay natural because the extraction hasn't "locked in" those messages yet. Skipped messages are picked up on the next extraction cycle.
+
+![Settings Modal — Extraction tab showing Protect Recent Messages and other settings](../images/settings-modal-extraction.png)
+
 ---
 
 ## Extract Now and Extract Here

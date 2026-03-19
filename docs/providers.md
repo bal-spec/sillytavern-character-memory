@@ -6,13 +6,16 @@ CharMemory works better when it uses its own LLM connection — separate from yo
 
 ## Extraction sources
 
-Three options for **LLM Used for Extraction** in Settings → Connection:
+Four options for **LLM Used for Extraction** in Settings → Connection:
 
 | Source | How it works | Best for |
 |--------|-------------|----------|
 | **Dedicated API** (default) | Direct API call with only the extraction prompt | Best quality — recommended |
+| **Connection Profile** | Reuses a saved SillyTavern connection profile | Already have a profile configured in ST |
 | **WebLLM** | Small model running locally in your browser | Privacy and no API cost; limited quality |
 | **Main LLM** | Uses whatever LLM your chat is using | Not recommended; No extra setup but quality suffers |
+
+![Settings Modal — Connection tab with source dropdown](../images/settings-modal-connection.png)
 
 **Dedicated API** is the default and recommended option. The extraction prompt is the only thing sent — the character card is included as bounded reference context (so the LLM knows what *not* to re-extract), but no chat system prompts, personas, or jailbreaks contaminate the call.
 
@@ -44,6 +47,56 @@ Open Settings → Connection → choose a **Provider**:
 3. Click **Connect** to fetch available models
 4. Search and select a **model**
 5. Click **Test Connection** to confirm it responds correctly
+
+---
+
+## Connection Profiles
+
+If you already have a connection configured in SillyTavern's **Connection Manager**, you can reuse it for extraction instead of setting up a separate Dedicated API connection.
+
+### What is a Connection Profile?
+
+A Connection Profile is a SillyTavern feature that saves a snapshot of your current API connection settings — so you can switch between configurations quickly. A profile can include any combination of:
+
+| Setting | Description |
+|---------|-------------|
+| **API** | Which API provider (e.g., NanoGPT, OpenAI, OpenRouter) |
+| **Settings Preset** | The sampler/generation preset |
+| **Model** | The specific model to use |
+| **Proxy Preset** | Proxy configuration (if any) |
+| **Custom Stopping Strings** | Custom stop sequences |
+| **Start Reply With** | Prefill text for responses |
+| **Reasoning Template** | Reasoning/thinking format (e.g., DeepSeek) |
+| **Prompt Post-Processing** | Any prompt post-processing rules |
+| **Secret** | Your API key (stored securely) |
+
+Each setting has a checkbox — you choose which parts to include. When a profile is loaded, only the checked settings are applied.
+
+![Connection Profile toolbar — dropdown with info, create, save, edit, reload, delete icons](../images/connection-profile-bar.png)
+
+### Creating a profile in SillyTavern
+
+1. Open the **API Connections** panel (plug icon in SillyTavern's top bar)
+2. Configure your API: select a **Chat Completion Source**, enter your **API key**, select a **model**, and verify the connection shows **Valid**
+3. Click the **create icon** (file with plus) in the Connection Profile toolbar
+4. Check the settings you want to include in the profile — at minimum, check **API**, **Model**, and **Secret**
+5. Give it a name and click **Save**
+
+![Creating a Connection Profile — select which settings to include](../images/connection-profile-create.png)
+
+### Using a profile for CharMemory extraction
+
+![Settings Modal — Connection Profile source](../images/settings-modal-profile.png)
+
+1. In the CharMemory panel, click the **gear icon** to open Settings
+2. Under **Connection**, change **LLM Used for Extraction** to **Connection Profile**
+3. Choose your profile from the **Connection Profile** dropdown
+4. Click **Test Connection** to verify it works for extraction
+5. Optionally set a **System prompt** override — if left blank, CharMemory uses its default extraction system prompt
+
+Connection Profiles use whatever credentials, model, and endpoint are configured in the profile. You don't need to enter an API key or select a model separately — it's all inherited from the profile.
+
+> **When to use this vs. Dedicated API:** If you've already configured a connection in SillyTavern and want to reuse it without duplicating API keys, Connection Profile is convenient. If you want a completely separate LLM for extraction (different model, different provider), Dedicated API gives you full control.
 
 ---
 

@@ -118,7 +118,7 @@ New message arrives
   → At generation time, VS retrieves relevant chunks and injects them into the prompt
 ```
 
-`callLLM()` (line ~2265) is the **single dispatch point** for all LLM calls — extraction, consolidation, and conversion all go through it. It branches on `extension_settings.charMemory.source` to route to the Main LLM, WebLLM, or a dedicated provider.
+`callLLM()` (line ~2265) is the **single dispatch point** for all LLM calls — extraction, consolidation, and conversion all go through it. It branches on `extension_settings.charMemory.source` to route to the Main LLM, WebLLM, a dedicated provider, or a Connection Profile (via `generateProfileResponse()` which uses ST's `ConnectionManagerRequestService`).
 
 ---
 

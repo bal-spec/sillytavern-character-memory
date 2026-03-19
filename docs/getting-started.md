@@ -26,6 +26,8 @@ CharMemory needs its own LLM connection — separate from your main chat. This k
 
 > **Running an LLM locally?** Select **Local Server** from the provider dropdown. Enter your server URL (e.g., `http://localhost:11434/v1` for Ollama). No API key needed. See [Providers → Local Servers](providers.md#local-servers) for port numbers by backend.
 
+> **Already have a connection configured in SillyTavern?** You can skip the wizard's provider setup and use a **Connection Profile** instead. After completing the wizard, open **Settings** (gear icon) → **Connection** → change **LLM Used for Extraction** to **Connection Profile** and select your saved profile. See [Providers → Connection Profiles](providers.md#connection-profiles).
+
 > **If your provider is not listed** Many providers have an OpenAI compatible API endpoint. See if you can configure it that way.
 
 ![Wizard step 1 after successful connection — green checkmark, model selected](../images/wizard-step1-connected.png)
