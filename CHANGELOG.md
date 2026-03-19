@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.1.9
+
+### Bug Fixes
+
+- **Fix message swipes counting toward extraction interval**: Swiping to a different AI response variant was incrementing the extraction counter as if a new message had been sent, causing extraction to trigger sooner than the configured interval. The `CHARACTER_MESSAGE_RENDERED` event handler now checks the `type` argument ST passes and returns early when `type === 'swipe'`. Fixes [#9](https://github.com/bal-spec/sillytavern-character-memory/issues/9).
+
+## 2.1.8
+
+### New Features
+
+- **Connection Profile extraction source**: New "Connection Profile" option in Settings → Connection lets you reuse saved SillyTavern connection profiles for memory extraction instead of configuring a dedicated API. Uses ST's ConnectionManagerRequestService — all credentials, model selection, and API routing are handled by the profile. Includes test connection button, system prompt override, and health check integration. The existing Dedicated API source is unchanged. Addresses [#7](https://github.com/bal-spec/sillytavern-character-memory/issues/7).
+
 ## 2.1.7
 
 ### Improvements

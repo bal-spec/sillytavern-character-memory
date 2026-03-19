@@ -313,6 +313,7 @@ const EXTRACTION_SOURCE = {
     MAIN_LLM: 'main_llm',
     WEBLLM: 'webllm',
     PROVIDER: 'provider',
+    PROFILE: 'profile',
 };
 
 const PROVIDER_PRESETS = {
@@ -456,6 +457,8 @@ const defaultSettings = {
     fileName: DEFAULT_FILE_NAME,
     perChat: false,
     selectedProvider: 'openrouter',
+    selectedProfileId: '',
+    profileSystemPrompt: '',
     providers: {},
     // Legacy NanoGPT fields kept for migration
     nanogptApiKey: '',
@@ -2323,6 +2326,13 @@ async function generateProviderResponse(messages, maxTokens) {
 function getSourceLabel() {
     const source = extension_settings[MODULE_NAME].source;
     if (source === EXTRACTION_SOURCE.WEBLLM) return 'WebLLM';
+    if (source === EXTRACTION_SOURCE.PROFILE) {
+        try {
+            const CMRS = getContext().ConnectionManagerRequestService;
+            const profile = CMRS?.getProfile(extension_settings[MODULE_NAME].selectedProfileId);
+            return `Profile: ${profile?.name || 'unknown'}`;
+        } catch { return 'Connection Profile'; }
+    }
     if (source === EXTRACTION_SOURCE.PROVIDER) {
         const key = extension_settings[MODULE_NAME].selectedProvider;
         return PROVIDER_PRESETS[key]?.name || key;
@@ -2331,7 +2341,60 @@ function getSourceLabel() {
 }
 
 /**
- * Unified LLM dispatch: routes to Provider API, WebLLM, or Main LLM.
+ * Check whether the Connection Manager extension is available.
+ * @returns {boolean}
+ */
+function isConnectionManagerAvailable() {
+    const context = getContext();
+    return !context.extensionSettings?.disabledExtensions?.includes('connection-manager');
+}
+
+/**
+ * Send a request via SillyTavern's Connection Manager (saved connection profiles).
+ * @param {string} userPrompt The user prompt to send.
+ * @param {number} maxTokens Max tokens for the response.
+ * @param {string} defaultSystemPrompt Fallback system prompt.
+ * @returns {Promise<string>} The LLM response text.
+ */
+async function generateProfileResponse(userPrompt, maxTokens, defaultSystemPrompt) {
+    const s = extension_settings[MODULE_NAME];
+    const profileId = s.selectedProfileId;
+
+    if (!profileId) {
+        throw new Error('No connection profile selected. Configure it in Character Memory settings.');
+    }
+    if (!isConnectionManagerAvailable()) {
+        throw new Error('Connection Manager extension is disabled. Enable it in Extensions, or switch to Dedicated API.');
+    }
+
+    const context = getContext();
+    const CMRS = context.ConnectionManagerRequestService;
+    if (!CMRS) {
+        throw new Error('ConnectionManagerRequestService not found. Your SillyTavern version may be too old.');
+    }
+
+    const systemPrompt = s.profileSystemPrompt || defaultSystemPrompt;
+    const messages = [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+    ];
+
+    logActivity(`Calling LLM via connection profile...`, 'info');
+    const t0 = performance.now();
+    const result = await CMRS.sendRequest(profileId, messages, maxTokens, {
+        stream: false,
+        extractData: true,
+        includePreset: true,
+    });
+    const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
+
+    const text = result?.content || '';
+    logActivity(`Profile response: ${text.length} chars, ${elapsed}s`, 'success');
+    return text;
+}
+
+/**
+ * Unified LLM dispatch: routes to Provider API, Connection Profile, WebLLM, or Main LLM.
  * @param {string} userPrompt The user prompt to send.
  * @param {number} maxTokens Max tokens for the response.
  * @param {string} [defaultSystemPrompt='You are a memory extraction assistant.'] Fallback system prompt.
@@ -2346,6 +2409,9 @@ async function callLLM(userPrompt, maxTokens, defaultSystemPrompt = 'You are a m
             [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
             maxTokens,
         );
+    }
+    if (source === EXTRACTION_SOURCE.PROFILE) {
+        return generateProfileResponse(userPrompt, maxTokens, defaultSystemPrompt);
     }
     if (source === EXTRACTION_SOURCE.WEBLLM) {
         if (!isWebLlmSupported()) throw new Error('WebLLM is not available in this browser.');
@@ -2503,6 +2569,57 @@ async function testProviderConnection() {
         $status.text(`\u2718 ${err.message || 'Test failed'}`).css('color', '#e74c3c').show();
     } finally {
         $btn.prop('disabled', false).val('Test Model');
+    }
+}
+
+/**
+ * Test connection via a saved Connection Profile.
+ */
+async function testProfileConnection() {
+    const $status = $('#cm_modal_profileTestStatus');
+    const $btn = $('#cm_modal_profileTest');
+    const profileId = extension_settings[MODULE_NAME].selectedProfileId;
+
+    if (!profileId) {
+        $status.text('Select a connection profile first.').css('color', '#e74c3c').show();
+        return;
+    }
+    if (!isConnectionManagerAvailable()) {
+        $status.text('Connection Manager extension is disabled.').css('color', '#e74c3c').show();
+        return;
+    }
+
+    $btn.prop('disabled', true).val('Testing...');
+    $status.text('Testing connection...').css('color', '').show();
+
+    try {
+        const context = getContext();
+        const CMRS = context.ConnectionManagerRequestService;
+        const profile = CMRS.getProfile(profileId);
+        const profileName = profile?.name || profileId;
+
+        const t0 = performance.now();
+        const result = await CMRS.sendRequest(
+            profileId,
+            [{ role: 'user', content: 'Respond with exactly: CHARMEMORY_TEST_OK' }],
+            20,
+            { stream: false, extractData: true },
+        );
+        const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
+        const reply = (result?.content || '').trim();
+        const passed = reply.includes('CHARMEMORY_TEST_OK');
+
+        logActivity(`Profile test (${profileName}): reply="${reply}", ${elapsed}s`, passed ? 'success' : 'warn');
+        if (passed) {
+            $status.text(`\u2714 ${profileName} responded correctly (${elapsed}s)`).css('color', '#2ecc71').show();
+        } else {
+            $status.html(`\u26A0 ${escapeHtml(profileName)} responded but didn't follow the test instruction (${elapsed}s). Reply: "<b>${escapeHtml(reply.slice(0, 80))}</b>". It may still work for extraction.`).css('color', '#e67e22').show();
+        }
+    } catch (err) {
+        logActivity(`Profile test failed: ${err.message}`, 'error');
+        $status.text(`\u2718 ${err.message || 'Test failed'}`).css('color', '#e74c3c').show();
+    } finally {
+        $btn.prop('disabled', false).val('Test Connection');
     }
 }
 
@@ -2947,9 +3064,16 @@ async function extractMemories({
 
 /**
  * Event handler for CHARACTER_MESSAGE_RENDERED.
+ * @param {number} _messageIndex - Index of the rendered message (unused directly).
+ * @param {string} [type] - Generation type ('swipe', 'continue', etc.). Swipes re-render an
+ *   existing message slot without adding a new message, so they must not count toward the
+ *   extraction interval.
  */
-function onCharacterMessageRendered() {
+function onCharacterMessageRendered(_messageIndex, type) {
     if (!extension_settings[MODULE_NAME].enabled) return;
+
+    // Swipes replace an existing message slot — no new content added to chat history.
+    if (type === 'swipe') return;
 
     const context = getContext();
     if (context.characterId === undefined && !context.groupId) return;
@@ -3280,6 +3404,34 @@ async function computeHealthScore() {
     const target = targets[0];
     const vecSettings = extension_settings.vectors;
 
+    // Check 0 (conditional): Connection Profile source validation
+    const source = extension_settings[MODULE_NAME].source;
+    if (source === EXTRACTION_SOURCE.PROFILE) {
+        const cmOk = isConnectionManagerAvailable();
+        const profileId = extension_settings[MODULE_NAME].selectedProfileId;
+        let profileOk = false;
+        if (cmOk && profileId) {
+            try {
+                const CMRS = getContext().ConnectionManagerRequestService;
+                CMRS?.getProfile(profileId);
+                profileOk = true;
+            } catch { /* profile not found */ }
+        }
+        if (!cmOk) {
+            checks.push({ id: 'profile_source', level: 'red', label: 'Connection Profile',
+                detail: 'Connection Manager extension is disabled. Enable it in Extensions, or switch to Dedicated API.' });
+        } else if (!profileId) {
+            checks.push({ id: 'profile_source', level: 'red', label: 'Connection Profile',
+                detail: 'No profile selected. Open Settings → Connection to choose one.' });
+        } else if (!profileOk) {
+            checks.push({ id: 'profile_source', level: 'red', label: 'Connection Profile',
+                detail: 'Selected profile no longer exists. Open Settings → Connection to choose a new one.' });
+        } else {
+            checks.push({ id: 'profile_source', level: 'green', label: 'Connection Profile',
+                detail: 'Profile configured and available.' });
+        }
+    }
+
     // Check 1: Vector Storage enabled for files
     // Also verify VS extension is actually loaded — extension_settings.vectors persists
     // even when the VS extension is disabled, so we need both checks.
@@ -3601,11 +3753,13 @@ async function showSettingsModal() {
         .join('');
 
     // Build source options
+    const cmAvailable = isConnectionManagerAvailable();
     const sourceOptions = [
         { value: 'provider', label: 'Dedicated API (recommended)' },
+        { value: 'profile', label: 'Connection Profile', disabled: !cmAvailable, title: cmAvailable ? '' : 'Enable the Connection Manager extension to use saved profiles' },
         { value: 'webllm', label: 'WebLLM (browser-local)' },
         { value: 'main_llm', label: 'Main LLM' },
-    ].map(o => `<option value="${o.value}" ${o.value === s.source ? 'selected' : ''}>${o.label}</option>`).join('');
+    ].map(o => `<option value="${o.value}" ${o.value === s.source ? 'selected' : ''} ${o.disabled ? 'disabled' : ''} ${o.title ? `title="${escapeAttr(o.title)}"` : ''}>${o.label}</option>`).join('');
 
     // Build chunk boundary options
     const chunkOptions = [
@@ -3679,6 +3833,26 @@ async function showSettingsModal() {
             <div class="charMemory_modalFieldGroup">
                 <label><small>System prompt (optional)</small></label>
                 <textarea id="cm_modal_systemPrompt" class="text_pole" rows="3" placeholder="Override the default system prompt. Leave blank for default.">${escapeHtml(providerSettings.systemPrompt || '')}</textarea>
+                <small class="charMemory_helperText">Prepended to extraction/consolidation calls. Use for jailbreaks or custom instructions.</small>
+            </div>
+        </div>
+        <div id="cm_modal_profileSettings" style="${s.source === 'profile' ? '' : 'display:none;'}">
+            <div class="charMemory_modalFieldGroup">
+                <label><small>Connection Profile</small></label>
+                <select id="cm_modal_profileSelect" class="text_pole">
+                    <option value="">— Select a profile —</option>
+                </select>
+                <small class="charMemory_helperText">Uses credentials and settings from your saved SillyTavern connection profile.</small>
+            </div>
+            <div class="charMemory_modalFieldGroup" id="cm_modal_profileTestRow">
+                <div style="display:flex;gap:5px;align-items:center;">
+                    <input type="button" id="cm_modal_profileTest" class="menu_button" value="Test Connection" title="Send a test prompt via the selected profile" />
+                </div>
+                <small id="cm_modal_profileTestStatus" class="charMemory_helperText" style="display:none;"></small>
+            </div>
+            <div class="charMemory_modalFieldGroup">
+                <label><small>System prompt (optional)</small></label>
+                <textarea id="cm_modal_profileSystemPrompt" class="text_pole" rows="3" placeholder="Override the default system prompt. Leave blank for default.">${escapeHtml(s.profileSystemPrompt || '')}</textarea>
                 <small class="charMemory_helperText">Prepended to extraction/consolidation calls. Use for jailbreaks or custom instructions.</small>
             </div>
         </div>
@@ -3924,6 +4098,7 @@ async function showSettingsModal() {
         extension_settings[MODULE_NAME].source = val;
         saveSettingsDebounced();
         $('#cm_modal_providerSettings').toggle(val === 'provider');
+        $('#cm_modal_profileSettings').toggle(val === 'profile');
         // Sync sidebar
         $('#charMemory_source').val(val);
         toggleProviderSettings(val);
@@ -3937,6 +4112,54 @@ async function showSettingsModal() {
         $('#charMemory_providerSelect').val(key);
         // Update modal provider UI
         updateModalProviderUI();
+    });
+
+    // === Connection Profile handlers ===
+    if (cmAvailable) {
+        try {
+            const context = getContext();
+            const CMRS = context.ConnectionManagerRequestService;
+            if (CMRS) {
+                CMRS.handleDropdown(
+                    '#cm_modal_profileSelect',
+                    s.selectedProfileId || '',
+                    (profile) => {
+                        // onChange — fires on selection, update, or delete
+                        extension_settings[MODULE_NAME].selectedProfileId = profile?.id || '';
+                        saveSettingsDebounced();
+                    },
+                    (profile) => {
+                        // onCreate — new profile added to dropdown automatically
+                        logActivity(`New connection profile available: ${profile?.name}`, 'info');
+                    },
+                    (oldProfile, newProfile) => {
+                        // onUpdate — dropdown refreshes automatically
+                        if (oldProfile?.id === s.selectedProfileId) {
+                            logActivity(`Active connection profile "${newProfile?.name}" was updated`, 'info');
+                        }
+                    },
+                    (profile) => {
+                        // onDelete — clear selection if the active profile was deleted
+                        if (profile?.id === s.selectedProfileId) {
+                            extension_settings[MODULE_NAME].selectedProfileId = '';
+                            saveSettingsDebounced();
+                            logActivity('Active connection profile was deleted — please select a new one', 'warn');
+                        }
+                    },
+                );
+            }
+        } catch (err) {
+            console.warn(`${LOG_PREFIX} Failed to initialize profile dropdown:`, err);
+        }
+    }
+
+    $('#cm_modal_profileSystemPrompt').off('input').on('input', function () {
+        extension_settings[MODULE_NAME].profileSystemPrompt = String($(this).val());
+        saveSettingsDebounced();
+    });
+
+    $('#cm_modal_profileTest').off('click').on('click', async function () {
+        await testProfileConnection();
     });
 
     $('#cm_modal_apiKey').off('input').on('input', function () {
