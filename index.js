@@ -5040,6 +5040,9 @@ async function showSetupWizard(startStep = 1) {
 
     // Step 1: LLM Connection
     const noChatWarnStyle = getCharacterName() ? 'display:none;' : '';
+    const cmAvailable = isConnectionManagerAvailable();
+    const currentSource = s.source || EXTRACTION_SOURCE.PROVIDER;
+    const showProfile = currentSource === EXTRACTION_SOURCE.PROFILE;
     const step1Html = `
         <div class="charMemory_wizardStep" data-step="1">
             <div id="cm_wiz_noChatWarn" class="charMemory_wizardCallout charMemory_wizardCallout--warn" style="${noChatWarnStyle}">
@@ -5048,8 +5051,16 @@ async function showSetupWizard(startStep = 1) {
             </div>
             <div class="charMemory_wizardExplanation">
                 <strong>CharMemory</strong> automatically extracts structured memories from your roleplay chats and stores them so your characters can recall past events.
-                It needs access to an LLM to read your messages and create memory summaries. This can be any OpenAI-compatible provider.
+                It needs access to an LLM to read your messages and create memory summaries.
             </div>
+            <div class="charMemory_modalFieldGroup">
+                <label><small>Connection type</small></label>
+                <div class="charMemory_wizSourceToggle">
+                    <button type="button" class="menu_button charMemory_wizSourceBtn${!showProfile ? ' active' : ''}" data-source="provider">Dedicated API</button>
+                    <button type="button" class="menu_button charMemory_wizSourceBtn${showProfile ? ' active' : ''}" data-source="profile" ${!cmAvailable ? 'disabled title="Enable the Connection Manager extension to use saved profiles"' : ''}>Connection Profile</button>
+                </div>
+            </div>
+            <div id="cm_wiz_providerSection" style="${showProfile ? 'display:none;' : ''}">
             <div class="charMemory_modalFieldGroup">
                 <label><small>Provider</small></label>
                 <select id="cm_wiz_provider" class="text_pole">${providerOptions}</select>
@@ -5086,6 +5097,20 @@ async function showSetupWizard(startStep = 1) {
                     <div id="cm_wiz_modelList" class="charMemory_wizModelList"></div>
                 </div>
                 <small id="cm_wiz_modelStatus" class="charMemory_helperText" style="display:none;"></small>
+            </div>
+            </div>
+            <div id="cm_wiz_profileSection" style="${showProfile ? '' : 'display:none;'}">
+                <div class="charMemory_modalFieldGroup">
+                    <label><small>Connection Profile</small></label>
+                    <select id="cm_wiz_profileSelect" class="text_pole">
+                        <option value="">Select a Connection Profile</option>
+                    </select>
+                    <small class="charMemory_helperText">Uses credentials and settings from your saved SillyTavern connection profile.</small>
+                </div>
+                <div class="charMemory_modalFieldGroup">
+                    <input type="button" id="cm_wiz_profileTest" class="menu_button charMemory_fullWidth" value="Test Connection" />
+                    <small id="cm_wiz_profileTestStatus" class="charMemory_helperText" style="display:none;margin-bottom:6px;"></small>
+                </div>
             </div>
             <div class="charMemory_wizardNav">
                 <input type="button" id="cm_wiz_next1" class="menu_button" value="Next \u2192" disabled />
@@ -5245,6 +5270,90 @@ async function showSetupWizard(startStep = 1) {
         $wizard.find('#cm_wiz_connectStatus').hide().text('');
         $wizard.find('#cm_wiz_modelRow').hide();
     }
+
+    // --- Source toggle (Dedicated API vs Connection Profile) ---
+    $wizard.on('click', '.charMemory_wizSourceBtn', function () {
+        const source = $(this).data('source');
+        $wizard.find('.charMemory_wizSourceBtn').removeClass('active');
+        $(this).addClass('active');
+
+        const isProfile = source === 'profile';
+        $wizard.find('#cm_wiz_providerSection').toggle(!isProfile);
+        $wizard.find('#cm_wiz_profileSection').toggle(isProfile);
+
+        extension_settings[MODULE_NAME].source = isProfile ? EXTRACTION_SOURCE.PROFILE : EXTRACTION_SOURCE.PROVIDER;
+        saveSettingsDebounced();
+
+        // Reset connection state for the new source
+        wizConnectionOk = false;
+        $wizard.find('#cm_wiz_next1').prop('disabled', true);
+        $wizard.find('#cm_wiz_connectStatus, #cm_wiz_profileTestStatus').hide().text('');
+    });
+
+    // --- Connection Profile dropdown & test ---
+    if (cmAvailable) {
+        try {
+            const context = getContext();
+            const CMRS = context.ConnectionManagerRequestService;
+            if (CMRS) {
+                CMRS.handleDropdown(
+                    '#cm_wiz_profileSelect',
+                    s.selectedProfileId || '',
+                    (profile) => {
+                        extension_settings[MODULE_NAME].selectedProfileId = profile?.id || '';
+                        saveSettingsDebounced();
+                    },
+                );
+            }
+        } catch (err) {
+            console.warn(`${LOG_PREFIX} Failed to initialize wizard profile dropdown:`, err);
+        }
+    }
+
+    $wizard.on('click', '#cm_wiz_profileTest', async function () {
+        const profileId = extension_settings[MODULE_NAME].selectedProfileId;
+        const $status = $wizard.find('#cm_wiz_profileTestStatus');
+        const $btn = $(this);
+
+        if (!profileId) {
+            $status.text('Select a connection profile first.').css('color', '#e74c3c').show();
+            return;
+        }
+
+        $btn.prop('disabled', true).val('Testing...');
+        $status.text('Testing connection...').css('color', '').show();
+
+        try {
+            const context = getContext();
+            const CMRS = context.ConnectionManagerRequestService;
+            const profile = CMRS.getProfile(profileId);
+            const profileName = profile?.name || profileId;
+
+            const t0 = performance.now();
+            const result = await CMRS.sendRequest(
+                profileId,
+                [{ role: 'user', content: 'Respond with exactly: CHARMEMORY_TEST_OK' }],
+                20,
+                { stream: false, extractData: true },
+            );
+            const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
+            const reply = (result?.content || '').trim();
+
+            if (reply.includes('CHARMEMORY_TEST_OK')) {
+                $status.text(`\u2714 ${profileName} responded correctly (${elapsed}s)`).css('color', '#2ecc71').show();
+            } else {
+                $status.html(`\u2714 ${escapeHtml(profileName)} connected (${elapsed}s). It may still work for extraction.`).css('color', '#27ae60').show();
+            }
+            wizConnectionOk = true;
+            $wizard.find('#cm_wiz_next1').prop('disabled', false);
+        } catch (err) {
+            $status.text(`\u2718 ${err.message || 'Test failed'}`).css('color', '#e74c3c').show();
+            wizConnectionOk = false;
+            $wizard.find('#cm_wiz_next1').prop('disabled', true);
+        } finally {
+            $btn.prop('disabled', false).val('Test Connection');
+        }
+    });
 
     $wizard.on('change', '#cm_wiz_provider', function () {
         const key = String($(this).val());
@@ -5595,12 +5704,45 @@ async function showSetupWizard(startStep = 1) {
 
     // --- Step 3: Review & Go ---
     function initStep3() {
+        const source = extension_settings[MODULE_NAME].source;
+        const isProfile = source === EXTRACTION_SOURCE.PROFILE;
         const pk = extension_settings[MODULE_NAME].selectedProvider;
         const p = PROVIDER_PRESETS[pk] || {};
         const ps = getProviderSettings(pk);
-        const modelName = ps.model || p.defaultModel || '(default)';
-        const modelShort = modelName.length > 40 ? modelName.slice(0, 40) + '\u2026' : modelName;
         const interval = extension_settings[MODULE_NAME].interval || 20;
+
+        // Build connection summary rows based on source type
+        let connectionRows;
+        if (isProfile) {
+            let profileName = '(none selected)';
+            try {
+                const context = getContext();
+                const CMRS = context.ConnectionManagerRequestService;
+                const profile = CMRS?.getProfile(extension_settings[MODULE_NAME].selectedProfileId);
+                if (profile?.name) profileName = profile.name;
+            } catch { /* ignore */ }
+            connectionRows = `
+                <div class="charMemory_wizardSummaryRow">
+                    <span class="label">Source</span>
+                    <span>Connection Profile</span>
+                </div>
+                <div class="charMemory_wizardSummaryRow">
+                    <span class="label">Profile</span>
+                    <span>${escapeHtml(profileName)}</span>
+                </div>`;
+        } else {
+            const modelName = ps.model || p.defaultModel || '(default)';
+            const modelShort = modelName.length > 40 ? modelName.slice(0, 40) + '\u2026' : modelName;
+            connectionRows = `
+                <div class="charMemory_wizardSummaryRow">
+                    <span class="label">Provider</span>
+                    <span>${escapeHtml(p.name || pk)}</span>
+                </div>
+                <div class="charMemory_wizardSummaryRow">
+                    <span class="label">Model</span>
+                    <span>${escapeHtml(modelShort)}</span>
+                </div>`;
+        }
 
         // VS summary from extension_settings.vectors
         // Check DOM for VS extension UI to avoid false-positive when VS is disabled.
@@ -5621,14 +5763,7 @@ async function showSetupWizard(startStep = 1) {
         }
 
         $wizard.find('#cm_wiz_summary').html(`
-            <div class="charMemory_wizardSummaryRow">
-                <span class="label">Provider</span>
-                <span>${escapeHtml(p.name || pk)}</span>
-            </div>
-            <div class="charMemory_wizardSummaryRow">
-                <span class="label">Model</span>
-                <span>${escapeHtml(modelShort)}</span>
-            </div>
+            ${connectionRows}
             <div class="charMemory_wizardSummaryRow">
                 <span class="label">Connection</span>
                 <span>${wizConnectionOk ? '<span style="color:#4a4;">\u2714 Connected</span>' : '<span style="color:#e8a33d;">\u26A0 Not tested</span>'}</span>

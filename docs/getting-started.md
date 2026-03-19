@@ -12,7 +12,14 @@ If the wizard didn't open automatically, click the **wand icon** (✦) in the Ch
 
 CharMemory needs its own LLM connection — separate from your main chat. This keeps the extraction prompt clean and uncontaminated by chat personas, jailbreaks, or system prompts.
 
-![Setup Wizard step 1 — provider dropdown, API key field, Connect button](../images/wizard-step1.png)
+![Setup Wizard step 1 — connection type toggle, provider dropdown, API key field, Connect button](../images/wizard-step1.png)
+
+The wizard offers two connection types at the top:
+
+- **Dedicated API** (default) — connect directly to an API provider with its own key and model
+- **Connection Profile** — reuse a saved SillyTavern connection (see [Providers → Connection Profiles](providers.md#connection-profiles))
+
+### Dedicated API (default)
 
 **1. Choose a provider** from the dropdown, e.g. **NanoGPT**. If you're not sure, **Pollinations** is free and requires no API key. See [Providers](providers.md) for a full list with model recommendations.
 
@@ -26,9 +33,15 @@ CharMemory needs its own LLM connection — separate from your main chat. This k
 
 > **Running an LLM locally?** Select **Local Server** from the provider dropdown. Enter your server URL (e.g., `http://localhost:11434/v1` for Ollama). No API key needed. See [Providers → Local Servers](providers.md#local-servers) for port numbers by backend.
 
-> **Already have a connection configured in SillyTavern?** You can skip the wizard's provider setup and use a **Connection Profile** instead. After completing the wizard, open **Settings** (gear icon) → **Connection** → change **LLM Used for Extraction** to **Connection Profile** and select your saved profile. See [Providers → Connection Profiles](providers.md#connection-profiles).
-
 > **If your provider is not listed** Many providers have an OpenAI compatible API endpoint. See if you can configure it that way.
+
+### Connection Profile
+
+If you already have a connection saved in SillyTavern's Connection Manager, click **Connection Profile** at the top to switch to that mode.
+
+![Wizard step 1 with Connection Profile selected](../images/wizard-step1-profile.png)
+
+Select your profile from the dropdown and click **Test Connection**. The profile's API, model, and credentials are used automatically — no separate setup needed. See [Providers → Connection Profiles](providers.md#connection-profiles) for how to create one.
 
 ![Wizard step 1 after successful connection — green checkmark, model selected](../images/wizard-step1-connected.png)
 

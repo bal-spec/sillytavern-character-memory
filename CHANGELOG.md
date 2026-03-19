@@ -2,10 +2,16 @@
 
 ## 2.1.9
 
+### Improvements
+
+- **Setup Wizard connection type selector**: The wizard's Step 1 now lets you choose between **Dedicated API** (default) and **Connection Profile** before configuring the LLM connection. Previously, Connection Profile was only available in the Settings Modal after completing the wizard.
+- **Documentation**: Added Connection Profile docs to providers.md, getting-started.md, README.md, and architecture.md. New screenshots for Settings Modal tabs and Connection Profile creation. Documented "Protect Recent Messages" feature in managing-memories.md.
+
 ### Bug Fixes
 
 - **Fix message swipes counting toward extraction interval**: Swiping to a different AI response variant was incrementing the extraction counter as if a new message had been sent, causing extraction to trigger sooner than the configured interval. The `CHARACTER_MESSAGE_RENDERED` event handler now checks the `type` argument ST passes and returns early when `type === 'swipe'`. Fixes [#9](https://github.com/bal-spec/sillytavern-character-memory/issues/9).
 - **Fix Settings and Troubleshooter modals cramped on mobile**: The left-nav layout used a fixed-width sidebar that consumed nearly half the popup width on narrow screens, leaving the content panel too narrow for readable text. In phone mode, the nav now switches to horizontal tabs above the content panel, giving it the full popup width.
+- **Fix tooltip**: Injection Viewer button tooltip said "Toggle Injection Sidebar" — corrected to "Toggle Injection Viewer".
 
 ## 2.1.8
 

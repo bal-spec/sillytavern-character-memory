@@ -1602,6 +1602,29 @@ body.charMemory-phone-mode .charMemory_modalNavItem.active {
     border-left: 3px solid var(--SmartThemeQuoteColor, #888);
 }
 
+.charMemory_wizSourceToggle {
+    display: flex;
+    gap: 6px;
+}
+
+.charMemory_wizSourceBtn {
+    flex: 1;
+    text-align: center;
+    opacity: 0.6;
+    border: 1px solid var(--SmartThemeBorderColor);
+    transition: opacity 0.15s, border-color 0.15s;
+}
+
+.charMemory_wizSourceBtn.active {
+    opacity: 1;
+    border-color: var(--SmartThemeQuoteColor);
+}
+
+.charMemory_wizSourceBtn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
 .charMemory_wizConnectRow {
     display: flex;
     align-items: flex-end;
