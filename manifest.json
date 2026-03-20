@@ -6,7 +6,10 @@
     "js": "index.js",
     "css": "style.css",
     "author": "bal-spec",
-    "version": "2.1.9",
+    "version": "2.2.0",
     "homePage": "",
-    "auto_update": false
+    "auto_update": false,
+    "i18n": {
+        "zh-tw": "locales/zh-tw.json"
+    }
 }

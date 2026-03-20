@@ -2,16 +2,16 @@
     <div class="inline-drawer">
         <div class="inline-drawer-toggle inline-drawer-header">
             <b>CharMemory</b>
-            <span id="charMemory_openWizard" class="charMemory_headerGear" title="Setup Wizard">
+            <span id="charMemory_openWizard" class="charMemory_headerGear" title="Setup Wizard" data-i18n="[title]Setup Wizard">
                 <i class="fa-solid fa-wand-magic-sparkles fa-sm"></i>
             </span>
-            <span id="charMemory_openTroubleshooter" class="charMemory_headerGear" title="Troubleshooter">
+            <span id="charMemory_openTroubleshooter" class="charMemory_headerGear" title="Troubleshooter" data-i18n="[title]Troubleshooter">
                 <i class="fa-solid fa-screwdriver-wrench fa-sm"></i>
             </span>
-            <span id="charMemory_openSettingsModal" class="charMemory_headerGear" title="Open Settings">
+            <span id="charMemory_openSettingsModal" class="charMemory_headerGear" title="Open Settings" data-i18n="[title]Open Settings">
                 <i class="fa-solid fa-gear fa-sm"></i>
             </span>
-            <span id="charMemory_toggleInjectionBtn" class="charMemory_headerGear" title="Toggle Injection Viewer">
+            <span id="charMemory_toggleInjectionBtn" class="charMemory_headerGear" title="Toggle Injection Viewer" data-i18n="[title]Toggle Injection Viewer">
                 <i class="fa-solid fa-syringe fa-sm"></i>
             </span>
             <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
@@ -21,30 +21,30 @@
             <!-- Nudge banner -->
             <div id="charMemory_nudgeBanner" class="charMemory_nudgeBanner" style="display:none;">
                 <i class="fa-solid fa-triangle-exclamation fa-sm"></i>
-                <span>Something needs attention</span>
-                <input type="button" id="charMemory_nudgeFix" class="menu_button" value="View" />
+                <span data-i18n="Something needs attention">Something needs attention</span>
+                <input type="button" id="charMemory_nudgeFix" class="menu_button" value="View" data-i18n="[value]View" />
             </div>
 
             <!-- Stats bar -->
             <div class="charMemory_statsBar">
-                <div class="charMemory_statItem" title="The Data Bank file where memories are stored for this character">
+                <div class="charMemory_statItem" title="The Data Bank file where memories are stored for this character" data-i18n="[title]The Data Bank file where memories are stored for this character">
                     <i class="fa-solid fa-file-lines fa-sm"></i>
-                    <span id="charMemory_statFile">No character</span>
+                    <span id="charMemory_statFile" data-i18n="No character">No character</span>
                 </div>
-                <div class="charMemory_statItem" title="Total number of individual memory bullets stored">
+                <div class="charMemory_statItem" title="Total number of individual memory bullets stored" data-i18n="[title]Total number of individual memory bullets stored">
                     <i class="fa-solid fa-brain fa-sm"></i>
                     <span id="charMemory_statCount">0 memories</span>
                 </div>
-                <div class="charMemory_statItem" title="New messages since last extraction / auto-extraction threshold">
+                <div class="charMemory_statItem" title="New messages since last extraction / auto-extraction threshold" data-i18n="[title]New messages since last extraction / auto-extraction threshold">
                     <i class="fa-solid fa-arrows-rotate fa-sm"></i>
                     <span id="charMemory_statProgress">0/10 msgs</span>
                 </div>
-                <div class="charMemory_statItem" title="Time remaining before the next auto-extraction is allowed">
+                <div class="charMemory_statItem" title="Time remaining before the next auto-extraction is allowed" data-i18n="[title]Time remaining before the next auto-extraction is allowed">
                     <i class="fa-solid fa-clock fa-sm"></i>
-                    <span id="charMemory_statCooldown">Ready</span>
+                    <span id="charMemory_statCooldown" data-i18n="Ready">Ready</span>
                 </div>
                 <div class="charMemory_statItem charMemory_statHealth" id="charMemory_statHealth"
-                     title="Injection health — click for details">
+                     title="Injection health — click for details" data-i18n="[title]Injection health — click for details">
                     <span class="charMemory_healthDot" id="charMemory_healthDot"></span>
                     <span id="charMemory_healthLabel">&mdash;</span>
                 </div>
@@ -53,43 +53,43 @@
             <!-- Primary Controls -->
             <div class="charMemory_dashSection">
                 <div class="charMemory_buttonRow">
-                    <input type="button" id="charMemory_extractNow" class="menu_button" value="Extract Now" title="Extract memories from unprocessed messages. If all messages have been processed, use 'Reset Extraction State' first to re-read from the beginning." />
-                    <button id="charMemory_autoExtractPill" class="charMemory_autoPill" title="Toggle automatic extraction — when on, memories are extracted automatically after a set number of new messages">
-                        <i class="fa-solid fa-arrows-rotate fa-xs"></i> Auto
+                    <input type="button" id="charMemory_extractNow" class="menu_button" value="Extract Now" title="Extract memories from unprocessed messages. If all messages have been processed, use 'Reset Extraction State' first to re-read from the beginning." data-i18n="[value]Extract Now;[title]Extract memories from unprocessed messages. If all messages have been processed, use 'Reset Extraction State' first to re-read from the beginning." />
+                    <button id="charMemory_autoExtractPill" class="charMemory_autoPill" title="Toggle automatic extraction — when on, memories are extracted automatically after a set number of new messages" data-i18n="[title]Toggle automatic extraction — when on, memories are extracted automatically after a set number of new messages">
+                        <i class="fa-solid fa-arrows-rotate fa-xs"></i> <span data-i18n="Auto">Auto</span>
                     </button>
-                    <input type="button" id="charMemory_manageMemories" class="menu_button" value="View / Edit" title="Browse, edit, and delete individual stored memories" />
+                    <input type="button" id="charMemory_manageMemories" class="menu_button" value="View / Edit" title="Browse, edit, and delete individual stored memories" data-i18n="[value]View / Edit;[title]Browse, edit, and delete individual stored memories" />
                 </div>
             </div>
 
             <!-- Tool Launchers -->
             <div class="charMemory_dashSection">
-                <small class="charMemory_sectionLabel">Data Bank Tools</small>
+                <small class="charMemory_sectionLabel" data-i18n="Data Bank Tools">Data Bank Tools</small>
                 <div class="charMemory_buttonRow">
-                    <input type="button" id="charMemory_filesPopover" class="menu_button" value="Data Bank" title="Browse and manage Data Bank files for this character" />
-                    <input type="button" id="charMemory_consolidateBtn" class="menu_button" value="Consolidate" title="Use the LLM to merge duplicate and related memories" />
-                    <input type="button" id="charMemory_batchBtn" class="menu_button" value="Batch" title="Run extraction on multiple chats at once" />
-                    <input type="button" id="charMemory_formatBtn" class="menu_button" value="Reformat" title="Reformat memory file structure for better retrieval" />
+                    <input type="button" id="charMemory_filesPopover" class="menu_button" value="Data Bank" title="Browse and manage Data Bank files for this character" data-i18n="[value]Data Bank;[title]Browse and manage Data Bank files for this character" />
+                    <input type="button" id="charMemory_consolidateBtn" class="menu_button" value="Consolidate" title="Use the LLM to merge duplicate and related memories" data-i18n="[value]Consolidate;[title]Use the LLM to merge duplicate and related memories" />
+                    <input type="button" id="charMemory_batchBtn" class="menu_button" value="Batch" title="Run extraction on multiple chats at once" data-i18n="[value]Batch;[title]Run extraction on multiple chats at once" />
+                    <input type="button" id="charMemory_formatBtn" class="menu_button" value="Reformat" title="Reformat memory file structure for better retrieval" data-i18n="[value]Reformat;[title]Reformat memory file structure for better retrieval" />
                 </div>
             </div>
 
             <!-- Activity (mini log) -->
             <div class="charMemory_dashSection">
-                <small class="charMemory_sectionLabel">Activity</small>
+                <small class="charMemory_sectionLabel" data-i18n="Activity">Activity</small>
                 <div id="charMemory_dashActivity" class="charMemory_dashActivity">
-                    <div class="charMemory_diagEmpty charMemory_miniLogEmpty">No activity yet.</div>
+                    <div class="charMemory_diagEmpty charMemory_miniLogEmpty" data-i18n="No activity yet.">No activity yet.</div>
                 </div>
-                <a id="charMemory_viewFullLog" class="charMemory_link">View full log &rarr;</a>
+                <a id="charMemory_viewFullLog" class="charMemory_link" data-i18n="View full log →">View full log →</a>
             </div>
 
             <!-- Diagnostics summary -->
             <div class="charMemory_dashSection">
                 <div class="charMemory_dashDiagHeader">
-                    <small class="charMemory_sectionLabel">Diagnostics</small>
+                    <small class="charMemory_sectionLabel" data-i18n="Diagnostics">Diagnostics</small>
                 </div>
                 <div id="charMemory_dashDiagSummary">
-                    <div class="charMemory_diagEmpty">No diagnostics yet.</div>
+                    <div class="charMemory_diagEmpty" data-i18n="No diagnostics yet.">No diagnostics yet.</div>
                 </div>
-                <a id="charMemory_viewDiagDetails" class="charMemory_link">View details &rarr;</a>
+                <a id="charMemory_viewDiagDetails" class="charMemory_link" data-i18n="View details →">View details →</a>
             </div>
 
         </div>

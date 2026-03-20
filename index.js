@@ -34,6 +34,7 @@ import { removeReasoningFromString } from '../../../reasoning.js';
 import { callGenericPopup, POPUP_TYPE } from '../../../popup.js';
 import { world_info, loadWorldInfo } from '../../../world-info.js';
 import { isWebLlmSupported, generateWebLlmChatPrompt } from '../../shared.js';
+import { t } from '../../../i18n.js';
 import {
     escapeAttr,
     escapeHtml,
@@ -54,7 +55,7 @@ import {
 import { createMemoryEditor } from './editor.js';
 
 const MODULE_NAME = 'charMemory';
-const MODULE_VERSION = '2.1.4';
+const MODULE_VERSION = '2.2.0';
 const DEFAULT_FILE_NAME = 'char-memories.md';
 const LOG_PREFIX = '[CharMemory]';
 
@@ -112,7 +113,7 @@ function updateActivityLogDisplay() {
     if (!$dashActivity.length) return;
 
     if (activityLog.length === 0) {
-        $dashActivity.html('<div class="charMemory_diagEmpty charMemory_miniLogEmpty">No activity yet.</div>');
+        $dashActivity.html(`<div class="charMemory_diagEmpty charMemory_miniLogEmpty">${t`No activity yet.`}</div>`);
         return;
     }
 
@@ -626,7 +627,7 @@ async function offerReformat() {
     if (totalBullets === 0) return;
 
     const result = await callGenericPopup(
-        `Reformat existing memories to match the new format?\n\nThis will rewrite ${totalBullets} memories in ${totalBlocks} blocks.`,
+        t`Reformat existing memories to match the new format?\n\nThis will rewrite ${totalBullets} memories in ${totalBlocks} blocks.`,
         POPUP_TYPE.CONFIRM,
     );
 
@@ -634,7 +635,7 @@ async function offerReformat() {
         for (const target of targets) {
             await reformatExistingMemories(target.avatar, target.fileName);
         }
-        toastr.success(`Reformatted ${totalBullets} memories.`, 'CharMemory');
+        toastr.success(t`Reformatted ${totalBullets} memories.`, 'CharMemory');
         updateStatusDisplay();
     }
 }
@@ -714,38 +715,38 @@ function buildConversionDialog(sourceContent, formatLabel, method, convertedBloc
         <div class="charMemory_consolidationToolbar">
             <label class="checkbox_label" style="margin-right:8px;white-space:nowrap;">
                 <input type="checkbox" id="charMemory_convDialogLLM" ${useLLM ? 'checked' : ''} />
-                <span>Use LLM</span>
+                <span data-i18n="Use LLM">Use LLM</span>
             </label>
-            <input type="button" id="charMemory_rerunConversion" class="menu_button" value="Re-run" title="Re-parse the source file with current settings" />
-            <input type="button" id="charMemory_undoConvRerun" class="menu_button" value="Undo" title="Revert to previous version" disabled />
-            <span id="charMemory_convRerunSpinner" style="display:none;">Working...</span>
+            <input type="button" id="charMemory_rerunConversion" class="menu_button" value="Re-run" data-i18n="[value]Re-run;[title]Re-parse the source file with current settings" title="Re-parse the source file with current settings" />
+            <input type="button" id="charMemory_undoConvRerun" class="menu_button" value="Undo" data-i18n="[value]Undo;[title]Revert to previous version" title="Revert to previous version" disabled />
+            <span id="charMemory_convRerunSpinner" style="display:none;" data-i18n="Working...">Working...</span>
         </div>
         ${buildFindReplaceBar('charMemory_convFR')}
         <div class="charMemory_consolidationPanes">
             <div class="charMemory_consolidationPane">
-                <h4>Original File</h4>
+                <h4 data-i18n="Original File">Original File</h4>
                 <div class="charMemory_consolidationContent"><pre class="charMemory_convertSourcePre">${escapeHtml(sourceContent)}</pre></div>
             </div>
             <div class="charMemory_consolidationPane">
-                <h4>Converted Memories</h4>
+                <h4 data-i18n="Converted Memories">Converted Memories</h4>
                 <div class="charMemory_consolidationContent" id="charMemory_convEditorPane">${renderConsolidatedCards(convertedBlocks, editingSet)}</div>
-                <button class="charMemory_editorAddBlock menu_button ${hasEditing ? '' : 'charMemory_editorAddBlock--hidden'}" id="charMemory_convAddBlock"><i class="fa-solid fa-plus fa-xs"></i> Add Block</button>
+                <button class="charMemory_editorAddBlock menu_button ${hasEditing ? '' : 'charMemory_editorAddBlock--hidden'}" id="charMemory_convAddBlock"><i class="fa-solid fa-plus fa-xs"></i> <span data-i18n="Add Block">Add Block</span></button>
             </div>
         </div>
         <div class="charMemory_convOutputSection">
             <div class="charMemory_convertWarning">
                 <i class="fa-solid fa-triangle-exclamation fa-sm"></i>
-                The original file will <b>not</b> be deleted. Hide or remove it from the Data Bank to avoid duplicate memories.
+                <span data-i18n="The original file will not be deleted. Hide or remove it from the Data Bank to avoid duplicate memories.">The original file will <b>not</b> be deleted. Hide or remove it from the Data Bank to avoid duplicate memories.</span>
             </div>
             <div class="charMemory_convDestRow">
-                <small><b>Output to:</b></small>
+                <small><b data-i18n="Output to:">Output to:</b></small>
                 <label class="radio_label">
                     <input type="radio" name="charMemory_convDest" value="auto" checked />
                     <span>CharMemory file (${escapeHtml(memoryFileName)})</span>
                 </label>
                 <label class="radio_label">
                     <input type="radio" name="charMemory_convDest" value="custom" />
-                    <span>Custom:</span>
+                    <span data-i18n="Custom:">Custom:</span>
                     <input type="text" id="charMemory_convCustomName" class="text_pole" placeholder="my-memories.md" style="flex:1;max-width:200px;" disabled />
                 </label>
             </div>
@@ -771,13 +772,13 @@ async function previewConvert() {
  */
 async function previewConversion(sourceFileUrl) {
     if (inApiCall) {
-        toastr.warning('An API call is already in progress.', 'CharMemory');
+        toastr.warning(t`An API call is already in progress.`, 'CharMemory');
         return;
     }
 
     const fileUrl = sourceFileUrl || $('#charMemory_convertSource').val();
     if (!fileUrl) {
-        toastr.warning('Select a source file first.', 'CharMemory');
+        toastr.warning(t`Select a source file first.`, 'CharMemory');
         return;
     }
 
@@ -786,11 +787,11 @@ async function previewConversion(sourceFileUrl) {
         sourceContent = await getFileAttachment(fileUrl);
     } catch (err) {
         console.error(LOG_PREFIX, 'Failed to read source file:', err);
-        toastr.error('Could not read the selected file.', 'CharMemory');
+        toastr.error(t`Could not read the selected file.`, 'CharMemory');
         return;
     }
     if (!sourceContent) {
-        toastr.error('Could not read the selected file.', 'CharMemory');
+        toastr.error(t`Could not read the selected file.`, 'CharMemory');
         return;
     }
 
@@ -811,14 +812,14 @@ async function previewConversion(sourceFileUrl) {
         inApiCall = true;
         if (useLLM && format !== 'memory_tags') {
             const charName = getCharacterName() || 'Character';
-            toastr.info('Sending to LLM for restructuring...', 'CharMemory', { timeOut: 3000 });
+            toastr.info(t`Sending to LLM for restructuring...`, 'CharMemory', { timeOut: 3000 });
             result = await convertWithLLM(sourceContent, charName);
         } else {
             result = convertHeuristic(sourceContent, format);
         }
     } catch (err) {
         console.error(LOG_PREFIX, 'Conversion failed:', err);
-        toastr.error(`Conversion failed: ${err.message || 'Unknown error'}`, 'CharMemory');
+        toastr.error(t`Conversion failed: ${err.message || 'Unknown error'}`, 'CharMemory');
         return;
     } finally {
         inApiCall = false;
@@ -834,7 +835,7 @@ async function previewConversion(sourceFileUrl) {
     }
 
     if (result.blocks.length === 0) {
-        toastr.warning('No memories could be extracted from the file.', 'CharMemory');
+        toastr.warning(t`No memories could be extracted from the file.`, 'CharMemory');
         return;
     }
 
@@ -862,7 +863,7 @@ async function previewConversion(sourceFileUrl) {
     const initBlocks = editor.getBlocks();
     const initEditing = editor.getEditingSet();
     const dialogHtml = buildConversionDialog(sourceContent, formatLabel, method, initBlocks, initEditing, useLLM && format !== 'memory_tags');
-    const popup = callGenericPopup(dialogHtml, POPUP_TYPE.CONFIRM, '', { wide: true, allowVerticalScrolling: true, okButton: 'Save', cancelButton: 'Cancel' });
+    const popup = callGenericPopup(dialogHtml, POPUP_TYPE.CONFIRM, '', { wide: true, allowVerticalScrolling: true, okButton: t`Save`, cancelButton: t`Cancel` });
 
     // === Find/Replace bar ===
     const cleanupConvFR = wireFindReplaceEvents(editor, refreshEditor, 'charMemory_convFR', '.charMemoryConvFR');
@@ -938,7 +939,7 @@ async function previewConversion(sourceFileUrl) {
             }
         } catch (err) {
             console.error(LOG_PREFIX, 'Re-run conversion failed:', err);
-            toastr.error(`Re-run failed: ${err.message || 'Unknown error'}`, 'CharMemory');
+            toastr.error(t`Re-run failed: ${err.message || 'Unknown error'}`, 'CharMemory');
             newResult = null;
         } finally {
             inApiCall = false;
@@ -1002,14 +1003,14 @@ async function previewConversion(sourceFileUrl) {
         .filter(b => b.bullets.length > 0);
 
     if (cleanBlocks.length === 0) {
-        toastr.warning('No memories to save.', 'CharMemory');
+        toastr.warning(t`No memories to save.`, 'CharMemory');
         return;
     }
 
     const context = getContext();
     const avatar = characters[context.characterId]?.avatar;
     if (!avatar) {
-        toastr.error('No character selected.', 'CharMemory');
+        toastr.error(t`No character selected.`, 'CharMemory');
         return;
     }
 
@@ -1018,7 +1019,7 @@ async function previewConversion(sourceFileUrl) {
     if (destType === 'custom') {
         destFileName = destCustomName.trim();
         if (!destFileName) {
-            toastr.warning('Enter a filename for custom output.', 'CharMemory');
+            toastr.warning(t`Enter a filename for custom output.`, 'CharMemory');
             return;
         }
     } else {
@@ -1036,7 +1037,7 @@ async function previewConversion(sourceFileUrl) {
     await writeMemoriesForCharacter(serializeMemories(allBlocks), avatar, destFileName);
 
     const count = countMemories(cleanBlocks);
-    toastr.success(`Converted ${count} memories to ${destFileName}. Remember to hide or remove the original file from Data Bank to avoid duplicates.`, 'CharMemory', { timeOut: 8000 });
+    toastr.success(t`Converted ${count} memories to ${destFileName}. Remember to hide or remove the original file from Data Bank to avoid duplicates.`, 'CharMemory', { timeOut: 8000 });
     logActivity(`Converted ${count} memories from Data Bank file to ${destFileName}`);
 
     // Refresh source dropdown so it reflects the new file state
@@ -1370,7 +1371,7 @@ function renderModelDropdown(filter) {
     }
 
     if (!hasResults) {
-        $dropdown.append('<div class="charMemory_modelEmpty">No matching models</div>');
+        $dropdown.append('<div class="charMemory_modelEmpty" data-i18n="No matching models">No matching models</div>');
     }
 }
 
@@ -1482,7 +1483,7 @@ function loadSettings() {
     const pendingPromptUpdates = Object.keys(PROMPT_CONFIG).filter(k => hasPromptUpdate(k));
     if (pendingPromptUpdates.length > 0) {
         setTimeout(() => toastr.info(
-            'Some CharMemory prompts have been updated. Open <b>Settings → Prompts</b> to review.',
+            t`Some CharMemory prompts have been updated. Open <b>Settings → Prompts</b> to review.`,
             'CharMemory',
             { timeOut: 10000, escapeHtml: false },
         ), 2000);
@@ -1584,12 +1585,12 @@ function updateStatusDisplay() {
     } else if (targets.length === 1) {
         $('#charMemory_statFile').text(targets[0].fileName).attr('title', targets[0].fileName);
     } else {
-        $('#charMemory_statFile').text('No character').attr('title', 'No character selected');
+        $('#charMemory_statFile').text(t`No character`).attr('title', t`No character selected`);
     }
 
     // Stats bar: memory count (total bullets across all targets, async)
     if (targets.length === 0) {
-        $('#charMemory_statCount').text('0 memories');
+        $('#charMemory_statCount').text(t`0 memories`);
     } else {
         let totalCount = 0;
         let loaded = 0;
@@ -1599,7 +1600,7 @@ function updateStatusDisplay() {
                 totalCount += countMemories(blocks);
                 loaded++;
                 if (loaded === targets.length) {
-                    $('#charMemory_statCount').text(`${totalCount} memor${totalCount === 1 ? 'y' : 'ies'}`);
+                    $('#charMemory_statCount').text(totalCount === 1 ? t`${totalCount} memory` : t`${totalCount} memories`);
                 }
             }).catch(() => { loaded++; });
         }
@@ -1608,7 +1609,7 @@ function updateStatusDisplay() {
     // Stats bar: extraction progress
     const msgsSince = chat_metadata[MODULE_NAME]?.messagesSinceExtraction || 0;
     const interval = extension_settings[MODULE_NAME]?.interval || 10;
-    $('#charMemory_statProgress').text(`${msgsSince}/${interval} msgs`);
+    $('#charMemory_statProgress').text(t`${msgsSince}/${interval} msgs`);
 
     // Stats bar: cooldown timer
     updateCooldownDisplay();
@@ -1617,7 +1618,7 @@ function updateStatusDisplay() {
     // Show resolved filename for 1:1 chats
     if (!isGroupChat()) {
         const charName = getCharacterName();
-        $('#charMemory_resolvedFileName').text(charName ? getMemoryFileName() : '—');
+        $('#charMemory_resolvedFileName').text(charName ? getMemoryFileName() : t`—`);
     }
 }
 
@@ -1630,7 +1631,7 @@ function updateDashboardDiagSummary() {
 
     computeHealthScore().then(result => {
         if (result.level === 'unknown') {
-            $summary.html('<div class="charMemory_diagEmpty">No character selected.</div>');
+            $summary.html(`<div class="charMemory_diagEmpty">${t`No character selected.`}</div>`);
             return;
         }
 
@@ -1638,7 +1639,7 @@ function updateDashboardDiagSummary() {
         const colors = { green: '#4a4', yellow: '#e8a33d', red: '#c44' };
         const icon = icons[result.level] || 'fa-question-circle';
         const color = colors[result.level] || '';
-        const label = result.level === 'green' ? 'Healthy' : result.level === 'yellow' ? 'Warnings' : 'Issues detected';
+        const label = result.level === 'green' ? t`Healthy` : result.level === 'yellow' ? t`Warnings` : t`Issues detected`;
 
         let html = `<div style="display:flex;align-items:center;gap:6px;font-size:0.9em;">`;
         html += `<i class="fa-solid ${icon}" style="color:${color};"></i>`;
@@ -1657,22 +1658,22 @@ function updateDashboardDiagSummary() {
 
         $summary.html(html);
     }).catch(() => {
-        $summary.html('<div class="charMemory_diagEmpty">Health check failed.</div>');
+        $summary.html(`<div class="charMemory_diagEmpty">${t`Health check failed.`}</div>`);
     });
 }
 
 function updateCooldownDisplay() {
     const cooldownMs = (extension_settings[MODULE_NAME]?.minCooldownMinutes || 0) * 60000;
     if (cooldownMs <= 0 || lastExtractionTime === 0) {
-        $('#charMemory_statCooldown').text('Ready');
+        $('#charMemory_statCooldown').text(t`Ready`);
         return;
     }
     const elapsed = Date.now() - lastExtractionTime;
     if (elapsed >= cooldownMs) {
-        $('#charMemory_statCooldown').text('Ready');
+        $('#charMemory_statCooldown').text(t`Ready`);
     } else {
         const remaining = Math.ceil((cooldownMs - elapsed) / 60000);
-        $('#charMemory_statCooldown').text(`${remaining}m cooldown`);
+        $('#charMemory_statCooldown').text(t`${remaining}m cooldown`);
     }
 }
 
@@ -2524,24 +2525,24 @@ async function testProviderConnection() {
     const $btn = $('#cm_modal_testModel');
 
     if (!preset) {
-        $status.text('Unknown provider selected.').css('color', '#e74c3c').show();
+        $status.text(t`Unknown provider selected.`).css('color', '#e74c3c').show();
         return;
     }
 
     const providerSettings = getProviderSettings(providerKey);
     if (preset.requiresApiKey && !providerSettings.apiKey) {
-        $status.text('Enter an API key first.').css('color', '#e74c3c').show();
+        $status.text(t`Enter an API key first.`).css('color', '#e74c3c').show();
         return;
     }
 
-    $btn.prop('disabled', true).val('Testing...');
-    $status.text('Testing model...').css('color', '').show();
+    $btn.prop('disabled', true).val(t`Testing...`);
+    $status.text(t`Testing model...`).css('color', '').show();
 
     try {
         const baseUrl = resolveBaseUrl(preset, providerSettings);
         const testModel = providerSettings.model || preset.defaultModel;
         if (!testModel) {
-            $status.text('Select a model first, then test.').css('color', '#e67e22').show();
+            $status.text(t`Select a model first, then test.`).css('color', '#e67e22').show();
             return;
         }
         const testMessages = [{ role: 'user', content: 'Respond with exactly: CHARMMEMORY_TEST_OK' }];
@@ -2560,15 +2561,15 @@ async function testProviderConnection() {
         logActivity(`${preset.name} model test: model=${testModel}, reply="${reply}", ${elapsed}s`, passed ? 'success' : 'warn');
         const modelShort = testModel.length > 30 ? testModel.slice(0, 30) + '…' : testModel;
         if (passed) {
-            $status.text(`\u2714 ${modelShort} responded correctly (${elapsed}s)`).css('color', '#2ecc71').show();
+            $status.text(t`\u2714 ${modelShort} responded correctly (${elapsed}s)`).css('color', '#2ecc71').show();
         } else {
-            $status.html(`\u26A0 ${escapeHtml(modelShort)} responded but didn't follow the test instruction (${elapsed}s). Reply: "<b>${escapeHtml(reply.slice(0, 80))}</b>". It may still work for extraction.`).css('color', '#e67e22').show();
+            $status.html(t`\u26A0 ${escapeHtml(modelShort)} responded but didn't follow the test instruction (${elapsed}s). Reply: "<b>${escapeHtml(reply.slice(0, 80))}</b>". It may still work for extraction.`).css('color', '#e67e22').show();
         }
     } catch (err) {
         logActivity(`${preset.name} model test failed: ${err.message}`, 'error');
-        $status.text(`\u2718 ${err.message || 'Test failed'}`).css('color', '#e74c3c').show();
+        $status.text(t`\u2718 ${err.message || 'Test failed'}`).css('color', '#e74c3c').show();
     } finally {
-        $btn.prop('disabled', false).val('Test Model');
+        $btn.prop('disabled', false).val(t`Test Model`);
     }
 }
 
@@ -2581,16 +2582,16 @@ async function testProfileConnection() {
     const profileId = extension_settings[MODULE_NAME].selectedProfileId;
 
     if (!profileId) {
-        $status.text('Select a connection profile first.').css('color', '#e74c3c').show();
+        $status.text(t`Select a connection profile first.`).css('color', '#e74c3c').show();
         return;
     }
     if (!isConnectionManagerAvailable()) {
-        $status.text('Connection Manager extension is disabled.').css('color', '#e74c3c').show();
+        $status.text(t`Connection Manager extension is disabled.`).css('color', '#e74c3c').show();
         return;
     }
 
-    $btn.prop('disabled', true).val('Testing...');
-    $status.text('Testing connection...').css('color', '').show();
+    $btn.prop('disabled', true).val(t`Testing...`);
+    $status.text(t`Testing connection...`).css('color', '').show();
 
     try {
         const context = getContext();
@@ -2611,15 +2612,15 @@ async function testProfileConnection() {
 
         logActivity(`Profile test (${profileName}): reply="${reply}", ${elapsed}s`, passed ? 'success' : 'warn');
         if (passed) {
-            $status.text(`\u2714 ${profileName} responded correctly (${elapsed}s)`).css('color', '#2ecc71').show();
+            $status.text(t`\u2714 ${profileName} responded correctly (${elapsed}s)`).css('color', '#2ecc71').show();
         } else {
-            $status.html(`\u26A0 ${escapeHtml(profileName)} responded but didn't follow the test instruction (${elapsed}s). Reply: "<b>${escapeHtml(reply.slice(0, 80))}</b>". It may still work for extraction.`).css('color', '#e67e22').show();
+            $status.html(t`\u26A0 ${escapeHtml(profileName)} responded but didn't follow the test instruction (${elapsed}s). Reply: "<b>${escapeHtml(reply.slice(0, 80))}</b>". It may still work for extraction.`).css('color', '#e67e22').show();
         }
     } catch (err) {
         logActivity(`Profile test failed: ${err.message}`, 'error');
-        $status.text(`\u2718 ${err.message || 'Test failed'}`).css('color', '#e74c3c').show();
+        $status.text(t`\u2718 ${err.message || 'Test failed'}`).css('color', '#e74c3c').show();
     } finally {
-        $btn.prop('disabled', false).val('Test Connection');
+        $btn.prop('disabled', false).val(t`Test Connection`);
     }
 }
 
@@ -2789,9 +2790,9 @@ async function extractMemories({
         console.log(LOG_PREFIX, 'No new messages to extract');
         logActivity('No new messages to extract — nothing unprocessed', 'warning');
         if (force) {
-            toastr.info('No unprocessed messages. Use "Reset Extraction State" to re-read from the beginning.', 'CharMemory', { timeOut: 5000 });
+            toastr.info(t`No unprocessed messages. Use "Reset Extraction State" to re-read from the beginning.`, 'CharMemory', { timeOut: 5000 });
         } else {
-            toastr.info('No new messages to extract.', 'CharMemory');
+            toastr.info(t`No new messages to extract.`, 'CharMemory');
         }
         return noopResult;
     }
@@ -2811,8 +2812,8 @@ async function extractMemories({
     const confirmThreshold = isMultiTarget ? 6 : 3;
     if (force && totalSteps > confirmThreshold && !abortSignal) {
         const confirmMsg = isMultiTarget
-            ? `This will process ${totalUnprocessed} messages for ${targets.length} characters (${totalSteps} LLM calls). This may take a while. Continue?`
-            : `This will process ${totalUnprocessed} messages in ${totalChunks} chunks. This may take a while. Continue?`;
+            ? t`This will process ${totalUnprocessed} messages for ${targets.length} characters (${totalSteps} LLM calls). This may take a while. Continue?`
+            : t`This will process ${totalUnprocessed} messages in ${totalChunks} chunks. This may take a while. Continue?`;
         const confirmed = await callGenericPopup(confirmMsg, POPUP_TYPE.CONFIRM);
         if (!confirmed) {
             logActivity('Extraction cancelled by user', 'warning');
@@ -2843,7 +2844,7 @@ async function extractMemories({
             // Check abort signal
             if (abortSignal?.aborted) {
                 logActivity(`Extraction aborted after ${chunksProcessed} chunk(s)`, 'warning');
-                toastr.warning(`Extraction stopped after ${chunksProcessed} of ${totalChunks} chunks.`, 'CharMemory');
+                toastr.warning(t`Extraction stopped after ${chunksProcessed} of ${totalChunks} chunks.`, 'CharMemory');
                 break;
             }
 
@@ -2873,10 +2874,10 @@ async function extractMemories({
                 const prefix = progressLabel ? `${progressLabel} — ` : '';
                 if (isMultiTarget) {
                     const stepInfo = `${target.name} (${stepsCompleted}/${totalSteps})`;
-                    toastr.info(`${prefix}Extracting for ${stepInfo} via ${sourceLabel}...`, 'CharMemory', { timeOut: 3000 });
+                    toastr.info(t`${prefix}Extracting for ${stepInfo} via ${sourceLabel}...`, 'CharMemory', { timeOut: 3000 });
                 } else {
-                    const chunkInfo = totalChunks > 1 ? ` (chunk ${chunk + 1}/${totalChunks})` : '';
-                    toastr.info(`${prefix}Extracting via ${sourceLabel}${chunkInfo}...`, 'CharMemory', { timeOut: 3000 });
+                    const chunkInfo = totalChunks > 1 ? t` (chunk ${chunk + 1}/${totalChunks})` : '';
+                    toastr.info(t`${prefix}Extracting via ${sourceLabel}${chunkInfo}...`, 'CharMemory', { timeOut: 3000 });
                 }
 
                 if (onProgress) {
@@ -2910,7 +2911,7 @@ async function extractMemories({
                         continue; // Skip this target, try next
                     }
                     if (llmErr.message?.includes('WebLLM is not available')) {
-                        toastr.error('WebLLM is not available in this browser.', 'CharMemory');
+                        toastr.error(t`WebLLM is not available in this browser.`, 'CharMemory');
                         return { totalMemories, chunksProcessed, lastExtractedIndex: currentLastExtracted };
                     }
                     throw llmErr;
@@ -3040,22 +3041,23 @@ async function extractMemories({
         updateAllIndicators();
 
         if (totalMemories > 0) {
-            const suffix = isMultiTarget ? ` across ${targets.length} characters` : '';
-            toastr.success(`${totalMemories} memor${totalMemories === 1 ? 'y' : 'ies'} saved${suffix} from ${chunksProcessed} chunk(s).`, 'CharMemory');
+            const suffix = isMultiTarget ? t` across ${targets.length} characters` : '';
+            const memoryWord = totalMemories === 1 ? t`${totalMemories} memory` : t`${totalMemories} memories`;
+            toastr.success(t`${memoryWord} saved${suffix} from ${chunksProcessed} chunk(s).`, 'CharMemory');
 
             // Post-first-extraction verification nudge
             if (!extension_settings[MODULE_NAME].verificationSeen) {
                 showVerificationStep();
             }
         } else if (chunksProcessed > 0) {
-            toastr.info('No new memories found.', 'CharMemory');
+            toastr.info(t`No new memories found.`, 'CharMemory');
         }
 
         return { totalMemories, chunksProcessed, lastExtractedIndex: currentLastExtracted };
     } catch (err) {
         console.error(LOG_PREFIX, 'Extraction failed:', err);
         logActivity(`Extraction failed: ${err.message}`, 'error');
-        toastr.error('Memory extraction failed. Check console for details.', 'CharMemory');
+        toastr.error(t`Memory extraction failed. Check console for details.`, 'CharMemory');
         return { totalMemories, chunksProcessed, lastExtractedIndex: currentLastExtracted };
     } finally {
         inApiCall = false;
@@ -3110,7 +3112,7 @@ async function onChatChanged() {
     logActivity(`Chat changed: "${charName}" chat=${chatId} (${msgCount} messages)`);
 
     // Clear injection drawer on chat switch
-    $('#charMemory_drawerBody').html('<div class="charMemory_diagEmpty">Click the <i class="fa-solid fa-syringe"></i> icon on a message to view its injected context.</div>');
+    $('#charMemory_drawerBody').html(`<div class="charMemory_diagEmpty">${t`Click the <i class="fa-solid fa-syringe"></i> icon on a message to view its injected context.`}</div>`);
     $('#charMemory_drawerMsgLabel').text('');
     $('#charMemory_drawerToolbar').html('');
     $('#charMemory_drawerFooter').text('');
@@ -3418,17 +3420,17 @@ async function computeHealthScore() {
             } catch { /* profile not found */ }
         }
         if (!cmOk) {
-            checks.push({ id: 'profile_source', level: 'red', label: 'Connection Profile',
-                detail: 'Connection Manager extension is disabled. Enable it in Extensions, or switch to Dedicated API.' });
+            checks.push({ id: 'profile_source', level: 'red', label: t`Connection Profile`,
+                detail: t`Connection Manager extension is disabled. Enable it in Extensions, or switch to Dedicated API.` });
         } else if (!profileId) {
-            checks.push({ id: 'profile_source', level: 'red', label: 'Connection Profile',
-                detail: 'No profile selected. Open Settings → Connection to choose one.' });
+            checks.push({ id: 'profile_source', level: 'red', label: t`Connection Profile`,
+                detail: t`No profile selected. Open Settings → Connection to choose one.` });
         } else if (!profileOk) {
-            checks.push({ id: 'profile_source', level: 'red', label: 'Connection Profile',
-                detail: 'Selected profile no longer exists. Open Settings → Connection to choose a new one.' });
+            checks.push({ id: 'profile_source', level: 'red', label: t`Connection Profile`,
+                detail: t`Selected profile no longer exists. Open Settings → Connection to choose a new one.` });
         } else {
-            checks.push({ id: 'profile_source', level: 'green', label: 'Connection Profile',
-                detail: 'Profile configured and available.' });
+            checks.push({ id: 'profile_source', level: 'green', label: t`Connection Profile`,
+                detail: t`Profile configured and available.` });
         }
     }
 
@@ -3440,10 +3442,10 @@ async function computeHealthScore() {
     checks.push({
         id: 'vec_files_enabled',
         level: filesEnabled ? 'green' : 'red',
-        label: 'Vector Storage for files',
+        label: t`Vector Storage for files`,
         detail: filesEnabled
-            ? 'Enabled — Data Bank files will be vectorized'
-            : 'Disabled — memories will not be vectorized or injected. Enable "Files" in Vector Storage settings.',
+            ? t`Enabled — Data Bank files will be vectorized`
+            : t`Disabled — memories will not be vectorized or injected. Enable "Files" in Vector Storage settings.`,
     });
 
     if (!filesEnabled) return { level: 'red', checks };
@@ -3453,10 +3455,10 @@ async function computeHealthScore() {
     checks.push({
         id: 'memory_file_exists',
         level: attachment ? 'green' : 'yellow',
-        label: 'Memory file in Data Bank',
+        label: t`Memory file in Data Bank`,
         detail: attachment
-            ? `Found: ${target.fileName}`
-            : `Not found: ${target.fileName}. Extract memories first to create it.`,
+            ? t`Found: ${target.fileName}`
+            : t`Not found: ${target.fileName}. Extract memories first to create it.`,
     });
 
     if (!attachment) {
@@ -3468,15 +3470,16 @@ async function computeHealthScore() {
     // Check 3: File vectorized
     const vecStatus = await checkVectorizationStatus(attachment.url);
     if (vecStatus === null) {
-        checks.push({ id: 'file_vectorized', level: 'red', label: 'File vectorization',
-            detail: 'Could not check vectorization status. Vector Storage may not be enabled for files.' });
+        checks.push({ id: 'file_vectorized', level: 'red', label: t`File vectorization`,
+            detail: t`Could not check vectorization status. Vector Storage may not be enabled for files.` });
     } else if (vecStatus === false) {
-        checks.push({ id: 'file_vectorized', level: 'yellow', label: 'File vectorization',
-            detail: 'File not yet indexed by Vector Storage. This usually resolves automatically when the next message is sent.' });
+        checks.push({ id: 'file_vectorized', level: 'yellow', label: t`File vectorization`,
+            detail: t`File not yet indexed by Vector Storage. This usually resolves automatically when the next message is sent.` });
     } else {
         const via = vecStatus.model ? `${vecStatus.source}/${vecStatus.model}` : vecStatus.source;
-        checks.push({ id: 'file_vectorized', level: 'green', label: 'File vectorization',
-            detail: `Vectorized: ${vecStatus.chunks} chunk${vecStatus.chunks === 1 ? '' : 's'} via ${via}` });
+        const chunkLabel = vecStatus.chunks === 1 ? t`${vecStatus.chunks} chunk` : t`${vecStatus.chunks} chunks`;
+        checks.push({ id: 'file_vectorized', level: 'green', label: t`File vectorization`,
+            detail: t`Vectorized: ${chunkLabel} via ${via}` });
     }
 
     // Check 4: Chunk overlap
@@ -3484,12 +3487,12 @@ async function computeHealthScore() {
     const chunkSizeDb = vecSettings?.chunk_size_db ?? 2500;
     if (overlapPct === 0) {
         const recommended = Math.round(chunkSizeDb * 0.15);
-        checks.push({ id: 'chunk_overlap', level: 'yellow', label: 'Chunk overlap',
-            detail: `Overlap is 0%. Memory blocks that span chunk boundaries may be split. Recommended: 10-25% (~${recommended} chars at current chunk size).` });
+        checks.push({ id: 'chunk_overlap', level: 'yellow', label: t`Chunk overlap`,
+            detail: t`Overlap is 0%. Memory blocks that span chunk boundaries may be split. Recommended: 10-25% (~${recommended} chars at current chunk size).` });
     } else {
         const overlapChars = Math.round(chunkSizeDb * overlapPct / 100);
-        checks.push({ id: 'chunk_overlap', level: 'green', label: 'Chunk overlap',
-            detail: `${overlapPct}% (~${overlapChars} chars) — helps prevent memory blocks from being split.` });
+        checks.push({ id: 'chunk_overlap', level: 'green', label: t`Chunk overlap`,
+            detail: t`${overlapPct}% (~${overlapChars} chars) — helps prevent memory blocks from being split.` });
     }
 
     // Check 5: Chunk size vs memory block size
@@ -3504,14 +3507,14 @@ async function computeHealthScore() {
             const avgBlockSize = Math.round(totalChars / blocks.length);
 
             if (chunkSizeDb > 0 && chunkSizeDb < avgBlockSize) {
-                checks.push({ id: 'chunk_size', level: 'yellow', label: 'Chunk size',
-                    detail: `Chunk size (${chunkSizeDb} chars) is smaller than the average memory block (${avgBlockSize} chars). This may split blocks mid-content. Recommended: 800-1000 chars for CharMemory.` });
+                checks.push({ id: 'chunk_size', level: 'yellow', label: t`Chunk size`,
+                    detail: t`Chunk size (${chunkSizeDb} chars) is smaller than the average memory block (${avgBlockSize} chars). This may split blocks mid-content. Recommended: 800-1000 chars for CharMemory.` });
             } else if (chunkSizeDb > 0 && chunkSizeDb > avgBlockSize * 4) {
-                checks.push({ id: 'chunk_size', level: 'yellow', label: 'Chunk size',
-                    detail: `Chunk size (${chunkSizeDb} chars) is much larger than the average memory block (${avgBlockSize} chars). Multiple blocks may be packed into single chunks, reducing retrieval precision. Recommended: 800-1000 chars for CharMemory.` });
+                checks.push({ id: 'chunk_size', level: 'yellow', label: t`Chunk size`,
+                    detail: t`Chunk size (${chunkSizeDb} chars) is much larger than the average memory block (${avgBlockSize} chars). Multiple blocks may be packed into single chunks, reducing retrieval precision. Recommended: 800-1000 chars for CharMemory.` });
             } else {
-                checks.push({ id: 'chunk_size', level: 'green', label: 'Chunk size',
-                    detail: `Chunk size (${chunkSizeDb}) is appropriate for average memory block size (${avgBlockSize} chars).` });
+                checks.push({ id: 'chunk_size', level: 'green', label: t`Chunk size`,
+                    detail: t`Chunk size (${chunkSizeDb}) is appropriate for average memory block size (${avgBlockSize} chars).` });
             }
         }
     } catch { /* file read failed, skip */ }
@@ -3523,15 +3526,15 @@ async function computeHealthScore() {
             checks.push({
                 id: 'retrieve_chunks',
                 level: 'yellow',
-                label: 'Retrieve chunks is high',
-                detail: `Retrieve chunks is set to ${retrieveChunks}. For CharMemory, 2-3 is recommended. Higher values inject more memories per message, which can flood the prompt with irrelevant content.`,
+                label: t`Retrieve chunks is high`,
+                detail: t`Retrieve chunks is set to ${retrieveChunks}. For CharMemory, 2-3 is recommended. Higher values inject more memories per message, which can flood the prompt with irrelevant content.`,
             });
         } else {
             checks.push({
                 id: 'retrieve_chunks',
                 level: 'green',
-                label: `Retrieve chunks: ${retrieveChunks}`,
-                detail: 'Retrieve chunks is in the recommended range for CharMemory.',
+                label: t`Retrieve chunks: ${retrieveChunks}`,
+                detail: t`Retrieve chunks is in the recommended range for CharMemory.`,
             });
         }
     }
@@ -3542,15 +3545,15 @@ async function computeHealthScore() {
         checks.push({
             id: 'score_threshold',
             level: 'yellow',
-            label: 'No score threshold set',
-            detail: 'Without a score threshold, low-relevance memories may be injected. Recommended: 0.2-0.3 for most embedding models.',
+            label: t`No score threshold set`,
+            detail: t`Without a score threshold, low-relevance memories may be injected. Recommended: 0.2-0.3 for most embedding models.`,
         });
     } else if (scoreThreshold !== undefined) {
         checks.push({
             id: 'score_threshold',
             level: 'green',
-            label: `Score threshold: ${scoreThreshold}`,
-            detail: 'Score threshold is set — low-relevance results will be filtered out.',
+            label: t`Score threshold: ${scoreThreshold}`,
+            detail: t`Score threshold is set — low-relevance results will be filtered out.`,
         });
     }
 
@@ -3565,29 +3568,31 @@ async function computeHealthScore() {
 
         // Check 8: Memories actually injected
         if (injectedBullets.length === 0) {
-            checks.push({ id: 'memories_injected', level: 'yellow', label: 'Memories in injection',
-                detail: 'Vector data was injected but no memory bullets found. The content may be from other Data Bank files.' });
+            checks.push({ id: 'memories_injected', level: 'yellow', label: t`Memories in injection`,
+                detail: t`Vector data was injected but no memory bullets found. The content may be from other Data Bank files.` });
         } else {
-            checks.push({ id: 'memories_injected', level: 'green', label: 'Memories in injection',
-                detail: `${injectedBullets.length} memor${injectedBullets.length === 1 ? 'y' : 'ies'} found in last injection.` });
+            const injMemLabel = injectedBullets.length === 1 ? t`${injectedBullets.length} memory` : t`${injectedBullets.length} memories`;
+            checks.push({ id: 'memories_injected', level: 'green', label: t`Memories in injection`,
+                detail: t`${injMemLabel} found in last injection.` });
 
             // Check 9: Duplicate detection
             const uniqueBullets = new Set(injectedBullets);
             const dupeCount = injectedBullets.length - uniqueBullets.size;
             if (dupeCount > 0) {
-                checks.push({ id: 'duplicate_detection', level: 'yellow', label: 'Duplicate memories',
-                    detail: `${dupeCount} duplicate${dupeCount === 1 ? '' : 's'} found (${injectedBullets.length} total, ${uniqueBullets.size} unique). This typically means chunk boundaries are splitting memory blocks. Increase chunk overlap or chunk size.` });
+                const dupeLabel = dupeCount === 1 ? t`${dupeCount} duplicate` : t`${dupeCount} duplicates`;
+                checks.push({ id: 'duplicate_detection', level: 'yellow', label: t`Duplicate memories`,
+                    detail: t`${dupeLabel} found (${injectedBullets.length} total, ${uniqueBullets.size} unique). This typically means chunk boundaries are splitting memory blocks. Increase chunk overlap or chunk size.` });
             } else {
-                checks.push({ id: 'duplicate_detection', level: 'green', label: 'Duplicate memories',
-                    detail: `No duplicates — all ${injectedBullets.length} injected memories are unique.` });
+                checks.push({ id: 'duplicate_detection', level: 'green', label: t`Duplicate memories`,
+                    detail: t`No duplicates — all ${injectedBullets.length} injected memories are unique.` });
             }
         }
     } else if (lastDiagnostics.timestamp) {
         // No data bank content in the last generation. Earlier checks already flag VS-disabled
         // and file-not-vectorized separately, so the most common cause here is that no memories
         // were relevant enough to pass the score threshold — which is working as intended.
-        checks.push({ id: 'memories_injected', level: 'yellow', label: 'Memories in injection',
-            detail: 'No memories were injected in the last generation. This is normal if the conversation topic doesn\'t match any stored memories. If this persists, check that Vector Storage is enabled and the file is vectorized.' });
+        checks.push({ id: 'memories_injected', level: 'yellow', label: t`Memories in injection`,
+            detail: t`No memories were injected in the last generation. This is normal if the conversation topic doesn't match any stored memories. If this persists, check that Vector Storage is enabled and the file is vectorized.` });
     }
 
     const level = checks.some(c => c.level === 'red') ? 'red'
@@ -3606,15 +3611,15 @@ function renderHealthStatusBarItem(result) {
     const $label = $('#charMemory_healthLabel');
     $dot.removeClass(classes).addClass(`health-${result.level}`);
 
-    const labels = { green: 'Healthy', yellow: 'Warnings', red: 'Issues', unknown: '\u2014' };
+    const labels = { green: t`Healthy`, yellow: t`Warnings`, red: t`Issues`, unknown: '\u2014' };
     $label.text(labels[result.level] || '\u2014');
 
     const statusTooltip = result.level === 'unknown'
-        ? 'No character selected'
+        ? t`No character selected`
         : result.checks
             .filter(c => c.level !== 'green')
             .map(c => `[${c.level.toUpperCase()}] ${c.label}`)
-            .join('\n') || 'All checks passed';
+            .join('\n') || t`All checks passed`;
     $('#charMemory_statHealth').attr('title', statusTooltip);
 
     // Drawer header dot — reflects injection state only (gray until generation)
@@ -3622,7 +3627,7 @@ function renderHealthStatusBarItem(result) {
     const hasDiagnostics = !!lastDiagnostics.timestamp;
     if (!hasDiagnostics) {
         $drawerDot.removeClass(classes).addClass('health-unknown')
-            .attr('title', 'No generation captured yet.\nGenerate a message to check injection health.');
+            .attr('title', t`No generation captured yet.\nGenerate a message to check injection health.`);
         return;
     }
 
@@ -3656,11 +3661,11 @@ function renderHealthDiagnosticsCard(result) {
 
     const colors = { green: '#4a4', yellow: '#e8a33d', red: '#c44', unknown: 'var(--SmartThemeBorderColor, #555)' };
     const icons = { green: 'fa-circle-check', yellow: 'fa-triangle-exclamation', red: 'fa-circle-xmark', unknown: 'fa-circle-question' };
-    const titles = { green: 'All checks passed', yellow: 'Warnings detected', red: 'Issues found', unknown: 'No character selected' };
+    const titles = { green: t`All checks passed`, yellow: t`Warnings detected`, red: t`Issues found`, unknown: t`No character selected` };
 
     let html = `<strong style="color:${colors[result.level]};">
         <i class="fa-solid ${icons[result.level]} fa-sm"></i>
-        Injection Health: ${titles[result.level]}
+        ${t`Injection Health:`} ${titles[result.level]}
     </strong>`;
 
     for (const check of result.checks) {
@@ -3759,61 +3764,61 @@ async function showSettingsModal() {
         { value: 'profile', label: 'Connection Profile', disabled: !cmAvailable, title: cmAvailable ? '' : 'Enable the Connection Manager extension to use saved profiles' },
         { value: 'webllm', label: 'WebLLM (browser-local)' },
         { value: 'main_llm', label: 'Main LLM' },
-    ].map(o => `<option value="${o.value}" ${o.value === s.source ? 'selected' : ''} ${o.disabled ? 'disabled' : ''} ${o.title ? `title="${escapeAttr(o.title)}"` : ''}>${o.label}</option>`).join('');
+    ].map(o => `<option value="${o.value}" ${o.value === s.source ? 'selected' : ''} ${o.disabled ? 'disabled' : ''} ${o.title ? `title="${escapeAttr(o.title)}" data-i18n="[title]${escapeAttr(o.title)}"` : ''} data-i18n="${o.label}">${o.label}</option>`).join('');
 
     // Build chunk boundary options
     const chunkOptions = [
         { value: 'block', label: 'Block-level (default)' },
         { value: 'bullet', label: 'Bullet-level' },
         { value: 'custom', label: 'Custom' },
-    ].map(o => `<option value="${o.value}" ${o.value === (s.chunkBoundary || 'block') ? 'selected' : ''}>${o.label}</option>`).join('');
+    ].map(o => `<option value="${o.value}" ${o.value === (s.chunkBoundary || 'block') ? 'selected' : ''} data-i18n="${o.label}">${o.label}</option>`).join('');
 
     // Connection section HTML
     const connectionHtml = `
-        <h4 class="charMemory_modalSectionTitle">LLM Connection</h4>
+        <h4 class="charMemory_modalSectionTitle" data-i18n="LLM Connection">LLM Connection</h4>
         <div class="charMemory_modalFieldGroup">
-            <label for="cm_modal_source"><small>LLM Used for Extraction</small></label>
+            <label for="cm_modal_source"><small data-i18n="LLM Used for Extraction">LLM Used for Extraction</small></label>
             <select id="cm_modal_source" class="text_pole">${sourceOptions}</select>
-            <small class="charMemory_helperText"><b>Dedicated API is recommended.</b> Main LLM pollutes the extraction prompt with chat context.</small>
+            <small class="charMemory_helperText"><b data-i18n="Dedicated API is recommended.">Dedicated API is recommended.</b> <span data-i18n="Main LLM pollutes the extraction prompt with chat context.">Main LLM pollutes the extraction prompt with chat context.</span></small>
         </div>
         <div id="cm_modal_providerSettings" style="${s.source === 'provider' ? '' : 'display:none;'}">
             <div class="charMemory_modalFieldGroup">
-                <label><small>Provider</small></label>
+                <label><small data-i18n="Provider">Provider</small></label>
                 <select id="cm_modal_providerSelect" class="text_pole">${providerOptions}</select>
             </div>
             <div class="charMemory_modalFieldGroup" id="cm_modal_apiKeyRow" style="${preset.requiresApiKey ? '' : 'display:none;'}">
-                <label><small>API Key <a id="cm_modal_helpLink" href="${escapeAttr(preset.helpUrl || '#')}" target="_blank" style="font-size:0.85em;${preset.helpUrl ? '' : 'display:none;'}">(get key)</a></small></label>
+                <label><small><span data-i18n="API Key">API Key</span> <a id="cm_modal_helpLink" href="${escapeAttr(preset.helpUrl || '#')}" target="_blank" style="font-size:0.85em;${preset.helpUrl ? '' : 'display:none;'}" data-i18n="(get key)">(get key)</a></small></label>
                 <div style="display:flex;gap:5px;align-items:center;">
-                    <input type="password" id="cm_modal_apiKey" class="text_pole" placeholder="Enter API key" style="flex:1;" value="${escapeAttr(providerSettings.apiKey || '')}" />
-                    <button type="button" id="cm_modal_apiKeyReveal" class="menu_button" title="Show/hide API key" style="padding:3px 8px;">
+                    <input type="password" id="cm_modal_apiKey" class="text_pole" placeholder="Enter API key" data-i18n="[placeholder]Enter API key" style="flex:1;" value="${escapeAttr(providerSettings.apiKey || '')}" />
+                    <button type="button" id="cm_modal_apiKeyReveal" class="menu_button" title="Show/hide API key" data-i18n="[title]Show/hide API key" style="padding:3px 8px;">
                         <i class="fa-solid fa-eye fa-sm"></i>
                     </button>
                 </div>
             </div>
             <div class="charMemory_modalFieldGroup" id="cm_modal_baseUrlRow" style="${preset.allowCustomUrl ? '' : 'display:none;'}">
-                <label><small>Base URL</small></label>
+                <label><small data-i18n="Base URL">Base URL</small></label>
                 <input type="text" id="cm_modal_baseUrl" class="text_pole" placeholder="${preset.authStyle === 'none' ? 'http://127.0.0.1:1234/v1' : 'https://your-server.com/v1'}" value="${escapeAttr(providerSettings.customBaseUrl || preset.baseUrl || '')}" />
                 <small id="cm_modal_baseUrlHint" class="charMemory_helperText">${preset.allowCustomUrl ? (preset.authStyle === 'none' ? 'http://IP:port/v1 — the /v1 suffix is required' : 'OpenAI-compatible base URL ending in /v1') : ''}</small>
             </div>
             <div class="charMemory_modalFieldGroup" id="cm_modal_connectRow" style="${preset.modelsEndpoint === 'standard' || preset.modelsEndpoint === 'custom' ? '' : 'display:none;'}">
-                <input type="button" id="cm_modal_connect" class="menu_button" value="Connect" title="Fetch available models from the server" />
+                <input type="button" id="cm_modal_connect" class="menu_button" value="Connect" title="Fetch available models from the server" data-i18n="[value]Connect;[title]Fetch available models from the server" />
             </div>
             <small id="cm_modal_connectStatus" class="charMemory_helperText" style="display:none;"></small>
             <div class="charMemory_modalFieldGroup" id="cm_modal_modelDropdownRow" style="${preset.modelsEndpoint === 'standard' || preset.modelsEndpoint === 'custom' ? '' : 'display:none;'}">
-                <label><small>Model</small></label>
+                <label><small data-i18n="Model">Model</small></label>
                 <div id="cm_modal_nanogptFilters" style="${providerKey === 'nanogpt' ? '' : 'display:none;'}">
                     <div class="charMemory_filterRow" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:4px;">
-                        <label class="checkbox_label"><input type="checkbox" id="cm_modal_nanogptFilterSub" ${providerSettings.nanogptFilterSubscription ? 'checked' : ''} /> <small>Subscription</small></label>
-                        <label class="checkbox_label"><input type="checkbox" id="cm_modal_nanogptFilterOS" ${providerSettings.nanogptFilterOpenSource ? 'checked' : ''} /> <small>Open Source</small></label>
-                        <label class="checkbox_label"><input type="checkbox" id="cm_modal_nanogptFilterRP" ${providerSettings.nanogptFilterRoleplay ? 'checked' : ''} /> <small>Roleplay</small></label>
-                        <label class="checkbox_label"><input type="checkbox" id="cm_modal_nanogptFilterReasoning" ${providerSettings.nanogptFilterReasoning ? 'checked' : ''} /> <small>Reasoning</small></label>
+                        <label class="checkbox_label"><input type="checkbox" id="cm_modal_nanogptFilterSub" ${providerSettings.nanogptFilterSubscription ? 'checked' : ''} /> <small data-i18n="Subscription">Subscription</small></label>
+                        <label class="checkbox_label"><input type="checkbox" id="cm_modal_nanogptFilterOS" ${providerSettings.nanogptFilterOpenSource ? 'checked' : ''} /> <small data-i18n="Open Source">Open Source</small></label>
+                        <label class="checkbox_label"><input type="checkbox" id="cm_modal_nanogptFilterRP" ${providerSettings.nanogptFilterRoleplay ? 'checked' : ''} /> <small data-i18n="Roleplay">Roleplay</small></label>
+                        <label class="checkbox_label"><input type="checkbox" id="cm_modal_nanogptFilterReasoning" ${providerSettings.nanogptFilterReasoning ? 'checked' : ''} /> <small data-i18n="Reasoning">Reasoning</small></label>
                     </div>
                 </div>
                 <div class="charMemory_wizModelPicker">
                     <div style="display:flex;gap:5px;align-items:center;">
                         <input type="text" id="cm_modal_modelSearch" class="charMemory_wizModelSearch" style="flex:1;" placeholder="${providerSettings.model ? 'Search models...' : 'Click Connect to fetch models'}" autocomplete="off" value="${escapeAttr(providerSettings.model || '')}" />
                         <input type="hidden" id="cm_modal_providerModel" value="${escapeAttr(providerSettings.model || '')}" />
-                        <input type="button" id="cm_modal_refreshModels" class="menu_button" value="&#x21bb;" title="Refresh model list" />
+                        <input type="button" id="cm_modal_refreshModels" class="menu_button" value="&#x21bb;" title="Refresh model list" data-i18n="[title]Refresh model list" />
                     </div>
                     <div id="cm_modal_modelList" class="charMemory_wizModelList" style="${currentModelList.length > 0 ? '' : 'display:none;'}"></div>
                 </div>
@@ -3821,51 +3826,51 @@ async function showSettingsModal() {
             </div>
             <div class="charMemory_modalFieldGroup" id="cm_modal_testRow">
                 <div style="display:flex;gap:5px;align-items:center;">
-                    <input type="button" id="cm_modal_testModel" class="menu_button" value="Test Model" title="Send a test prompt and verify it responds correctly" />
+                    <input type="button" id="cm_modal_testModel" class="menu_button" value="Test Model" title="Send a test prompt and verify it responds correctly" data-i18n="[value]Test Model;[title]Send a test prompt and verify it responds correctly" />
                 </div>
                 <small id="cm_modal_testStatus" class="charMemory_helperText" style="display:none;"></small>
             </div>
             <div class="charMemory_modalFieldGroup" id="cm_modal_modelInputRow" style="${preset.modelsEndpoint === 'standard' || preset.modelsEndpoint === 'custom' ? 'display:none;' : ''}">
-                <label><small>Model ID</small></label>
-                <input type="text" id="cm_modal_modelInput" class="text_pole" placeholder="Enter model identifier" value="${escapeAttr(providerSettings.model || '')}" />
-                <small class="charMemory_helperText">Enter the model ID manually (e.g. claude-sonnet-4-5-20250929).</small>
+                <label><small data-i18n="Model ID">Model ID</small></label>
+                <input type="text" id="cm_modal_modelInput" class="text_pole" placeholder="Enter model identifier" data-i18n="[placeholder]Enter model identifier" value="${escapeAttr(providerSettings.model || '')}" />
+                <small class="charMemory_helperText" data-i18n="Enter the model ID manually (e.g. claude-sonnet-4-5-20250929).">Enter the model ID manually (e.g. claude-sonnet-4-5-20250929).</small>
             </div>
             <div class="charMemory_modalFieldGroup">
-                <label><small>System prompt (optional)</small></label>
-                <textarea id="cm_modal_systemPrompt" class="text_pole" rows="3" placeholder="Override the default system prompt. Leave blank for default.">${escapeHtml(providerSettings.systemPrompt || '')}</textarea>
-                <small class="charMemory_helperText">Prepended to extraction/consolidation calls. Use for jailbreaks or custom instructions.</small>
+                <label><small data-i18n="System prompt (optional)">System prompt (optional)</small></label>
+                <textarea id="cm_modal_systemPrompt" class="text_pole" rows="3" placeholder="Override the default system prompt. Leave blank for default." data-i18n="[placeholder]Override the default system prompt. Leave blank for default.">${escapeHtml(providerSettings.systemPrompt || '')}</textarea>
+                <small class="charMemory_helperText" data-i18n="Prepended to extraction/consolidation calls. Use for jailbreaks or custom instructions.">Prepended to extraction/consolidation calls. Use for jailbreaks or custom instructions.</small>
             </div>
         </div>
         <div id="cm_modal_profileSettings" style="${s.source === 'profile' ? '' : 'display:none;'}">
             <div class="charMemory_modalFieldGroup">
-                <label><small>Connection Profile</small></label>
+                <label><small data-i18n="Connection Profile">Connection Profile</small></label>
                 <select id="cm_modal_profileSelect" class="text_pole">
-                    <option value="">— Select a profile —</option>
+                    <option value="" data-i18n="— Select a profile —">— Select a profile —</option>
                 </select>
-                <small class="charMemory_helperText">Uses credentials and settings from your saved SillyTavern connection profile.</small>
+                <small class="charMemory_helperText" data-i18n="Uses credentials and settings from your saved SillyTavern connection profile.">Uses credentials and settings from your saved SillyTavern connection profile.</small>
             </div>
             <div class="charMemory_modalFieldGroup" id="cm_modal_profileTestRow">
                 <div style="display:flex;gap:5px;align-items:center;">
-                    <input type="button" id="cm_modal_profileTest" class="menu_button" value="Test Connection" title="Send a test prompt via the selected profile" />
+                    <input type="button" id="cm_modal_profileTest" class="menu_button" value="Test Connection" title="Send a test prompt via the selected profile" data-i18n="[value]Test Connection;[title]Send a test prompt via the selected profile" />
                 </div>
                 <small id="cm_modal_profileTestStatus" class="charMemory_helperText" style="display:none;"></small>
             </div>
             <div class="charMemory_modalFieldGroup">
-                <label><small>System prompt (optional)</small></label>
-                <textarea id="cm_modal_profileSystemPrompt" class="text_pole" rows="3" placeholder="Override the default system prompt. Leave blank for default.">${escapeHtml(s.profileSystemPrompt || '')}</textarea>
-                <small class="charMemory_helperText">Prepended to extraction/consolidation calls. Use for jailbreaks or custom instructions.</small>
+                <label><small data-i18n="System prompt (optional)">System prompt (optional)</small></label>
+                <textarea id="cm_modal_profileSystemPrompt" class="text_pole" rows="3" placeholder="Override the default system prompt. Leave blank for default." data-i18n="[placeholder]Override the default system prompt. Leave blank for default.">${escapeHtml(s.profileSystemPrompt || '')}</textarea>
+                <small class="charMemory_helperText" data-i18n="Prepended to extraction/consolidation calls. Use for jailbreaks or custom instructions.">Prepended to extraction/consolidation calls. Use for jailbreaks or custom instructions.</small>
             </div>
         </div>
         <hr class="charMemory_separator" />
-        <a id="cm_modal_runWizard" class="charMemory_link">Run Setup Wizard</a>
+        <a id="cm_modal_runWizard" class="charMemory_link" data-i18n="Run Setup Wizard">Run Setup Wizard</a>
     `;
 
     // Extraction section HTML
     const extractionHtml = `
-        <h4 class="charMemory_modalSectionTitle">Auto-Extraction</h4>
+        <h4 class="charMemory_modalSectionTitle" data-i18n="Auto-Extraction">Auto-Extraction</h4>
         <div class="charMemory_sliderRow">
-            <label title="How many new messages trigger an automatic extraction.">
-                <small>Extract after every N messages</small>
+            <label title="How many new messages trigger an automatic extraction." data-i18n="[title]How many new messages trigger an automatic extraction.">
+                <small data-i18n="Extract after every N messages">Extract after every N messages</small>
             </label>
             <input class="neo-range-slider" type="range" id="cm_modal_interval" min="3" max="100" step="1" value="${s.interval}" />
             <div class="wide100p">
@@ -3874,8 +3879,8 @@ async function showSettingsModal() {
             </div>
         </div>
         <div class="charMemory_sliderRow">
-            <label title="Minimum time between auto-extractions.">
-                <small>Minimum wait between extractions (min)</small>
+            <label title="Minimum time between auto-extractions." data-i18n="[title]Minimum time between auto-extractions.">
+                <small data-i18n="Minimum wait between extractions (min)">Minimum wait between extractions (min)</small>
             </label>
             <input class="neo-range-slider" type="range" id="cm_modal_minCooldown" min="0" max="30" step="1" value="${s.minCooldownMinutes}" />
             <div class="wide100p">
@@ -3883,17 +3888,17 @@ async function showSettingsModal() {
                        data-for="cm_modal_minCooldown" id="cm_modal_minCooldownCounter" value="${s.minCooldownMinutes}" />
             </div>
         </div>
-        <small class="charMemory_helperText">These settings only affect automatic extraction. Manual and batch extraction ignore them.</small>
+        <small class="charMemory_helperText" data-i18n="These settings only affect automatic extraction. Manual and batch extraction ignore them.">These settings only affect automatic extraction. Manual and batch extraction ignore them.</small>
         <div class="charMemory_statusRow" style="margin-top: 12px;">
             <label class="checkbox_label" for="cm_modal_protectRecent" title="Excludes the most recent messages from auto-extraction so swipes and regenerations aren't constrained by just-extracted memories.">
                 <input type="checkbox" id="cm_modal_protectRecent" ${s.protectRecentMessages ? 'checked' : ''} />
-                <span>Protect recent messages</span>
+                <span data-i18n="Protect recent messages">Protect recent messages</span>
             </label>
-            <small class="charMemory_helperText">Excludes the most recent messages from auto-extraction, so swipes and regenerations aren't constrained by just-extracted memories. Skipped messages are picked up on the next cycle.</small>
+            <small class="charMemory_helperText" data-i18n="Excludes the most recent messages from auto-extraction, so swipes and regenerations aren't constrained by just-extracted memories. Skipped messages are picked up on the next cycle.">Excludes the most recent messages from auto-extraction, so swipes and regenerations aren't constrained by just-extracted memories. Skipped messages are picked up on the next cycle.</small>
         </div>
         <div class="charMemory_sliderRow" id="cm_modal_protectRecentCountRow" style="display: ${s.protectRecentMessages ? 'flex' : 'none'};">
-            <label title="How many recent messages to skip during auto-extraction.">
-                <small>Messages to protect</small>
+            <label title="How many recent messages to skip during auto-extraction." data-i18n="[title]How many recent messages to skip during auto-extraction.">
+                <small data-i18n="Messages to protect">Messages to protect</small>
             </label>
             <input class="neo-range-slider" type="range" id="cm_modal_protectRecentCount" min="1" max="20" step="1" value="${s.protectRecentMessagesCount}" />
             <div class="wide100p">
@@ -3903,10 +3908,10 @@ async function showSettingsModal() {
         </div>
 
         <hr class="charMemory_separator" />
-        <h4 class="charMemory_modalSectionTitle">Extraction Settings</h4>
+        <h4 class="charMemory_modalSectionTitle" data-i18n="Extraction Settings">Extraction Settings</h4>
         <div class="charMemory_sliderRow">
-            <label title="How many messages to include in each LLM call.">
-                <small>Messages per LLM call</small>
+            <label title="How many messages to include in each LLM call." data-i18n="[title]How many messages to include in each LLM call.">
+                <small data-i18n="Messages per LLM call">Messages per LLM call</small>
             </label>
             <input class="neo-range-slider" type="range" id="cm_modal_maxMessages" min="10" max="200" step="1" value="${s.maxMessagesPerExtraction}" />
             <div class="wide100p">
@@ -3915,8 +3920,8 @@ async function showSettingsModal() {
             </div>
         </div>
         <div class="charMemory_sliderRow">
-            <label title="Maximum tokens the LLM can use for its response.">
-                <small>Max response length</small>
+            <label title="Maximum tokens the LLM can use for its response." data-i18n="[title]Maximum tokens the LLM can use for its response.">
+                <small data-i18n="Max response length">Max response length</small>
             </label>
             <input class="neo-range-slider" type="range" id="cm_modal_responseLength" min="100" max="4000" step="50" value="${s.responseLength}" />
             <div class="wide100p">
@@ -3927,27 +3932,27 @@ async function showSettingsModal() {
         <div class="charMemory_statusRow">
             <label class="checkbox_label" for="cm_modal_mergeChunks" title="When enabled, extraction results from the same chat are merged into a single block.">
                 <input type="checkbox" id="cm_modal_mergeChunks" ${s.mergeChunks ? 'checked' : ''} />
-                <span>Merge extraction chunks</span>
+                <span data-i18n="Merge extraction chunks">Merge extraction chunks</span>
             </label>
-            <small class="charMemory_helperText">When enabled, multiple LLM calls from one extraction session are merged into a single memory block. Keep off for long chats — separate blocks give Vector Storage better retrieval granularity.</small>
+            <small class="charMemory_helperText" data-i18n="When enabled, multiple LLM calls from one extraction session are merged into a single memory block. Keep off for long chats — separate blocks give Vector Storage better retrieval granularity.">When enabled, multiple LLM calls from one extraction session are merged into a single memory block. Keep off for long chats — separate blocks give Vector Storage better retrieval granularity.</small>
         </div>
 
     `;
 
     // Storage section HTML
     const storageHtml = `
-        <h4 class="charMemory_modalSectionTitle">Storage</h4>
+        <h4 class="charMemory_modalSectionTitle" data-i18n="Storage">Storage</h4>
         <div class="charMemory_statusRow">
-            <label class="checkbox_label" for="cm_modal_perChat" title="Store memories in separate files per chat.">
+            <label class="checkbox_label" for="cm_modal_perChat" title="Store memories in separate files per chat." data-i18n="[title]Store memories in separate files per chat.">
                 <input type="checkbox" id="cm_modal_perChat" ${s.perChat ? 'checked' : ''} />
-                <span>Separate memory files per chat</span>
+                <span data-i18n="Separate memory files per chat">Separate memory files per chat</span>
             </label>
-            <small class="charMemory_helperText">Each conversation stores memories in its own file. The character still sees all memories during generation.</small>
+            <small class="charMemory_helperText" data-i18n="Each conversation stores memories in its own file. The character still sees all memories during generation.">Each conversation stores memories in its own file. The character still sees all memories during generation.</small>
         </div>
         <div id="cm_modal_section1v1" style="${isGroupChat() ? 'display:none;' : ''}">
             <div class="charMemory_statusRow">
                 <label for="cm_modal_fileName">
-                    <small>File name override</small>
+                    <small data-i18n="File name override">File name override</small>
                 </label>
                 <input type="text" id="cm_modal_fileName" class="text_pole" placeholder="(auto-generated from character name)" value="${escapeAttr(s.fileName || '')}" />
                 <small class="charMemory_helperText">Current file: <span id="cm_modal_resolvedFileName">${escapeHtml(getCharacterName() ? getMemoryFileName() : '—')}</span></small>
@@ -3955,46 +3960,46 @@ async function showSettingsModal() {
         </div>
         <div id="cm_modal_sectionGroup" style="${isGroupChat() ? '' : 'display:none;'}">
             <div id="cm_modal_groupMembersSection">
-                <label><small>Member memory files</small></label>
+                <label><small data-i18n="Member memory files">Member memory files</small></label>
                 <div id="cm_modal_groupMembersList" class="charMemory_groupMembersList">
-                    <small class="charMemory_helperText">Open a group chat to see members.</small>
+                    <small class="charMemory_helperText" data-i18n="Open a group chat to see members.">Open a group chat to see members.</small>
                 </div>
-                <small class="charMemory_helperText">Each character's memories are stored in their own Data Bank. Leave blank for auto-naming.</small>
+                <small class="charMemory_helperText" data-i18n="Each character's memories are stored in their own Data Bank. Leave blank for auto-naming.">Each character's memories are stored in their own Data Bank. Leave blank for auto-naming.</small>
             </div>
         </div>
     `;
 
     // Prompts overview section HTML
     const promptsHtml = `
-        <h4 class="charMemory_modalSectionTitle">Prompts</h4>
-        <small class="charMemory_helperText" style="margin-bottom:12px;display:block;">CharMemory uses four separate prompts. Click View / Edit to customize any of them.</small>
+        <h4 class="charMemory_modalSectionTitle" data-i18n="Prompts">Prompts</h4>
+        <small class="charMemory_helperText" style="margin-bottom:12px;display:block;" data-i18n="CharMemory uses four separate prompts. Click View / Edit to customize any of them.">CharMemory uses four separate prompts. Click View / Edit to customize any of them.</small>
         <div class="charMemory_modalPromptEntry">
             <div class="charMemory_modalPromptRow">
-                <span class="charMemory_modalPromptLabel">Extraction — 1:1 chats</span>
-                <input type="button" class="menu_button charMemory_modalPromptBtn" id="cm_modal_promptsViewExtraction" value="View / Edit" />
+                <span class="charMemory_modalPromptLabel" data-i18n="Extraction — 1:1 chats">Extraction — 1:1 chats</span>
+                <input type="button" class="menu_button charMemory_modalPromptBtn" id="cm_modal_promptsViewExtraction" value="View / Edit" data-i18n="[value]View / Edit" />
             </div>
-            <small class="charMemory_helperText">Used every time CharMemory reads messages from a 1:1 chat. Sent to the LLM along with recent messages, existing memories, and the character card. Controls what gets extracted and the memory bullet format.</small>
+            <small class="charMemory_helperText" data-i18n="Used every time CharMemory reads messages from a 1:1 chat. Sent to the LLM along with recent messages, existing memories, and the character card. Controls what gets extracted and the memory bullet format.">Used every time CharMemory reads messages from a 1:1 chat. Sent to the LLM along with recent messages, existing memories, and the character card. Controls what gets extracted and the memory bullet format.</small>
         </div>
         <div class="charMemory_modalPromptEntry">
             <div class="charMemory_modalPromptRow">
-                <span class="charMemory_modalPromptLabel">Extraction — group chats</span>
-                <input type="button" class="menu_button charMemory_modalPromptBtn" id="cm_modal_promptsViewGroup" value="View / Edit" />
+                <span class="charMemory_modalPromptLabel" data-i18n="Extraction — group chats">Extraction — group chats</span>
+                <input type="button" class="menu_button charMemory_modalPromptBtn" id="cm_modal_promptsViewGroup" value="View / Edit" data-i18n="[value]View / Edit" />
             </div>
-            <small class="charMemory_helperText">Same as above, but used in group chats where multiple characters are present. Includes context about all active characters.</small>
+            <small class="charMemory_helperText" data-i18n="Same as above, but used in group chats where multiple characters are present. Includes context about all active characters.">Same as above, but used in group chats where multiple characters are present. Includes context about all active characters.</small>
         </div>
         <div class="charMemory_modalPromptEntry">
             <div class="charMemory_modalPromptRow">
-                <span class="charMemory_modalPromptLabel">Consolidation</span>
-                <input type="button" class="menu_button charMemory_modalPromptBtn" id="cm_modal_promptsViewConsolidation" value="View / Edit" />
+                <span class="charMemory_modalPromptLabel" data-i18n="Consolidation">Consolidation</span>
+                <input type="button" class="menu_button charMemory_modalPromptBtn" id="cm_modal_promptsViewConsolidation" value="View / Edit" data-i18n="[value]View / Edit" />
             </div>
-            <small class="charMemory_helperText">Used by the Consolidate tool (Data Bank Tools). Instructs the LLM to merge duplicate or near-duplicate memories into fewer entries. Has two presets (Balanced / Aggressive) in the Consolidate tool.</small>
+            <small class="charMemory_helperText" data-i18n="Used by the Consolidate tool (Data Bank Tools). Instructs the LLM to merge duplicate or near-duplicate memories into fewer entries. Has two presets (Balanced / Aggressive) in the Consolidate tool.">Used by the Consolidate tool (Data Bank Tools). Instructs the LLM to merge duplicate or near-duplicate memories into fewer entries. Has two presets (Balanced / Aggressive) in the Consolidate tool.</small>
         </div>
         <div class="charMemory_modalPromptEntry">
             <div class="charMemory_modalPromptRow">
-                <span class="charMemory_modalPromptLabel">Conversion</span>
-                <input type="button" class="menu_button charMemory_modalPromptBtn" id="cm_modal_promptsViewConversion" value="View / Edit" />
+                <span class="charMemory_modalPromptLabel" data-i18n="Conversion">Conversion</span>
+                <input type="button" class="menu_button charMemory_modalPromptBtn" id="cm_modal_promptsViewConversion" value="View / Edit" data-i18n="[value]View / Edit" />
             </div>
-            <small class="charMemory_helperText">Used by the Reformat tool (Data Bank Tools). Converts memories in non-standard formats (e.g., plain prose) into CharMemory's structured bullet-point format with topic tags.</small>
+            <small class="charMemory_helperText" data-i18n="Used by the Reformat tool (Data Bank Tools). Converts memories in non-standard formats (e.g., plain prose) into CharMemory's structured bullet-point format with topic tags.">Used by the Reformat tool (Data Bank Tools). Converts memories in non-standard formats (e.g., plain prose) into CharMemory's structured bullet-point format with topic tags.</small>
         </div>
     `;
 
@@ -4007,68 +4012,68 @@ async function showSettingsModal() {
         { val: 'desktop', label: 'Desktop (sidebar)' },
         { val: 'tablet', label: 'Tablet (floating panel)' },
         { val: 'phone', label: 'Phone (panel + wide drawers)' },
-    ].map(o => `<option value="${o.val}" ${normalizedMode === o.val ? 'selected' : ''}>${o.label}</option>`).join('');
+    ].map(o => `<option value="${o.val}" ${normalizedMode === o.val ? 'selected' : ''} data-i18n="${o.label}">${o.label}</option>`).join('');
 
     const advancedHtml = `
-        <h4 class="charMemory_modalSectionTitle">Display</h4>
+        <h4 class="charMemory_modalSectionTitle" data-i18n="Display">Display</h4>
         <div class="charMemory_statusRow">
             <label for="cm_modal_displayMode">
-                <small>Display Mode</small>
+                <small data-i18n="Display Mode">Display Mode</small>
             </label>
             <select id="cm_modal_displayMode" class="text_pole">${displayModeOptions}</select>
-            <small class="charMemory_helperText">Controls dashboard layout. "Auto" detects your device. Desktop uses the sidebar; Tablet uses a floating panel; Phone adds wider drawers on top.</small>
+            <small class="charMemory_helperText" data-i18n="Controls dashboard layout. &quot;Auto&quot; detects your device. Desktop uses the sidebar; Tablet uses a floating panel; Phone adds wider drawers on top.">Controls dashboard layout. "Auto" detects your device. Desktop uses the sidebar; Tablet uses a floating panel; Phone adds wider drawers on top.</small>
         </div>
         <hr class="charMemory_separator" />
-        <h4 class="charMemory_modalSectionTitle">Memory File Format</h4>
+        <h4 class="charMemory_modalSectionTitle" data-i18n="Memory File Format">Memory File Format</h4>
         <div class="charMemory_statusRow">
             <label for="cm_modal_chunkBoundary">
-                <small>Chunk boundary</small>
+                <small data-i18n="Chunk boundary">Chunk boundary</small>
             </label>
             <select id="cm_modal_chunkBoundary" class="text_pole">${chunkOptions}</select>
-            <small class="charMemory_helperText">Controls how memories are separated in the file. Vector Storage splits on the separator to create retrievable chunks.</small>
+            <small class="charMemory_helperText" data-i18n="Controls how memories are separated in the file. Vector Storage splits on the separator to create retrievable chunks.">Controls how memories are separated in the file. Vector Storage splits on the separator to create retrievable chunks.</small>
         </div>
         <div class="charMemory_statusRow" id="cm_modal_customSeparatorRow" style="${(s.chunkBoundary || 'block') === 'custom' ? '' : 'display:none;'}">
             <label for="cm_modal_customSeparator">
-                <small>Custom separator</small>
+                <small data-i18n="Custom separator">Custom separator</small>
             </label>
             <input type="text" id="cm_modal_customSeparator" class="text_pole" placeholder="\\n\\n" value="${escapeAttr(s.customSeparator || '\\n\\n')}" />
-            <small class="charMemory_helperText">Characters inserted between chunks. Use \\n for newlines.</small>
+            <small class="charMemory_helperText" data-i18n="Characters inserted between chunks. Use \\n for newlines.">Characters inserted between chunks. Use \\n for newlines.</small>
         </div>
         <div id="cm_modal_chunkMetadataRow" style="${(s.chunkBoundary || 'block') === 'bullet' || (s.chunkBoundary || 'block') === 'custom' ? '' : 'display:none;'}">
             <label class="checkbox_label" for="cm_modal_chunkMetadata">
                 <input type="checkbox" id="cm_modal_chunkMetadata" ${s.chunkMetadata ? 'checked' : ''} />
-                <span>Include metadata in chunks</span>
+                <span data-i18n="Include metadata in chunks">Include metadata in chunks</span>
             </label>
-            <small class="charMemory_helperText">Prefix each bullet with [date | chat_id] so standalone chunks retain their provenance.</small>
+            <small class="charMemory_helperText" data-i18n="Prefix each bullet with [date | chat_id] so standalone chunks retain their provenance.">Prefix each bullet with [date | chat_id] so standalone chunks retain their provenance.</small>
         </div>
 
         <hr class="charMemory_separator" />
-        <h4 class="charMemory_modalSectionTitle">Reset</h4>
+        <h4 class="charMemory_modalSectionTitle" data-i18n="Reset">Reset</h4>
         <div class="charMemory_statusRow">
-            <input type="button" id="cm_modal_resetThisChat" class="menu_button" value="Reset This Chat"
+            <input type="button" id="cm_modal_resetThisChat" class="menu_button" value="Reset This Chat" data-i18n="[value]Reset This Chat"
                 title="Resets the extraction pointer for the active chat — next 'Extract Now' re-reads from the first message. In group chats all characters share one pointer, so all are reset together." />
             <small class="charMemory_helperText">
                 Resets the extraction pointer for the active chat. Next "Extract Now" will re-read all messages in this chat from the first.
                 ${isGroupChat() ? '<br><i class="fa-solid fa-people-group fa-xs"></i> <em>Group chat:</em> all members share one extraction pointer, so this resets all of them at once.' : ''}
             </small>
-            <input type="button" id="cm_modal_resetBatchProgress" class="menu_button" value="Reset Batch Progress"
+            <input type="button" id="cm_modal_resetBatchProgress" class="menu_button" value="Reset Batch Progress" data-i18n="[value]Reset Batch Progress"
                 title="Clears batch extraction records for all of this character's chats. Use before re-running Batch Extract to start fresh. Does not affect regular (non-batch) extraction for non-active chats." />
             <small class="charMemory_helperText">
                 The Batch tool remembers the last message it processed in each chat file so future runs only extract new messages. Reset this to make Batch treat all of ${escapeHtml(getCharacterName() || 'this character')}'s chats as unprocessed — for example, after changing the extraction prompt. Does not affect Extract Now or auto-extraction.
             </small>
-            <input type="button" id="cm_modal_resetExtraction" class="menu_button charMemory_dangerBtn" value="Clear All Memories" title="Delete this character's memory file and reset extraction tracking — cannot be undone" />
-            <small class="charMemory_helperText">Deletes this character's memory file (contains memories from all their chats) and resets extraction tracking. Cannot be undone.</small>
+            <input type="button" id="cm_modal_resetExtraction" class="menu_button charMemory_dangerBtn" value="Clear All Memories" data-i18n="[value]Clear All Memories" title="Delete this character's memory file and reset extraction tracking — cannot be undone" />
+            <small class="charMemory_helperText" data-i18n="Deletes this character's memory file (contains memories from all their chats) and resets extraction tracking. Cannot be undone.">Deletes this character's memory file (contains memories from all their chats) and resets extraction tracking. Cannot be undone.</small>
         </div>
     `;
 
     // Assemble modal HTML
     const html = `<div class="charMemory_modal">
         <div class="charMemory_modalNav">
-            <button class="charMemory_modalNavItem active" data-section="connection">Connection</button>
-            <button class="charMemory_modalNavItem" data-section="extraction">Extraction</button>
-            <button class="charMemory_modalNavItem" data-section="storage">Storage</button>
-            <button class="charMemory_modalNavItem" data-section="prompts">Prompts</button>
-            <button class="charMemory_modalNavItem" data-section="advanced">Advanced</button>
+            <button class="charMemory_modalNavItem active" data-section="connection" data-i18n="Connection">Connection</button>
+            <button class="charMemory_modalNavItem" data-section="extraction" data-i18n="Extraction">Extraction</button>
+            <button class="charMemory_modalNavItem" data-section="storage" data-i18n="Storage">Storage</button>
+            <button class="charMemory_modalNavItem" data-section="prompts" data-i18n="Prompts">Prompts</button>
+            <button class="charMemory_modalNavItem" data-section="advanced" data-i18n="Advanced">Advanced</button>
         </div>
         <div class="charMemory_modalContent">
             <div class="charMemory_modalSection active" data-section="connection">${connectionHtml}</div>
@@ -4205,20 +4210,20 @@ async function showSettingsModal() {
         const $status = $('#cm_modal_connectStatus');
 
         if (p?.requiresApiKey && !ps.apiKey) {
-            $status.text('Enter an API key first.').css('color', '#e74c3c').show();
+            $status.text(t`Enter an API key first.`).css('color', '#e74c3c').show();
             return;
         }
 
-        $btn.prop('disabled', true).val('Connecting...');
-        $status.text('Fetching models...').css('color', '').show();
+        $btn.prop('disabled', true).val(t`Connecting...`);
+        $status.text(t`Fetching models...`).css('color', '').show();
 
         try {
             await populateProviderModels(pk, true);
             const modelCount = currentModelList.length;
             if (modelCount > 0) {
-                $status.text(`Connected — ${modelCount} model${modelCount !== 1 ? 's' : ''} available.`).css('color', '#27ae60').show();
+                $status.text(modelCount === 1 ? t`Connected — ${modelCount} model available.` : t`Connected — ${modelCount} models available.`).css('color', '#27ae60').show();
             } else {
-                $status.text('Connected, but no models returned.').css('color', '#e67e22').show();
+                $status.text(t`Connected, but no models returned.`).css('color', '#e67e22').show();
             }
             // Update modal model list
             const savedModel = ps.model || '';
@@ -4229,9 +4234,9 @@ async function showSettingsModal() {
             $('#cm_modal_modelList').show();
             renderModalModelList('', rawModels);
         } catch (err) {
-            $status.text(`Connection failed: ${err.message}`).css('color', '#e74c3c').show();
+            $status.text(t`Connection failed: ${err.message}`).css('color', '#e74c3c').show();
         } finally {
-            $btn.prop('disabled', false).val('Connect');
+            $btn.prop('disabled', false).val(t`Connect`);
         }
     });
 
@@ -4423,38 +4428,38 @@ async function showSettingsModal() {
 
     // Reset / Clear handlers
     $('#cm_modal_resetThisChat').off('click').on('click', async function () {
-        const charName = getCharacterName() || 'this character';
+        const charName = getCharacterName() || t`this character`;
         const isGroup = isGroupChat();
         const scopeNote = isGroup
-            ? `<br><small>This is a group chat — all members share one extraction pointer and will all be reset together.</small>`
+            ? `<br><small>${t`This is a group chat — all members share one extraction pointer and will all be reset together.`}</small>`
             : '';
         const confirmed = await callGenericPopup(
-            `The extraction pointer for the active chat will be reset for <strong>${escapeHtml(charName)}</strong>. Next "Extract Now" will re-read all messages in this chat from the first.${scopeNote}`,
-            POPUP_TYPE.CONFIRM, 'Reset This Chat',
+            t`The extraction pointer for the active chat will be reset for <strong>${escapeHtml(charName)}</strong>. Next "Extract Now" will re-read all messages in this chat from the first.${scopeNote}`,
+            POPUP_TYPE.CONFIRM, t`Reset This Chat`,
         );
         if (!confirmed) return;
         resetCurrentChatTracking();
     });
 
     $('#cm_modal_resetBatchProgress').off('click').on('click', async function () {
-        const charName = getCharacterName() || 'this character';
+        const charName = getCharacterName() || t`this character`;
         const confirmed = await callGenericPopup(
-            `The Batch tool's record of which messages it has already processed will be cleared for all of <strong>${escapeHtml(charName)}</strong>'s chats. The next Batch run will re-read every message from the start, which may create duplicate memories unless you clear existing memories first. Extract Now and auto-extraction are not affected.`,
-            POPUP_TYPE.CONFIRM, 'Reset Batch Progress',
+            t`The Batch tool's record of which messages it has already processed will be cleared for all of <strong>${escapeHtml(charName)}</strong>'s chats. The next Batch run will re-read every message from the start, which may create duplicate memories unless you clear existing memories first. Extract Now and auto-extraction are not affected.`,
+            POPUP_TYPE.CONFIRM, t`Reset Batch Progress`,
         );
         if (!confirmed) return;
         resetBatchProgress();
     });
 
     $('#cm_modal_resetExtraction').off('click').on('click', async function () {
-        const charName = getCharacterName() || 'this character';
+        const charName = getCharacterName() || t`this character`;
         const sLocal = extension_settings[MODULE_NAME];
         const scopeNote = sLocal.perChat
-            ? `This will delete memories for the current chat only.`
-            : `This includes memories from all of ${escapeHtml(charName)}'s chats.`;
+            ? t`This will delete memories for the current chat only.`
+            : t`This includes memories from all of ${escapeHtml(charName)}'s chats.`;
         const confirmed = await callGenericPopup(
-            `<strong>${escapeHtml(charName)}'s</strong> memory file will be deleted and extraction tracking will be reset. This cannot be undone.<br><br>${scopeNote}`,
-            POPUP_TYPE.CONFIRM, 'Clear All Memories',
+            t`<strong>${escapeHtml(charName)}'s</strong> memory file will be deleted and extraction tracking will be reset. This cannot be undone.<br><br>${scopeNote}`,
+            POPUP_TYPE.CONFIRM, t`Clear All Memories`,
         );
         if (!confirmed) return;
         await clearAllMemories();
@@ -4642,9 +4647,9 @@ async function showPromptsModal(activePrompt = 'extraction') {
         return `<div class="charMemory_promptUpdateBanner" data-prompt="${escapeAttr(key)}">
             <span>The default prompt was updated (v${escapeHtml(storedVersion)} &rarr; v${escapeHtml(currentVersion)}). Your custom version is unchanged.</span>
             <div class="charMemory_promptUpdateActions">
-                <input type="button" class="menu_button charMemory_promptKeepMine" value="Keep mine" />
-                <input type="button" class="menu_button charMemory_promptUseNew" value="Use new default" />
-                <input type="button" class="menu_button charMemory_promptCompare" value="Compare &amp; Edit" />
+                <input type="button" class="menu_button charMemory_promptKeepMine" value="Keep mine" data-i18n="[value]Keep mine" />
+                <input type="button" class="menu_button charMemory_promptUseNew" value="Use new default" data-i18n="[value]Use new default" />
+                <input type="button" class="menu_button charMemory_promptCompare" value="Compare &amp; Edit" data-i18n="[value]Compare & Edit" />
             </div>
         </div>`;
     }
@@ -4675,18 +4680,18 @@ async function showPromptsModal(activePrompt = 'extraction') {
             </div>
             <div class="charMemory_promptCompareWrap" style="display:none;">
                 <div class="charMemory_comparePane">
-                    <label>Your prompt (editable)</label>
+                    <label data-i18n="Your prompt (editable)">Your prompt (editable)</label>
                     <textarea class="text_pole charMemory_compareUser" data-prompt="${escapeAttr(key)}">${escapeHtml(current)}</textarea>
                 </div>
                 <div class="charMemory_comparePane">
-                    <label>New default (read-only)</label>
+                    <label data-i18n="New default (read-only)">New default (read-only)</label>
                     <textarea class="text_pole charMemory_compareDefault" readonly>${escapeHtml(getDefaultPromptText(key))}</textarea>
                 </div>
             </div>
             <div class="charMemory_buttonRow" style="margin-top:8px;">
-                <input type="button" class="menu_button charMemory_promptRestore" value="Restore Default" />
-                <input type="button" class="menu_button charMemory_promptSave" value="Save" />
-                <input type="button" class="menu_button charMemory_promptDoneCompare" value="Done comparing" style="display:none;" />
+                <input type="button" class="menu_button charMemory_promptRestore" value="Restore Default" data-i18n="[value]Restore Default" />
+                <input type="button" class="menu_button charMemory_promptSave" value="Save" data-i18n="[value]Save" />
+                <input type="button" class="menu_button charMemory_promptDoneCompare" value="Done comparing" data-i18n="[value]Done comparing" style="display:none;" />
             </div>
         </div>`;
     }).join('');
@@ -4756,7 +4761,7 @@ async function showPromptsModal(activePrompt = 'extraction') {
         }
         syncSidebarPrompt(key);
         refreshSectionUI($section, key);
-        toastr.success('Prompt saved.');
+        toastr.success(t`Prompt saved.`);
     });
 
     // Restore Default button
@@ -4765,9 +4770,9 @@ async function showPromptsModal(activePrompt = 'extraction') {
         const key = $section.data('prompt');
 
         const confirmed = await callGenericPopup(
-            'Restore this prompt to its default text? Your customizations will be lost.',
+            t`Restore this prompt to its default text? Your customizations will be lost.`,
             POPUP_TYPE.CONFIRM,
-            'Restore Default Prompt',
+            t`Restore Default Prompt`,
         );
         if (!confirmed) return;
 
@@ -4778,7 +4783,7 @@ async function showPromptsModal(activePrompt = 'extraction') {
         acknowledgePromptVersion(key);
         syncSidebarPrompt(key);
         refreshSectionUI($section, key);
-        toastr.success('Prompt restored to default.');
+        toastr.success(t`Prompt restored to default.`);
     });
 
     // "Keep mine" — dismiss notification, acknowledge the new version
@@ -4790,7 +4795,7 @@ async function showPromptsModal(activePrompt = 'extraction') {
         $section.find('.charMemory_promptCompareWrap').hide();
         $section.find('.charMemory_promptEditorWrap').show();
         $section.find('.charMemory_promptDoneCompare').hide();
-        toastr.info('Notification dismissed. Your custom prompt is unchanged.');
+        toastr.info(t`Notification dismissed. Your custom prompt is unchanged.`);
     });
 
     // "Use new default" — replace prompt with new default, acknowledge version
@@ -4807,7 +4812,7 @@ async function showPromptsModal(activePrompt = 'extraction') {
         $section.find('.charMemory_promptCompareWrap').hide();
         $section.find('.charMemory_promptEditorWrap').show();
         $section.find('.charMemory_promptDoneCompare').hide();
-        toastr.success('Prompt updated to new default.');
+        toastr.success(t`Prompt updated to new default.`);
     });
 
     // "Compare & Edit" — show side-by-side panes
@@ -4888,7 +4893,7 @@ function renderModalModelList(filter, rawModels = []) {
     }
 
     if (models.length === 0) {
-        $list.append('<div class="charMemory_modelEmpty">No models \u2014 click Connect to fetch</div>');
+        $list.append('<div class="charMemory_modelEmpty" data-i18n="No models — click Connect to fetch">No models \u2014 click Connect to fetch</div>');
         return;
     }
 
@@ -4923,7 +4928,7 @@ function renderModalModelList(filter, rawModels = []) {
     }
 
     if (!hasResults) {
-        $list.append('<div class="charMemory_modelEmpty">No matching models</div>');
+        $list.append('<div class="charMemory_modelEmpty" data-i18n="No matching models">No matching models</div>');
     }
 }
 
@@ -5047,52 +5052,52 @@ async function showSetupWizard(startStep = 1) {
         <div class="charMemory_wizardStep" data-step="1">
             <div id="cm_wiz_noChatWarn" class="charMemory_wizardCallout charMemory_wizardCallout--warn" style="${noChatWarnStyle}">
                 <i class="fa-solid fa-triangle-exclamation fa-sm"></i>
-                <span><strong>Not in a chat.</strong> CharMemory needs an active character to extract memories. You can configure it now \u2014 just open a chat before clicking Extract Now.</span>
+                <span data-i18n="Not in a chat. CharMemory needs an active character to extract memories. You can configure it now — just open a chat before clicking Extract Now."><strong>Not in a chat.</strong> CharMemory needs an active character to extract memories. You can configure it now \u2014 just open a chat before clicking Extract Now.</span>
             </div>
-            <div class="charMemory_wizardExplanation">
+            <div class="charMemory_wizardExplanation" data-i18n="CharMemory automatically extracts structured memories from your roleplay chats and stores them so your characters can recall past events. It needs access to an LLM to read your messages and create memory summaries.">
                 <strong>CharMemory</strong> automatically extracts structured memories from your roleplay chats and stores them so your characters can recall past events.
                 It needs access to an LLM to read your messages and create memory summaries.
             </div>
             <div class="charMemory_modalFieldGroup">
-                <label><small>Connection type</small></label>
+                <label><small data-i18n="Connection type">Connection type</small></label>
                 <div class="charMemory_wizSourceToggle">
-                    <button type="button" class="menu_button charMemory_wizSourceBtn${!showProfile ? ' active' : ''}" data-source="provider">Dedicated API</button>
-                    <button type="button" class="menu_button charMemory_wizSourceBtn${showProfile ? ' active' : ''}" data-source="profile" ${!cmAvailable ? 'disabled title="Enable the Connection Manager extension to use saved profiles"' : ''}>Connection Profile</button>
+                    <button type="button" class="menu_button charMemory_wizSourceBtn${!showProfile ? ' active' : ''}" data-source="provider" data-i18n="Dedicated API">Dedicated API</button>
+                    <button type="button" class="menu_button charMemory_wizSourceBtn${showProfile ? ' active' : ''}" data-source="profile" ${!cmAvailable ? 'disabled title="Enable the Connection Manager extension to use saved profiles"' : ''} data-i18n="Connection Profile">Connection Profile</button>
                 </div>
             </div>
             <div id="cm_wiz_providerSection" style="${showProfile ? 'display:none;' : ''}">
             <div class="charMemory_modalFieldGroup">
-                <label><small>Provider</small></label>
+                <label><small data-i18n="Provider">Provider</small></label>
                 <select id="cm_wiz_provider" class="text_pole">${providerOptions}</select>
                 <small id="cm_wiz_providerHint" class="charMemory_helperText"></small>
             </div>
             <div class="charMemory_modalFieldGroup" id="cm_wiz_baseUrlRow" style="${preset.allowCustomUrl ? '' : 'display:none;'}">
-                <label><small>Base URL</small></label>
+                <label><small data-i18n="Base URL">Base URL</small></label>
                 <input type="text" id="cm_wiz_baseUrl" class="text_pole" placeholder="${preset.authStyle === 'none' ? 'http://127.0.0.1:1234/v1' : 'https://your-server.com/v1'}" value="${escapeAttr(providerSettings.customBaseUrl || preset.baseUrl || '')}" />
             </div>
             <div class="charMemory_wizConnectRow">
                 <div class="charMemory_wizApiKeyGroup" id="cm_wiz_apiKeyRow" style="${preset.requiresApiKey ? '' : 'display:none;'}">
-                    <label><small>API Key <a id="cm_wiz_helpLink" href="${escapeAttr(preset.helpUrl || '#')}" target="_blank" style="font-size:0.85em;${preset.helpUrl ? '' : 'display:none;'}">(get key)</a></small></label>
+                    <label><small><span data-i18n="API Key">API Key</span> <a id="cm_wiz_helpLink" href="${escapeAttr(preset.helpUrl || '#')}" target="_blank" style="font-size:0.85em;${preset.helpUrl ? '' : 'display:none;'}" data-i18n="(get key)">(get key)</a></small></label>
                     <div style="display:flex;gap:5px;align-items:center;">
-                        <input type="password" id="cm_wiz_apiKey" class="text_pole" placeholder="Enter API key" value="${escapeAttr(providerSettings.apiKey || '')}" style="flex:1;" />
-                        <button type="button" id="cm_wiz_apiKeyReveal" class="menu_button" title="Show/hide API key" style="padding:3px 8px;flex-shrink:0;"><i class="fa-solid fa-eye fa-sm"></i></button>
+                        <input type="password" id="cm_wiz_apiKey" class="text_pole" placeholder="Enter API key" data-i18n="[placeholder]Enter API key" value="${escapeAttr(providerSettings.apiKey || '')}" style="flex:1;" />
+                        <button type="button" id="cm_wiz_apiKeyReveal" class="menu_button" title="Show/hide API key" data-i18n="[title]Show/hide API key" style="padding:3px 8px;flex-shrink:0;"><i class="fa-solid fa-eye fa-sm"></i></button>
                     </div>
                 </div>
-                <input type="button" id="cm_wiz_connect" class="menu_button${preset.requiresApiKey ? '' : ' charMemory_fullWidth'}" value="Connect &amp; Test" />
+                <input type="button" id="cm_wiz_connect" class="menu_button${preset.requiresApiKey ? '' : ' charMemory_fullWidth'}" value="Connect &amp; Test" data-i18n="[value]Connect & Test" />
             </div>
             <small id="cm_wiz_connectStatus" class="charMemory_helperText" style="display:none;margin-bottom:6px;"></small>
             <div class="charMemory_modalFieldGroup" id="cm_wiz_modelRow" style="display:none;">
-                <label><small>Model</small></label>
+                <label><small data-i18n="Model">Model</small></label>
                 <div id="cm_wiz_nanogptFilters" style="display:none;">
                     <div class="charMemory_filterRow">
-                        <label class="checkbox_label"><input type="checkbox" id="cm_wiz_nanogptFilterSub" /> <small>Subscription</small></label>
-                        <label class="checkbox_label"><input type="checkbox" id="cm_wiz_nanogptFilterOS" /> <small>Open Source</small></label>
-                        <label class="checkbox_label"><input type="checkbox" id="cm_wiz_nanogptFilterRP" /> <small>Roleplay</small></label>
-                        <label class="checkbox_label"><input type="checkbox" id="cm_wiz_nanogptFilterReasoning" /> <small>Reasoning</small></label>
+                        <label class="checkbox_label"><input type="checkbox" id="cm_wiz_nanogptFilterSub" /> <small data-i18n="Subscription">Subscription</small></label>
+                        <label class="checkbox_label"><input type="checkbox" id="cm_wiz_nanogptFilterOS" /> <small data-i18n="Open Source">Open Source</small></label>
+                        <label class="checkbox_label"><input type="checkbox" id="cm_wiz_nanogptFilterRP" /> <small data-i18n="Roleplay">Roleplay</small></label>
+                        <label class="checkbox_label"><input type="checkbox" id="cm_wiz_nanogptFilterReasoning" /> <small data-i18n="Reasoning">Reasoning</small></label>
                     </div>
                 </div>
                 <div class="charMemory_wizModelPicker">
-                    <input type="text" id="cm_wiz_modelSearch" class="charMemory_wizModelSearch" placeholder="Search models..." autocomplete="off" value="" />
+                    <input type="text" id="cm_wiz_modelSearch" class="charMemory_wizModelSearch" placeholder="Search models..." data-i18n="[placeholder]Search models..." autocomplete="off" value="" />
                     <input type="hidden" id="cm_wiz_modelValue" value="" />
                     <div id="cm_wiz_modelList" class="charMemory_wizModelList"></div>
                 </div>
@@ -5101,19 +5106,19 @@ async function showSetupWizard(startStep = 1) {
             </div>
             <div id="cm_wiz_profileSection" style="${showProfile ? '' : 'display:none;'}">
                 <div class="charMemory_modalFieldGroup">
-                    <label><small>Connection Profile</small></label>
+                    <label><small data-i18n="Connection Profile">Connection Profile</small></label>
                     <select id="cm_wiz_profileSelect" class="text_pole">
-                        <option value="">Select a Connection Profile</option>
+                        <option value="" data-i18n="Select a Connection Profile">Select a Connection Profile</option>
                     </select>
-                    <small class="charMemory_helperText">Uses credentials and settings from your saved SillyTavern connection profile.</small>
+                    <small class="charMemory_helperText" data-i18n="Uses credentials and settings from your saved SillyTavern connection profile.">Uses credentials and settings from your saved SillyTavern connection profile.</small>
                 </div>
                 <div class="charMemory_modalFieldGroup">
-                    <input type="button" id="cm_wiz_profileTest" class="menu_button charMemory_fullWidth" value="Test Connection" />
+                    <input type="button" id="cm_wiz_profileTest" class="menu_button charMemory_fullWidth" value="Test Connection" data-i18n="[value]Test Connection" />
                     <small id="cm_wiz_profileTestStatus" class="charMemory_helperText" style="display:none;margin-bottom:6px;"></small>
                 </div>
             </div>
             <div class="charMemory_wizardNav">
-                <input type="button" id="cm_wiz_next1" class="menu_button" value="Next \u2192" disabled />
+                <input type="button" id="cm_wiz_next1" class="menu_button" value="Next \u2192" data-i18n="[value]Next →" disabled />
             </div>
         </div>`;
 
@@ -5121,25 +5126,25 @@ async function showSetupWizard(startStep = 1) {
     const step2Html = `
         <div class="charMemory_wizardStep" data-step="2">
             <div class="charMemory_wizardSection">
-                <div class="charMemory_wizardSectionTitle">Memory Storage</div>
-                <div class="charMemory_wizardExplanation" style="margin-top:0;">
+                <div class="charMemory_wizardSectionTitle" data-i18n="Memory Storage">Memory Storage</div>
+                <div class="charMemory_wizardExplanation" style="margin-top:0;" data-i18n="Each character gets their own memory file in their Data Bank. Memories from all of that character's chats are stored together. You can change storage options in Settings later.">
                     Each character gets their own memory file in their Data Bank
                     (e.g., <code>Flux_the_Cat-memories.md</code>). Memories from all of that character's chats are
                     stored together. You can change storage options in Settings later.
                 </div>
             </div>
             <div class="charMemory_wizardSection">
-                <div class="charMemory_wizardSectionTitle">Extraction Frequency</div>
+                <div class="charMemory_wizardSectionTitle" data-i18n="Extraction Frequency">Extraction Frequency</div>
                 <div class="charMemory_wizardIntervalRow">
-                    <span>Extract memories every</span>
+                    <span data-i18n="Extract memories every">Extract memories every</span>
                     <input type="number" id="cm_wiz_interval" class="charMemory_wizIntervalInput" min="3" max="200" step="1" value="${s.interval || 20}" />
-                    <span>messages.</span>
+                    <span data-i18n="messages.">messages.</span>
                 </div>
-                <small class="charMemory_helperText">Lower = more frequent, more API calls. Higher = less frequent, bigger batches. 20 is a good starting point.</small>
+                <small class="charMemory_helperText" data-i18n="Lower = more frequent, more API calls. Higher = less frequent, bigger batches. 20 is a good starting point.">Lower = more frequent, more API calls. Higher = less frequent, bigger batches. 20 is a good starting point.</small>
             </div>
             <div class="charMemory_wizardSection">
-                <div class="charMemory_wizardSectionTitle">Retrieval (Vector Storage)</div>
-                <div class="charMemory_wizardExplanation" style="margin-top:0;">
+                <div class="charMemory_wizardSectionTitle" data-i18n="Retrieval (Vector Storage)">Retrieval (Vector Storage)</div>
+                <div class="charMemory_wizardExplanation" style="margin-top:0;" data-i18n="Vector Storage finds the right memories at the right time and injects them into the prompt when your character speaks. Without it, memories are stored but never used.">
                     Vector Storage finds the right memories at the right time and injects them into the prompt
                     when your character speaks. Without it, memories are stored but never used.
                 </div>
@@ -5152,8 +5157,8 @@ async function showSetupWizard(startStep = 1) {
                 </small>
             </div>
             <div class="charMemory_wizardNav">
-                <input type="button" id="cm_wiz_back2" class="menu_button" value="\u2190 Back" />
-                <input type="button" id="cm_wiz_next2" class="menu_button" value="Next \u2192" />
+                <input type="button" id="cm_wiz_back2" class="menu_button" value="\u2190 Back" data-i18n="[value]← Back" />
+                <input type="button" id="cm_wiz_next2" class="menu_button" value="Next \u2192" data-i18n="[value]Next →" />
             </div>
         </div>`;
 
@@ -5170,22 +5175,22 @@ async function showSetupWizard(startStep = 1) {
                 <div class="charMemory_wizardExistingMemSection">
                     <i class="fa-solid fa-database fa-sm" style="color:#e8a33d;"></i>
                     <div>
-                        <strong>Existing memories found</strong>
+                        <strong data-i18n="Existing memories found">Existing memories found</strong>
                         <div id="cm_wiz_existingMemDetail" class="charMemory_wizardCheckText"></div>
                         <div style="margin-top:6px;display:flex;gap:8px;">
-                            <input type="button" id="cm_wiz_convertNow" class="menu_button" value="Convert Now" title="Reformat memories for better retrieval" />
-                            <input type="button" id="cm_wiz_convertSkip" class="menu_button" value="Skip \u2014 I'll do this later" />
+                            <input type="button" id="cm_wiz_convertNow" class="menu_button" value="Convert Now" data-i18n="[value]Convert Now;[title]Reformat memories for better retrieval" title="Reformat memories for better retrieval" />
+                            <input type="button" id="cm_wiz_convertSkip" class="menu_button" value="Skip \u2014 I'll do this later" data-i18n="[value]Skip — I'll do this later" />
                         </div>
                     </div>
                 </div>
             </div>
             <div class="charMemory_wizardNav">
-                <input type="button" id="cm_wiz_back3" class="menu_button" value="\u2190 Back" />
-                <input type="button" id="cm_wiz_done" class="menu_button" value="Get Started" />
+                <input type="button" id="cm_wiz_back3" class="menu_button" value="\u2190 Back" data-i18n="[value]← Back" />
+                <input type="button" id="cm_wiz_done" class="menu_button" value="Get Started" data-i18n="[value]Get Started" />
             </div>
             <div class="charMemory_wizardScopeNote">
                 <i class="fa-solid fa-circle-info fa-xs"></i>
-                Tools like Clear Memories and Reset Extraction State only affect the current character.
+                <span data-i18n="Tools like Clear Memories and Reset Extraction State only affect the current character.">Tools like Clear Memories and Reset Extraction State only affect the current character.</span>
             </div>
         </div>`;
 
@@ -5316,12 +5321,12 @@ async function showSetupWizard(startStep = 1) {
         const $btn = $(this);
 
         if (!profileId) {
-            $status.text('Select a connection profile first.').css('color', '#e74c3c').show();
+            $status.text(t`Select a connection profile first.`).css('color', '#e74c3c').show();
             return;
         }
 
-        $btn.prop('disabled', true).val('Testing...');
-        $status.text('Testing connection...').css('color', '').show();
+        $btn.prop('disabled', true).val(t`Testing...`);
+        $status.text(t`Testing connection...`).css('color', '').show();
 
         try {
             const context = getContext();
@@ -5340,18 +5345,18 @@ async function showSetupWizard(startStep = 1) {
             const reply = (result?.content || '').trim();
 
             if (reply.includes('CHARMEMORY_TEST_OK')) {
-                $status.text(`\u2714 ${profileName} responded correctly (${elapsed}s)`).css('color', '#2ecc71').show();
+                $status.text(t`\u2714 ${profileName} responded correctly (${elapsed}s)`).css('color', '#2ecc71').show();
             } else {
-                $status.html(`\u2714 ${escapeHtml(profileName)} connected (${elapsed}s). It may still work for extraction.`).css('color', '#27ae60').show();
+                $status.html(t`\u2714 ${escapeHtml(profileName)} connected (${elapsed}s). It may still work for extraction.`).css('color', '#27ae60').show();
             }
             wizConnectionOk = true;
             $wizard.find('#cm_wiz_next1').prop('disabled', false);
         } catch (err) {
-            $status.text(`\u2718 ${err.message || 'Test failed'}`).css('color', '#e74c3c').show();
+            $status.text(t`\u2718 ${err.message || 'Test failed'}`).css('color', '#e74c3c').show();
             wizConnectionOk = false;
             $wizard.find('#cm_wiz_next1').prop('disabled', true);
         } finally {
-            $btn.prop('disabled', false).val('Test Connection');
+            $btn.prop('disabled', false).val(t`Test Connection`);
         }
     });
 
@@ -5408,13 +5413,13 @@ async function showSetupWizard(startStep = 1) {
         const testModel = ps.model || p.defaultModel;
         if (!testModel) {
             const hasModels = p.modelsEndpoint === 'standard' || p.modelsEndpoint === 'custom';
-            $status.text('Select a model first.').css('color', '#e67e22').show();
+            $status.text(t`Select a model first.`).css('color', '#e67e22').show();
             if (hasModels) $wizard.find('#cm_wiz_modelRow').show();
             return;
         }
 
         $connectBtn.prop('disabled', true);
-        $status.text('Testing model response...').css('color', '').show();
+        $status.text(t`Testing model response...`).css('color', '').show();
         try {
             const baseUrl = resolveBaseUrl(p, ps);
             const testMessages = [{ role: 'user', content: 'Respond with exactly: CHARMMEMORY_TEST_OK' }];
@@ -5432,20 +5437,20 @@ async function showSetupWizard(startStep = 1) {
             const modelShort = testModel.length > 30 ? testModel.slice(0, 30) + '\u2026' : testModel;
             const displayLabel = (p.modelsEndpoint === 'none') ? p.name : modelShort;
             if (passed) {
-                $status.text(`\u2714 ${displayLabel} responded correctly (${elapsed}s)`).css('color', '#2ecc71').show();
+                $status.text(t`\u2714 ${displayLabel} responded correctly (${elapsed}s)`).css('color', '#2ecc71').show();
             } else {
-                $status.html(`\u2714 ${escapeHtml(displayLabel)} connected (${elapsed}s). It may still work for extraction.`).css('color', '#27ae60').show();
+                $status.html(t`\u2714 ${escapeHtml(displayLabel)} connected (${elapsed}s). It may still work for extraction.`).css('color', '#27ae60').show();
             }
 
             wizConnectionOk = true;
             $wizard.find('#cm_wiz_next1').prop('disabled', false);
         } catch (err) {
-            let errMsg = err.message || 'Connection failed';
+            let errMsg = err.message || t`Connection failed`;
             // NVIDIA-specific: model list includes models that need terms accepted on build.nvidia.com
             if (pk === 'nvidia' && errMsg.includes('Not Found')) {
-                errMsg += ' — Select a different model, or accept its terms on build.nvidia.com first.';
+                errMsg += t` — Select a different model, or accept its terms on build.nvidia.com first.`;
             }
-            $status.text(`\u2718 ${errMsg}`).css('color', '#e74c3c').show();
+            $status.text(t`\u2718 ${errMsg}`).css('color', '#e74c3c').show();
             wizConnectionOk = false;
             $wizard.find('#cm_wiz_next1').prop('disabled', true);
         } finally {
@@ -5461,12 +5466,12 @@ async function showSetupWizard(startStep = 1) {
         const $status = $wizard.find('#cm_wiz_connectStatus');
 
         if (p?.requiresApiKey && !ps.apiKey) {
-            $status.text('Enter an API key first.').css('color', '#e74c3c').show();
+            $status.text(t`Enter an API key first.`).css('color', '#e74c3c').show();
             return;
         }
 
-        $btn.prop('disabled', true).val('Connecting...');
-        $status.text('Connecting to provider...').css('color', '').show();
+        $btn.prop('disabled', true).val(t`Connecting...`);
+        $status.text(t`Connecting to provider...`).css('color', '').show();
 
         try {
             // Fetch models if the provider supports it
@@ -5499,7 +5504,7 @@ async function showSetupWizard(startStep = 1) {
                     renderWizModelList('');
                 }
 
-                $status.text(`Connected \u2014 ${modelCount} model${modelCount !== 1 ? 's' : ''} available.`).css('color', '#27ae60').show();
+                $status.text(modelCount === 1 ? t`Connected — ${modelCount} model available.` : t`Connected — ${modelCount} models available.`).css('color', '#27ae60').show();
             } else {
                 // No models endpoint (e.g. Pollinations) — use defaultModel
                 const model = ps.model || p.defaultModel || '';
@@ -5507,18 +5512,18 @@ async function showSetupWizard(startStep = 1) {
                     ps.model = model;
                     saveSettingsDebounced();
                 }
-                $status.text('Provider configured.').css('color', '#27ae60').show();
+                $status.text(t`Provider configured.`).css('color', '#27ae60').show();
             }
         } catch (err) {
-            $status.text(`\u2718 ${err.message || 'Connection failed'}`).css('color', '#e74c3c').show();
+            $status.text(t`\u2718 ${err.message || 'Connection failed'}`).css('color', '#e74c3c').show();
             wizConnectionOk = false;
             $wizard.find('#cm_wiz_next1').prop('disabled', true);
-            $btn.prop('disabled', false).val('Connect & Test');
+            $btn.prop('disabled', false).val(t`Connect & Test`);
             return;
         }
 
         // Restore button, then run the test (model fetch succeeded)
-        $btn.prop('disabled', false).val('Connect & Test');
+        $btn.prop('disabled', false).val(t`Connect & Test`);
         await doConnectionTest();
     });
 
@@ -5548,7 +5553,7 @@ async function showSetupWizard(startStep = 1) {
         }
 
         if (models.length === 0) {
-            $list.append('<div class="charMemory_modelEmpty">No models loaded</div>');
+            $list.append('<div class="charMemory_modelEmpty" data-i18n="No models loaded">No models loaded</div>');
             return;
         }
 
@@ -5579,7 +5584,7 @@ async function showSetupWizard(startStep = 1) {
         }
 
         if (!hasResults) {
-            $list.append('<div class="charMemory_modelEmpty">No matching models</div>');
+            $list.append('<div class="charMemory_modelEmpty" data-i18n="No matching models">No matching models</div>');
         }
     }
 
@@ -5640,8 +5645,8 @@ async function showSetupWizard(startStep = 1) {
             $vsStatus.html(`<div class="charMemory_wizardCheck">
                 <i class="fa-solid fa-circle-xmark fa-sm" style="color:#c44;"></i>
                 <div class="charMemory_wizardCheckDetail">
-                    <div class="charMemory_wizardCheckLabel">Vector Storage is not enabled</div>
-                    <div class="charMemory_wizardCheckText">CharMemory will store memories but your character won't recall them.
+                    <div class="charMemory_wizardCheckLabel" data-i18n="Vector Storage is not enabled">Vector Storage is not enabled</div>
+                    <div class="charMemory_wizardCheckText" data-i18n="CharMemory will store memories but your character won't recall them. Enable it in Extensions → Vector Storage when you're ready.">CharMemory will store memories but your character won't recall them.
                         Enable it in <strong>Extensions \u2192 Vector Storage</strong> when you're ready.</div>
                 </div>
             </div>`);
@@ -5674,7 +5679,7 @@ async function showSetupWizard(startStep = 1) {
                 $vsStatus.html(`<div class="charMemory_wizardCheck">
                     <i class="fa-solid fa-triangle-exclamation fa-sm" style="color:#e8a33d;"></i>
                     <div class="charMemory_wizardCheckDetail">
-                        <div class="charMemory_wizardCheckLabel">Vector Storage is active, but settings may need tuning</div>
+                        <div class="charMemory_wizardCheckLabel" data-i18n="Vector Storage is active, but settings may need tuning">Vector Storage is active, but settings may need tuning</div>
                         <ul class="charMemory_wizardIssueList">${issueItems}</ul>
                         <div class="charMemory_wizardCheckFix"><i class="fa-solid fa-lightbulb fa-xs"></i> Adjust these in <strong>Extensions \u2192 Vector Storage</strong>.</div>
                     </div>
@@ -5687,8 +5692,8 @@ async function showSetupWizard(startStep = 1) {
                 $vsStatus.html(`<div class="charMemory_wizardCheck">
                     <i class="fa-solid fa-circle-check fa-sm" style="color:#4a4;"></i>
                     <div class="charMemory_wizardCheckDetail">
-                        <div class="charMemory_wizardCheckLabel">Vector Storage is configured</div>
-                        <div class="charMemory_wizardCheckText">CharMemory memories will be automatically retrieved and injected into the prompt.</div>
+                        <div class="charMemory_wizardCheckLabel" data-i18n="Vector Storage is configured">Vector Storage is configured</div>
+                        <div class="charMemory_wizardCheckText" data-i18n="CharMemory memories will be automatically retrieved and injected into the prompt.">CharMemory memories will be automatically retrieved and injected into the prompt.</div>
                     </div>
                 </div>`);
                 $vsAdvisory.hide();
@@ -5723,11 +5728,11 @@ async function showSetupWizard(startStep = 1) {
             } catch { /* ignore */ }
             connectionRows = `
                 <div class="charMemory_wizardSummaryRow">
-                    <span class="label">Source</span>
-                    <span>Connection Profile</span>
+                    <span class="label" data-i18n="Source">Source</span>
+                    <span data-i18n="Connection Profile">Connection Profile</span>
                 </div>
                 <div class="charMemory_wizardSummaryRow">
-                    <span class="label">Profile</span>
+                    <span class="label" data-i18n="Profile">Profile</span>
                     <span>${escapeHtml(profileName)}</span>
                 </div>`;
         } else {
@@ -5735,11 +5740,11 @@ async function showSetupWizard(startStep = 1) {
             const modelShort = modelName.length > 40 ? modelName.slice(0, 40) + '\u2026' : modelName;
             connectionRows = `
                 <div class="charMemory_wizardSummaryRow">
-                    <span class="label">Provider</span>
+                    <span class="label" data-i18n="Provider">Provider</span>
                     <span>${escapeHtml(p.name || pk)}</span>
                 </div>
                 <div class="charMemory_wizardSummaryRow">
-                    <span class="label">Model</span>
+                    <span class="label" data-i18n="Model">Model</span>
                     <span>${escapeHtml(modelShort)}</span>
                 </div>`;
         }
@@ -5765,15 +5770,15 @@ async function showSetupWizard(startStep = 1) {
         $wizard.find('#cm_wiz_summary').html(`
             ${connectionRows}
             <div class="charMemory_wizardSummaryRow">
-                <span class="label">Connection</span>
+                <span class="label" data-i18n="Connection">Connection</span>
                 <span>${wizConnectionOk ? '<span style="color:#4a4;">\u2714 Connected</span>' : '<span style="color:#e8a33d;">\u26A0 Not tested</span>'}</span>
             </div>
             <div class="charMemory_wizardSummaryRow">
-                <span class="label">Extraction</span>
+                <span class="label" data-i18n="Extraction">Extraction</span>
                 <span>Every ${escapeHtml(String(interval))} messages</span>
             </div>
             <div class="charMemory_wizardSummaryRow">
-                <span class="label">Vector Storage</span>
+                <span class="label" data-i18n="Vector Storage">Vector Storage</span>
                 <span>${vsSummaryHtml}</span>
             </div>
         `);
@@ -5854,9 +5859,9 @@ async function showSetupWizard(startStep = 1) {
             }
             const doneCharName = getCharacterName();
             if (!doneCharName) {
-                toastr.info('Open a chat with a character, then click <b>Extract Now</b> to start building memories.', 'CharMemory', { timeOut: 7000, escapeHtml: false });
+                toastr.info(t`Open a chat with a character, then click <b>Extract Now</b> to start building memories.`, 'CharMemory', { timeOut: 7000, escapeHtml: false });
             } else {
-                toastr.success(`Click <b>Extract Now</b> in the panel to extract your first memories for ${escapeHtml(doneCharName)}.`, 'CharMemory', { timeOut: 7000, escapeHtml: false });
+                toastr.success(t`Click <b>Extract Now</b> in the panel to extract your first memories for ${escapeHtml(doneCharName)}.`, 'CharMemory', { timeOut: 7000, escapeHtml: false });
             }
         }, 400);
     });
@@ -5876,8 +5881,8 @@ async function showSetupWizard(startStep = 1) {
  */
 function showVerificationStep() {
     const html = `<div class="charMemory_verification">
-        <h4>Memories Extracted Successfully!</h4>
-        <p>Your first batch of memories has been saved. Here's how to verify everything is working:</p>
+        <h4 data-i18n="Memories Extracted Successfully!">Memories Extracted Successfully!</h4>
+        <p data-i18n="Your first batch of memories has been saved. Here's how to verify everything is working:">Your first batch of memories has been saved. Here's how to verify everything is working:</p>
         <ol>
             <li><strong>Generate a message</strong> from your character so Vector Storage injects relevant memories.</li>
             <li>Look for the <i class="fa-solid fa-syringe" style="opacity:0.7;"></i> <strong>syringe icon</strong> next to the character's name. Click it to see what memories were injected.</li>
@@ -5943,7 +5948,7 @@ async function showTroubleshooter(initialSection = 'health') {
     // Build health checks HTML
     const colors = { green: '#4a4', yellow: '#e8a33d', red: '#c44', unknown: 'var(--SmartThemeBorderColor, #555)' };
     const icons = { green: 'fa-circle-check', yellow: 'fa-triangle-exclamation', red: 'fa-circle-xmark', unknown: 'fa-circle-question' };
-    const titles = { green: 'All checks passed', yellow: 'Warnings detected', red: 'Issues found', unknown: 'No character selected' };
+    const titles = { green: t`All checks passed`, yellow: t`Warnings detected`, red: t`Issues found`, unknown: t`No character selected` };
 
     let healthHtml = `<div class="charMemory_tsOverallStatus" style="color:${colors[healthResult.level]};">
         <i class="fa-solid ${icons[healthResult.level]}"></i>
@@ -5952,11 +5957,11 @@ async function showTroubleshooter(initialSection = 'health') {
 
     // Fix hints for checks that have actionable solutions
     const fixHints = {
-        vec_files_enabled: 'Enable "Files" in the Vector Storage extension settings.',
-        memory_file_exists: 'Use "Extract Now" on the dashboard to create this character\'s memory file.',
-        file_vectorized: 'Send a message in the chat to trigger automatic vectorization, or open Extensions \u2192 Vector Storage \u2192 Files tab to vectorize the file manually.',
-        chunk_overlap: 'Set overlap to 10-25% in Vector Storage settings.',
-        chunk_size: 'Set chunk size to 800-1000 chars in Vector Storage settings.',
+        vec_files_enabled: t`Enable "Files" in the Vector Storage extension settings.`,
+        memory_file_exists: t`Use "Extract Now" on the dashboard to create this character's memory file.`,
+        file_vectorized: t`Send a message in the chat to trigger automatic vectorization, or open Extensions → Vector Storage → Files tab to vectorize the file manually.`,
+        chunk_overlap: t`Set overlap to 10-25% in Vector Storage settings.`,
+        chunk_size: t`Set chunk size to 800-1000 chars in Vector Storage settings.`,
     };
 
     for (const check of healthResult.checks) {
@@ -5981,7 +5986,7 @@ async function showTroubleshooter(initialSection = 'health') {
         const attachments = (extension_settings.character_attachments[t.avatar] || [])
             .filter(att => !disabledUrls.has(att.url));
         if (attachments.length === 0) {
-            return '<div class="charMemory_diagEmpty" style="margin:4px 0 8px;">No Data Bank files yet — run <b>Extract Now</b> to create memories.</div>';
+            return '<div class="charMemory_diagEmpty" style="margin:4px 0 8px;" data-i18n="No Data Bank files yet — run Extract Now to create memories.">No Data Bank files yet — run <b>Extract Now</b> to create memories.</div>';
         }
         let html = '<div class="charMemory_tsFileList">';
         for (const att of attachments) {
@@ -5995,10 +6000,10 @@ async function showTroubleshooter(initialSection = 'health') {
                         ${badge}
                     </div>
                     <div class="charMemory_tsFileActions">
-                        <button class="menu_button charMemory_tsViewBtn" title="View file contents"><i class="fa-solid fa-eye fa-sm"></i></button>
-                        <button class="menu_button charMemory_tsExportBtn" title="Download file"><i class="fa-solid fa-download fa-sm"></i></button>
-                        <button class="menu_button charMemory_tsDeleteBtn" title="Delete file"><i class="fa-solid fa-trash fa-sm"></i></button>
-                        <button class="menu_button charMemory_tsConvertBtn" title="Convert file format"><i class="fa-solid fa-arrows-rotate fa-sm"></i></button>
+                        <button class="menu_button charMemory_tsViewBtn" title="View file contents" data-i18n="[title]View file contents"><i class="fa-solid fa-eye fa-sm"></i></button>
+                        <button class="menu_button charMemory_tsExportBtn" title="Download file" data-i18n="[title]Download file"><i class="fa-solid fa-download fa-sm"></i></button>
+                        <button class="menu_button charMemory_tsDeleteBtn" title="Delete file" data-i18n="[title]Delete file"><i class="fa-solid fa-trash fa-sm"></i></button>
+                        <button class="menu_button charMemory_tsConvertBtn" title="Convert file format" data-i18n="[title]Convert file format"><i class="fa-solid fa-arrows-rotate fa-sm"></i></button>
                     </div>
                 </div>`;
         }
@@ -6007,9 +6012,9 @@ async function showTroubleshooter(initialSection = 'health') {
     };
 
     let dataBankHtml = '';
-    let dataBankSubtitle = 'No character selected';
+    let dataBankSubtitle = '<span data-i18n="No character selected">No character selected</span>';
     if (!targets.length) {
-        dataBankHtml = '<div class="charMemory_diagEmpty">No character selected.</div>';
+        dataBankHtml = '<div class="charMemory_diagEmpty" data-i18n="No character selected.">No character selected.</div>';
     } else if (targets.length > 1) {
         // Group chat: labeled section per member
         dataBankSubtitle = `Group Data Bank \u2014 ${targets.length} characters`;
@@ -6031,61 +6036,61 @@ async function showTroubleshooter(initialSection = 'health') {
     const navActive = (s) => s === initialSection ? ' active' : '';
     const html = `<div class="charMemory_modal charMemory_troubleshooter">
         <div class="charMemory_modalNav">
-            <button class="charMemory_modalNavItem${navActive('health')}" data-section="health">Health Checks</button>
-            <button class="charMemory_modalNavItem${navActive('databank')}" data-section="databank">Data Bank</button>
-            <button class="charMemory_modalNavItem${navActive('report')}" data-section="report">Diagnostic Report</button>
-            <button class="charMemory_modalNavItem${navActive('reset')}" data-section="reset">Reset / Clear</button>
+            <button class="charMemory_modalNavItem${navActive('health')}" data-section="health" data-i18n="Health Checks">Health Checks</button>
+            <button class="charMemory_modalNavItem${navActive('databank')}" data-section="databank" data-i18n="Data Bank">Data Bank</button>
+            <button class="charMemory_modalNavItem${navActive('report')}" data-section="report" data-i18n="Diagnostic Report">Diagnostic Report</button>
+            <button class="charMemory_modalNavItem${navActive('reset')}" data-section="reset" data-i18n="Reset / Clear">Reset / Clear</button>
         </div>
         <div class="charMemory_modalContent">
             <div class="charMemory_modalSection${navActive('health')}" data-section="health">
-                <h4 class="charMemory_modalSectionTitle">Health Checks</h4>
+                <h4 class="charMemory_modalSectionTitle" data-i18n="Health Checks">Health Checks</h4>
                 <div id="cm_ts_healthChecks">${healthHtml}</div>
                 <div style="margin-top:10px;">
-                    <button class="menu_button" id="cm_ts_rerunHealth"><i class="fa-solid fa-arrows-rotate fa-sm"></i> Re-run checks</button>
+                    <button class="menu_button" id="cm_ts_rerunHealth"><i class="fa-solid fa-arrows-rotate fa-sm"></i> <span data-i18n="Re-run checks">Re-run checks</span></button>
                 </div>
             </div>
             <div class="charMemory_modalSection${navActive('databank')}" data-section="databank">
-                <h4 class="charMemory_modalSectionTitle">Data Bank Browser</h4>
+                <h4 class="charMemory_modalSectionTitle" data-i18n="Data Bank Browser">Data Bank Browser</h4>
                 <small class="charMemory_helperText">${dataBankSubtitle}</small>
                 <div id="cm_ts_dataBankList">${dataBankHtml}</div>
                 <div class="charMemory_tsImportRow">
                     <input type="file" id="cm_ts_fileImport" style="display:none;" accept=".md,.txt,.json" />
-                    <button class="menu_button" id="cm_ts_importBtn"><i class="fa-solid fa-upload fa-sm"></i> Import file</button>
+                    <button class="menu_button" id="cm_ts_importBtn"><i class="fa-solid fa-upload fa-sm"></i> <span data-i18n="Import file">Import file</span></button>
                 </div>
             </div>
             <div class="charMemory_modalSection${navActive('report')}" data-section="report">
-                <h4 class="charMemory_modalSectionTitle">Diagnostic Report</h4>
-                <small class="charMemory_helperText">Full snapshot of settings, health checks, and memory state for debugging.</small>
+                <h4 class="charMemory_modalSectionTitle" data-i18n="Diagnostic Report">Diagnostic Report</h4>
+                <small class="charMemory_helperText" data-i18n="Full snapshot of settings, health checks, and memory state for debugging.">Full snapshot of settings, health checks, and memory state for debugging.</small>
                 <pre id="cm_ts_reportContent" class="charMemory_reportPre">Generating\u2026</pre>
                 <div class="charMemory_reportActions">
-                    <button class="menu_button" id="cm_ts_copyReport"><i class="fa-solid fa-clipboard fa-sm"></i> Copy</button>
+                    <button class="menu_button" id="cm_ts_copyReport"><i class="fa-solid fa-clipboard fa-sm"></i> <span data-i18n="Copy">Copy</span></button>
                     <input type="text" id="cm_ts_reportFilename" class="text_pole charMemory_reportFilename" value="charMemory-diagnostic.txt" placeholder="filename.txt" />
-                    <button class="menu_button" id="cm_ts_saveReport"><i class="fa-solid fa-download fa-sm"></i> Save</button>
+                    <button class="menu_button" id="cm_ts_saveReport"><i class="fa-solid fa-download fa-sm"></i> <span data-i18n="Save">Save</span></button>
                 </div>
                 <small id="cm_ts_reportStatus" class="charMemory_helperText" style="display:none;margin-top:4px;"></small>
             </div>
             <div class="charMemory_modalSection${navActive('reset')}" data-section="reset">
-                <h4 class="charMemory_modalSectionTitle">Reset / Clear</h4>
+                <h4 class="charMemory_modalSectionTitle" data-i18n="Reset / Clear">Reset / Clear</h4>
                 <div class="charMemory_tsResetSection">
-                    <button class="menu_button" id="cm_ts_openWizard">Re-run Setup Wizard</button>
-                    <small class="charMemory_helperText">Walk through the setup steps again to reconfigure your LLM connection, storage, or retrieval settings.</small>
+                    <button class="menu_button" id="cm_ts_openWizard" data-i18n="Re-run Setup Wizard">Re-run Setup Wizard</button>
+                    <small class="charMemory_helperText" data-i18n="Walk through the setup steps again to reconfigure your LLM connection, storage, or retrieval settings.">Walk through the setup steps again to reconfigure your LLM connection, storage, or retrieval settings.</small>
                 </div>
                 <div class="charMemory_tsResetSection">
-                    <button class="menu_button" id="cm_ts_resetThisChat">Reset This Chat</button>
+                    <button class="menu_button" id="cm_ts_resetThisChat" data-i18n="Reset This Chat">Reset This Chat</button>
                     <small class="charMemory_helperText">
                         Resets the extraction pointer for the active chat. Next "Extract Now" will re-read all messages in this chat from the first.
                         ${isGroupChat() ? '<br><i class="fa-solid fa-people-group fa-xs"></i> <em>Group chat:</em> all members share one extraction pointer, so this resets all of them at once.' : ''}
                     </small>
                 </div>
                 <div class="charMemory_tsResetSection">
-                    <button class="menu_button" id="cm_ts_resetBatchProgress">Reset Batch Progress</button>
+                    <button class="menu_button" id="cm_ts_resetBatchProgress" data-i18n="Reset Batch Progress">Reset Batch Progress</button>
                     <small class="charMemory_helperText">
                         The Batch tool remembers the last message it processed in each chat file so future runs only extract new messages. Reset this to make Batch treat all of ${escapeHtml(charName || 'this character')}'s chats as unprocessed — for example, after changing the extraction prompt. Does not affect Extract Now or auto-extraction.
                     </small>
                 </div>
                 <div class="charMemory_tsResetSection">
-                    <button class="menu_button charMemory_dangerBtn" id="cm_ts_clearMemories">Clear All Memories</button>
-                    <small class="charMemory_helperText">Deletes this character's memory file (contains memories from all their chats) and resets extraction tracking. Cannot be undone.</small>
+                    <button class="menu_button charMemory_dangerBtn" id="cm_ts_clearMemories" data-i18n="Clear All Memories">Clear All Memories</button>
+                    <small class="charMemory_helperText" data-i18n="Deletes this character's memory file (contains memories from all their chats) and resets extraction tracking. Cannot be undone.">Deletes this character's memory file (contains memories from all their chats) and resets extraction tracking. Cannot be undone.</small>
                 </div>
             </div>
         </div>
@@ -6146,7 +6151,7 @@ async function showTroubleshooter(initialSection = 'health') {
         try {
             const content = await getFileAttachment(url);
             if (!content) {
-                toastr.warning('File is empty or could not be read.', 'CharMemory');
+                toastr.warning(t`File is empty or could not be read.`, 'CharMemory');
                 return;
             }
 
@@ -6160,7 +6165,7 @@ async function showTroubleshooter(initialSection = 'health') {
                 const viewHtml = `<div style="max-height:60vh;overflow:auto;text-align:left;">
                     <pre style="white-space:pre-wrap;word-break:break-word;font-size:0.85em;">${escapeHtml(displayContent)}</pre>
                 </div>`;
-                callGenericPopup(viewHtml, POPUP_TYPE.TEXT, escapeHtml(name || 'File contents'), { wide: true, allowVerticalScrolling: true });
+                callGenericPopup(viewHtml, POPUP_TYPE.TEXT, escapeHtml(name || t`File contents`), { wide: true, allowVerticalScrolling: true });
                 return;
             }
 
@@ -6187,12 +6192,12 @@ async function showTroubleshooter(initialSection = 'health') {
                 ${buildFindReplaceBar('cm_ts_fileFR')}
                 <div class="charMemory_consolidationContent" id="cm_ts_fileEditorPane">${renderConsolidatedCards(blocks, emptyEditingSet)}</div>
                 <div class="charMemory_tsFileEditorFooter">
-                    <button class="charMemory_editorAddBlock menu_button charMemory_editorAddBlock--hidden" id="cm_ts_fileEditorAddBlock"><i class="fa-solid fa-plus fa-xs"></i> Add Block</button>
-                    <button class="menu_button" id="cm_ts_fileUndoBtn" disabled><i class="fa-solid fa-rotate-left fa-xs"></i> Undo</button>
+                    <button class="charMemory_editorAddBlock menu_button charMemory_editorAddBlock--hidden" id="cm_ts_fileEditorAddBlock"><i class="fa-solid fa-plus fa-xs"></i> <span data-i18n="Add Block">Add Block</span></button>
+                    <button class="menu_button" id="cm_ts_fileUndoBtn" disabled><i class="fa-solid fa-rotate-left fa-xs"></i> <span data-i18n="Undo">Undo</span></button>
                 </div>
             </div>`;
 
-            const savePopup = callGenericPopup(editorHtml, POPUP_TYPE.CONFIRM, '', { wide: true, allowVerticalScrolling: true, okButton: 'Save', cancelButton: 'Cancel' });
+            const savePopup = callGenericPopup(editorHtml, POPUP_TYPE.CONFIRM, '', { wide: true, allowVerticalScrolling: true, okButton: t`Save`, cancelButton: t`Cancel` });
 
             // Find/Replace bar
             const cleanupTsFR = wireFindReplaceEvents(tsEditor, refreshTsEditor, 'cm_ts_fileFR', '.charMemoryTsFR');
@@ -6252,16 +6257,16 @@ async function showTroubleshooter(initialSection = 'health') {
                     .filter(b => b.bullets.length > 0);
 
                 if (cleanBlocks.length === 0) {
-                    toastr.warning('No memories to save.', 'CharMemory');
+                    toastr.warning(t`No memories to save.`, 'CharMemory');
                 } else {
                     await writeMemoriesForCharacter(serializeMemories(cleanBlocks), avatar, name);
-                    toastr.success(`Saved ${countMemories(cleanBlocks)} memories to ${name}.`, 'CharMemory');
+                    toastr.success(t`Saved ${countMemories(cleanBlocks)} memories to ${name}.`, 'CharMemory');
                     updateStatusDisplay();
                 }
             }
         } catch (err) {
             console.error(LOG_PREFIX, 'Failed to read file:', err);
-            toastr.error('Could not read file.', 'CharMemory');
+            toastr.error(t`Could not read file.`, 'CharMemory');
         }
     });
 
@@ -6273,7 +6278,7 @@ async function showTroubleshooter(initialSection = 'health') {
         try {
             const content = await getFileAttachment(url);
             if (!content) {
-                toastr.warning('File is empty or could not be read.', 'CharMemory');
+                toastr.warning(t`File is empty or could not be read.`, 'CharMemory');
                 return;
             }
             const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
@@ -6284,10 +6289,10 @@ async function showTroubleshooter(initialSection = 'health') {
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(a.href);
-            toastr.success(`Downloaded: ${name}`, 'CharMemory');
+            toastr.success(t`Downloaded: ${name}`, 'CharMemory');
         } catch (err) {
             console.error(LOG_PREFIX, 'Failed to export file:', err);
-            toastr.error('Could not export file.', 'CharMemory');
+            toastr.error(t`Could not export file.`, 'CharMemory');
         }
     });
 
@@ -6297,7 +6302,7 @@ async function showTroubleshooter(initialSection = 'health') {
         const url = $row.data('url');
         const name = $row.data('name') || url;
         const confirmed = await callGenericPopup(
-            `Delete "${escapeHtml(name)}" from the Data Bank?\n\nThis cannot be undone.`,
+            t`Delete "${escapeHtml(name)}" from the Data Bank?\n\nThis cannot be undone.`,
             POPUP_TYPE.CONFIRM,
         );
         if (!confirmed) return;
@@ -6310,11 +6315,11 @@ async function showTroubleshooter(initialSection = 'health') {
                 (extension_settings.character_attachments[avatar] || []).filter(a => a.url !== url);
             saveSettingsDebounced();
             $row.fadeOut(200, () => $row.remove());
-            toastr.success(`Deleted: ${name}`, 'CharMemory');
+            toastr.success(t`Deleted: ${name}`, 'CharMemory');
             updateStatusDisplay();
         } catch (err) {
             console.error(LOG_PREFIX, 'Failed to delete file:', err);
-            toastr.error('Could not delete file.', 'CharMemory');
+            toastr.error(t`Could not delete file.`, 'CharMemory');
         }
     });
 
@@ -6334,7 +6339,7 @@ async function showTroubleshooter(initialSection = 'health') {
         if (!file) return;
         const avatar = target?.avatar;
         if (!avatar) {
-            toastr.warning('No character selected.', 'CharMemory');
+            toastr.warning(t`No character selected.`, 'CharMemory');
             return;
         }
         try {
@@ -6352,7 +6357,7 @@ async function showTroubleshooter(initialSection = 'health') {
                 created: Date.now(),
             });
             saveSettingsDebounced();
-            toastr.success(`Imported: ${file.name}`, 'CharMemory');
+            toastr.success(t`Imported: ${file.name}`, 'CharMemory');
             // Append new file row to the Data Bank list
             const sizeText = `<span class="charMemory_tsFileSize">${(text.length / 1024).toFixed(1)} KB</span>`;
             const newRow = `<div class="charMemory_tsFileRow" data-url="${escapeAttr(fileUrl)}" data-name="${escapeAttr(file.name)}">
@@ -6378,7 +6383,7 @@ async function showTroubleshooter(initialSection = 'health') {
             $list.append(newRow);
         } catch (err) {
             console.error(LOG_PREFIX, 'Failed to import file:', err);
-            toastr.error('Could not import file.', 'CharMemory');
+            toastr.error(t`Could not import file.`, 'CharMemory');
         }
         // Reset input so the same file can be re-imported
         $(this).val('');
@@ -6396,11 +6401,11 @@ async function showTroubleshooter(initialSection = 'health') {
         try {
             await navigator.clipboard.writeText($('#cm_ts_reportContent').text());
             const $status = $('#cm_ts_reportStatus');
-            $status.text('Copied!').show();
+            $status.text(t`Copied!`).show();
             setTimeout(() => $status.fadeOut(300), 2000);
         } catch (err) {
             console.error(LOG_PREFIX, 'Failed to copy report:', err);
-            toastr.error('Could not copy report to clipboard.', 'CharMemory');
+            toastr.error(t`Could not copy report to clipboard.`, 'CharMemory');
         }
     });
 
@@ -6425,37 +6430,37 @@ async function showTroubleshooter(initialSection = 'health') {
 
     // Reset / Clear actions (with confirmation dialogs)
     $('#cm_ts_resetThisChat').off('click').on('click', async function () {
-        const charName = getCharacterName() || 'this character';
+        const charName = getCharacterName() || t`this character`;
         const isGroup = isGroupChat();
         const scopeNote = isGroup
-            ? `<br><small>This is a group chat — all members share one extraction pointer and will all be reset together.</small>`
+            ? `<br><small>${t`This is a group chat — all members share one extraction pointer and will all be reset together.`}</small>`
             : '';
         const confirmed = await callGenericPopup(
-            `The extraction pointer for the active chat will be reset for <strong>${escapeHtml(charName)}</strong>. Next "Extract Now" will re-read all messages in this chat from the first.${scopeNote}`,
-            POPUP_TYPE.CONFIRM, 'Reset This Chat',
+            t`The extraction pointer for the active chat will be reset for <strong>${escapeHtml(charName)}</strong>. Next "Extract Now" will re-read all messages in this chat from the first.${scopeNote}`,
+            POPUP_TYPE.CONFIRM, t`Reset This Chat`,
         );
         if (!confirmed) return;
         resetCurrentChatTracking();
     });
 
     $('#cm_ts_resetBatchProgress').off('click').on('click', async function () {
-        const charName = getCharacterName() || 'this character';
+        const charName = getCharacterName() || t`this character`;
         const confirmed = await callGenericPopup(
-            `The Batch tool's record of which messages it has already processed will be cleared for all of <strong>${escapeHtml(charName)}</strong>'s chats. The next Batch run will re-read every message from the start, which may create duplicate memories unless you clear existing memories first. Extract Now and auto-extraction are not affected.`,
-            POPUP_TYPE.CONFIRM, 'Reset Batch Progress',
+            t`The Batch tool's record of which messages it has already processed will be cleared for all of <strong>${escapeHtml(charName)}</strong>'s chats. The next Batch run will re-read every message from the start, which may create duplicate memories unless you clear existing memories first. Extract Now and auto-extraction are not affected.`,
+            POPUP_TYPE.CONFIRM, t`Reset Batch Progress`,
         );
         if (!confirmed) return;
         resetBatchProgress();
     });
     $('#cm_ts_clearMemories').off('click').on('click', async function () {
-        const charName = getCharacterName() || 'this character';
+        const charName = getCharacterName() || t`this character`;
         const s = extension_settings[MODULE_NAME];
         const scopeNote = s.perChat
-            ? `This will delete memories for the current chat only.`
-            : `This includes memories from all of ${escapeHtml(charName)}'s chats.`;
+            ? t`This will delete memories for the current chat only.`
+            : t`This includes memories from all of ${escapeHtml(charName)}'s chats.`;
         const confirmed = await callGenericPopup(
-            `<strong>${escapeHtml(charName)}'s</strong> memory file will be deleted and extraction tracking will be reset. This cannot be undone.<br><br>${scopeNote}`,
-            POPUP_TYPE.CONFIRM, 'Clear All Memories',
+            t`<strong>${escapeHtml(charName)}'s</strong> memory file will be deleted and extraction tracking will be reset. This cannot be undone.<br><br>${scopeNote}`,
+            POPUP_TYPE.CONFIRM, t`Clear All Memories`,
         );
         if (!confirmed) return;
         await clearAllMemories();
@@ -6603,7 +6608,7 @@ ${logLines || '  No activity logged'}
 async function showMemoryManager() {
     const targets = getMemoryTargets();
     if (targets.length === 0) {
-        callGenericPopup('No character selected.', POPUP_TYPE.TEXT);
+        callGenericPopup(t`No character selected.`, POPUP_TYPE.TEXT);
         return;
     }
 
@@ -6622,7 +6627,7 @@ async function showMemoryManager() {
         const pickerHtml = targetData.map((t, i) =>
             `<label class="checkbox_label"><input type="radio" name="charMemory_mmTarget" value="${i}" ${i === 0 ? 'checked' : ''} /> ${escapeHtml(t.name)} <small style="opacity:0.5;">(${t.count} memories)</small></label>`,
         ).join('<br>');
-        const picked = await callGenericPopup(`Select a character to view/edit memories for:<br><br>${pickerHtml}`, POPUP_TYPE.CONFIRM);
+        const picked = await callGenericPopup(t`Select a character to view/edit memories for:<br><br>${pickerHtml}`, POPUP_TYPE.CONFIRM);
         if (!picked) return;
         const selectedIdx = Number($('input[name="charMemory_mmTarget"]:checked').val()) || 0;
         target = targets[selectedIdx];
@@ -6632,7 +6637,7 @@ async function showMemoryManager() {
     const blocks = parseMemories(content || '');
 
     if (blocks.length === 0) {
-        callGenericPopup('No memories yet.', POPUP_TYPE.TEXT);
+        callGenericPopup(t`No memories yet.`, POPUP_TYPE.TEXT);
         return;
     }
 
@@ -6658,12 +6663,12 @@ async function showMemoryManager() {
         ${buildFindReplaceBar('charMemory_mmFR')}
         <div class="charMemory_consolidationContent" id="charMemory_mmEditorPane">${renderConsolidatedCards(blocks, editor.getEditingSet())}</div>
         <div class="charMemory_tsFileEditorFooter">
-            <button class="charMemory_editorAddBlock menu_button charMemory_editorAddBlock--hidden" id="charMemory_mmAddBlock"><i class="fa-solid fa-plus fa-xs"></i> Add Block</button>
-            <button class="menu_button" id="charMemory_mmUndoBtn" disabled><i class="fa-solid fa-rotate-left fa-xs"></i> Undo</button>
+            <button class="charMemory_editorAddBlock menu_button charMemory_editorAddBlock--hidden" id="charMemory_mmAddBlock"><i class="fa-solid fa-plus fa-xs"></i> <span data-i18n="Add Block">Add Block</span></button>
+            <button class="menu_button" id="charMemory_mmUndoBtn" disabled><i class="fa-solid fa-rotate-left fa-xs"></i> <span data-i18n="Undo">Undo</span></button>
         </div>
     </div>`;
 
-    const popup = callGenericPopup(editorHtml, POPUP_TYPE.CONFIRM, '', { wide: true, allowVerticalScrolling: true, okButton: 'Save', cancelButton: 'Cancel' });
+    const popup = callGenericPopup(editorHtml, POPUP_TYPE.CONFIRM, '', { wide: true, allowVerticalScrolling: true, okButton: t`Save`, cancelButton: t`Cancel` });
 
     // Find/Replace bar
     const cleanupMmFR = wireFindReplaceEvents(editor, refreshEditor, 'charMemory_mmFR', '.charMemoryMmFR');
@@ -6725,13 +6730,13 @@ async function showMemoryManager() {
         .filter(b => b.bullets.length > 0);
 
     if (cleanBlocks.length === 0) {
-        toastr.warning('No memories to save.', 'CharMemory');
+        toastr.warning(t`No memories to save.`, 'CharMemory');
         return;
     }
 
     await writeMemoriesForCharacter(serializeMemories(cleanBlocks), target.avatar, target.fileName);
     const savedCount = countMemories(cleanBlocks);
-    toastr.success(`Saved ${savedCount} memories.`, 'CharMemory');
+    toastr.success(t`Saved ${savedCount} memories.`, 'CharMemory');
     updateStatusDisplay();
 }
 
@@ -6744,10 +6749,10 @@ async function showMemoryManager() {
  */
 function buildFindReplaceBar(idPrefix) {
     return `<div class="charMemory_findReplaceBar">
-        <input type="text" id="${idPrefix}_findInput" class="text_pole" placeholder="Find..." />
-        <input type="text" id="${idPrefix}_replaceInput" class="text_pole" placeholder="Replace with..." />
-        <button id="${idPrefix}_caseSensitive" class="menu_button menu_button_icon charMemory_frCaseBtn" title="Case sensitive">Aa</button>
-        <button id="${idPrefix}_replaceAllBtn" class="menu_button" disabled>Replace All</button>
+        <input type="text" id="${idPrefix}_findInput" class="text_pole" placeholder="Find..." data-i18n="[placeholder]Find..." />
+        <input type="text" id="${idPrefix}_replaceInput" class="text_pole" placeholder="Replace with..." data-i18n="[placeholder]Replace with..." />
+        <button id="${idPrefix}_caseSensitive" class="menu_button menu_button_icon charMemory_frCaseBtn" title="Case sensitive" data-i18n="[title]Case sensitive">Aa</button>
+        <button id="${idPrefix}_replaceAllBtn" class="menu_button" disabled data-i18n="Replace All">Replace All</button>
         <span id="${idPrefix}_matchCount" class="charMemory_frMatchCount"></span>
     </div>`;
 }
@@ -6798,7 +6803,7 @@ function wireFindReplaceEvents(editor, refreshFn, idPrefix, namespace) {
         const result = editor.findAndReplaceAll(find, replace, caseSensitive);
         refreshFn(null);
         updateCount();
-        toastr.success(`Replaced ${result.replacements} occurrence${result.replacements === 1 ? '' : 's'}.`, 'CharMemory');
+        toastr.success(result.replacements === 1 ? t`Replaced ${result.replacements} occurrence.` : t`Replaced ${result.replacements} occurrences.`, 'CharMemory');
     });
 
     return function cleanup() {
@@ -6842,19 +6847,19 @@ function renderConsolidatedCards(blocks, editingSet, highlightPattern = null) {
                 `<div class="charMemory_editorBulletRow" data-block="${bi}" data-bullet="${bui}">
                     <span class="charMemory_editorDash">-</span>
                     <input type="text" class="charMemory_editorBulletInput" value="${escapeHtml(bullet)}" data-block="${bi}" data-bullet="${bui}" />
-                    <button class="charMemory_editorDeleteBullet menu_button menu_button_icon" data-block="${bi}" data-bullet="${bui}" title="Delete memory"><i class="fa-solid fa-trash fa-xs"></i></button>
+                    <button class="charMemory_editorDeleteBullet menu_button menu_button_icon" data-block="${bi}" data-bullet="${bui}" title="Delete memory" data-i18n="[title]Delete memory"><i class="fa-solid fa-trash fa-xs"></i></button>
                 </div>`
             ).join('');
             return `<div class="charMemory_card charMemory_editorCard charMemory_editorCard--editing" data-block="${bi}">
                 <div class="charMemory_cardHeader">
                     <input type="text" class="charMemory_editorThemeInput" value="${escapeHtml(b.chat)}" data-block="${bi}" />
                     <span class="charMemory_cardActions">
-                        <button class="charMemory_editorToggleEdit menu_button menu_button_icon" data-block="${bi}" title="Done editing"><i class="fa-solid fa-check"></i></button>
-                        <button class="charMemory_editorDeleteBlock menu_button menu_button_icon" data-block="${bi}" title="Delete block"><i class="fa-solid fa-trash"></i></button>
+                        <button class="charMemory_editorToggleEdit menu_button menu_button_icon" data-block="${bi}" title="Done editing" data-i18n="[title]Done editing"><i class="fa-solid fa-check"></i></button>
+                        <button class="charMemory_editorDeleteBlock menu_button menu_button_icon" data-block="${bi}" title="Delete block" data-i18n="[title]Delete block"><i class="fa-solid fa-trash"></i></button>
                     </span>
                 </div>
                 <div class="charMemory_editorBullets">${bullets}</div>
-                <button class="charMemory_editorAddBullet menu_button" data-block="${bi}"><i class="fa-solid fa-plus fa-xs"></i> Add memory</button>
+                <button class="charMemory_editorAddBullet menu_button" data-block="${bi}"><i class="fa-solid fa-plus fa-xs"></i> <span data-i18n="Add memory">Add memory</span></button>
             </div>`;
         } else {
             const bullets = b.bullets.map(bullet => `<li>${highlightText(bullet, highlightPattern)}</li>`).join('');
@@ -6863,7 +6868,7 @@ function renderConsolidatedCards(blocks, editingSet, highlightPattern = null) {
                 <div class="charMemory_cardHeader">
                     <strong>${headerHtml}</strong>
                     <span class="charMemory_cardActions">
-                        <button class="charMemory_editorToggleEdit menu_button menu_button_icon" data-block="${bi}" title="Edit block"><i class="fa-solid fa-pencil"></i></button>
+                        <button class="charMemory_editorToggleEdit menu_button menu_button_icon" data-block="${bi}" title="Edit block" data-i18n="[title]Edit block"><i class="fa-solid fa-pencil"></i></button>
                     </span>
                 </div>
                 <ul>${bullets}</ul>
@@ -6897,26 +6902,26 @@ function buildConsolidationDialog(beforeBlocks, beforeCount, consolidatedBlocks,
                 ).join('')}
             </select>
             <details class="charMemory_promptDisclosure charMemory_promptDisclosure--dialog">
-                <summary><small>Show prompt</small></summary>
+                <summary><small data-i18n="Show prompt">Show prompt</small></summary>
                 <textarea id="charMemory_dialogPrompt" class="text_pole textarea_compact" rows="4" placeholder="Edit prompt for this strategy..."></textarea>
                 <div class="charMemory_buttonRow">
-                    <input type="button" id="charMemory_dialogRestoreDefault" class="menu_button" value="Restore Default" style="display:none;" />
+                    <input type="button" id="charMemory_dialogRestoreDefault" class="menu_button" value="Restore Default" data-i18n="[value]Restore Default" style="display:none;" />
                 </div>
             </details>
-            <input type="button" id="charMemory_rerunConsolidation" class="menu_button" value="Re-run" title="Send original memories to the LLM again with current strategy" />
-            <input type="button" id="charMemory_undoRerun" class="menu_button" value="Undo" title="Revert to previous consolidated version" disabled />
-            <span id="charMemory_rerunSpinner" style="display:none;">Working...</span>
+            <input type="button" id="charMemory_rerunConsolidation" class="menu_button" value="Re-run" data-i18n="[value]Re-run;[title]Send original memories to the LLM again with current strategy" title="Send original memories to the LLM again with current strategy" />
+            <input type="button" id="charMemory_undoRerun" class="menu_button" value="Undo" data-i18n="[value]Undo;[title]Revert to previous consolidated version" title="Revert to previous consolidated version" disabled />
+            <span id="charMemory_rerunSpinner" style="display:none;" data-i18n="Working...">Working...</span>
         </div>
         ${buildFindReplaceBar('charMemory_consolFR')}
         <div class="charMemory_consolidationPanes">
             <div class="charMemory_consolidationPane">
-                <h4>Original Memories</h4>
+                <h4 data-i18n="Original Memories">Original Memories</h4>
                 <div class="charMemory_consolidationContent">${renderReadOnlyCards(beforeBlocks)}</div>
             </div>
             <div class="charMemory_consolidationPane">
-                <h4>Consolidated Memories</h4>
+                <h4 data-i18n="Consolidated Memories">Consolidated Memories</h4>
                 <div class="charMemory_consolidationContent" id="charMemory_editorPane">${renderConsolidatedCards(consolidatedBlocks, editingSet)}</div>
-                <button class="charMemory_editorAddBlock menu_button ${hasEditing ? '' : 'charMemory_editorAddBlock--hidden'}" id="charMemory_editorAddBlock"><i class="fa-solid fa-plus fa-xs"></i> Add Block</button>
+                <button class="charMemory_editorAddBlock menu_button ${hasEditing ? '' : 'charMemory_editorAddBlock--hidden'}" id="charMemory_editorAddBlock"><i class="fa-solid fa-plus fa-xs"></i> <span data-i18n="Add Block">Add Block</span></button>
             </div>
         </div>
     </div>`;
@@ -6924,15 +6929,15 @@ function buildConsolidationDialog(beforeBlocks, beforeCount, consolidatedBlocks,
 
 async function undoConsolidation() {
     if (!consolidationBackup) {
-        toastr.warning('No consolidation to undo.', 'CharMemory');
+        toastr.warning(t`No consolidation to undo.`, 'CharMemory');
         return;
     }
-    const confirm = await callGenericPopup('Undo the last consolidation and restore previous memories?', POPUP_TYPE.CONFIRM);
+    const confirm = await callGenericPopup(t`Undo the last consolidation and restore previous memories?`, POPUP_TYPE.CONFIRM);
     if (!confirm) return;
 
     await writeMemoriesForCharacter(consolidationBackup.content, consolidationBackup.avatar, consolidationBackup.fileName);
     consolidationBackup = null;
-    toastr.success('Consolidation undone. Memories restored.', 'CharMemory');
+    toastr.success(t`Consolidation undone. Memories restored.`, 'CharMemory');
     updateStatusDisplay();
 }
 
@@ -7002,7 +7007,7 @@ async function runConsolidationLLM(memories, charName) {
     try {
         inApiCall = true;
         const sourceLabel = getSourceLabel();
-        toastr.info(`Consolidating via ${sourceLabel}...`, 'CharMemory', { timeOut: 3000 });
+        toastr.info(t`Consolidating via ${sourceLabel}...`, 'CharMemory', { timeOut: 3000 });
 
         const verbose = extension_settings[MODULE_NAME].verboseLogging;
         if (verbose) {
@@ -7028,7 +7033,7 @@ async function runConsolidationLLM(memories, charName) {
 
         if (!cleanResult) {
             logActivity('Consolidation returned empty result', 'warning');
-            toastr.warning('Consolidation returned empty result.', 'CharMemory');
+            toastr.warning(t`Consolidation returned empty result.`, 'CharMemory');
             return null;
         }
 
@@ -7066,7 +7071,7 @@ async function runConsolidationLLM(memories, charName) {
     } catch (err) {
         console.error(LOG_PREFIX, 'Consolidation failed:', err);
         logActivity(`Consolidation failed: ${err.message}`, 'error');
-        toastr.error('Memory consolidation failed. Check console for details.', 'CharMemory');
+        toastr.error(t`Memory consolidation failed. Check console for details.`, 'CharMemory');
         return null;
     } finally {
         inApiCall = false;
@@ -7075,13 +7080,13 @@ async function runConsolidationLLM(memories, charName) {
 
 async function consolidateMemories() {
     if (inApiCall) {
-        toastr.warning('An API call is already in progress.', 'CharMemory');
+        toastr.warning(t`An API call is already in progress.`, 'CharMemory');
         return;
     }
 
     const targets = getMemoryTargets();
     if (targets.length === 0) {
-        toastr.warning('No character selected.', 'CharMemory');
+        toastr.warning(t`No character selected.`, 'CharMemory');
         return;
     }
 
@@ -7093,7 +7098,7 @@ async function consolidateMemories() {
         const pickerHtml = targets.map((t, i) =>
             `<label class="checkbox_label"><input type="radio" name="charMemory_consolTarget" value="${i}" ${i === 0 ? 'checked' : ''} /> ${escapeHtml(t.name)}</label>`,
         ).join('<br>');
-        const picked = await callGenericPopup(`Select a character to consolidate memories for:<br><br>${pickerHtml}`, POPUP_TYPE.CONFIRM);
+        const picked = await callGenericPopup(t`Select a character to consolidate memories for:<br><br>${pickerHtml}`, POPUP_TYPE.CONFIRM);
         if (!picked) return;
         const selectedIdx = Number($('input[name="charMemory_consolTarget"]:checked').val()) || 0;
         target = targets[selectedIdx];
@@ -7103,7 +7108,7 @@ async function consolidateMemories() {
     const memories = parseMemories(content);
 
     if (memories.length < 2) {
-        toastr.info('Not enough memories to consolidate.', 'CharMemory');
+        toastr.info(t`Not enough memories to consolidate.`, 'CharMemory');
         return;
     }
 
@@ -7112,14 +7117,14 @@ async function consolidateMemories() {
 
     // Show busy state on button
     const $btn = $('#charMemory_consolidateBtn');
-    $btn.val('Consolidating…').prop('disabled', true);
+    $btn.val(t`Consolidating…`).prop('disabled', true);
 
     // Run initial consolidation — returns serialized text, parse to blocks
     let initialResult;
     try {
         initialResult = await runConsolidationLLM(memories, target.name);
     } finally {
-        $btn.val('Consolidate').prop('disabled', false);
+        $btn.val(t`Consolidate`).prop('disabled', false);
     }
     if (!initialResult) return;
 
@@ -7141,7 +7146,7 @@ async function consolidateMemories() {
     const initBlocks = editor.getBlocks();
     const initEditing = editor.getEditingSet();
     const dialogHtml = buildConsolidationDialog(memories, beforeCount, initBlocks, initEditing);
-    const popup = callGenericPopup(dialogHtml, POPUP_TYPE.CONFIRM, '', { wide: true, allowVerticalScrolling: true, okButton: 'Save', cancelButton: 'Cancel' });
+    const popup = callGenericPopup(dialogHtml, POPUP_TYPE.CONFIRM, '', { wide: true, allowVerticalScrolling: true, okButton: t`Save`, cancelButton: t`Cancel` });
 
     // Set up the strategy dropdown and prompt viewer to match current setting
     const currentStrategy = extension_settings[MODULE_NAME].consolidationStrategy || 'balanced';
@@ -7284,13 +7289,13 @@ async function consolidateMemories() {
 
     if (!confirmed) {
         logActivity('Consolidation cancelled by user');
-        toastr.info('Consolidation cancelled.', 'CharMemory');
+        toastr.info(t`Consolidation cancelled.`, 'CharMemory');
         updateConsolidationStrategyUI();
         return;
     }
 
     if (inApiCall) {
-        toastr.warning('Cannot save while a re-run is in progress.', 'CharMemory');
+        toastr.warning(t`Cannot save while a re-run is in progress.`, 'CharMemory');
         return;
     }
 
@@ -7300,7 +7305,7 @@ async function consolidateMemories() {
         .filter(b => b.bullets.length > 0);
 
     if (cleanBlocks.length === 0) {
-        toastr.warning('No memories to save. Memories unchanged.', 'CharMemory');
+        toastr.warning(t`No memories to save. Memories unchanged.`, 'CharMemory');
         return;
     }
 
@@ -7309,7 +7314,7 @@ async function consolidateMemories() {
 
     const afterCount = countMemories(cleanBlocks);
     logActivity(`Consolidation complete: ${beforeCount} → ${afterCount} memories`, 'success');
-    toastr.success(`Consolidated ${beforeCount} → ${afterCount} memories.`, 'CharMemory');
+    toastr.success(t`Consolidated ${beforeCount} → ${afterCount} memories.`, 'CharMemory');
     updateStatusDisplay();
     updateConsolidationStrategyUI();
 }
@@ -7340,20 +7345,20 @@ function buildReformatDialog(originalBlocks, originalCount, reformattedBlocks, e
             Original: ${originalCount} memories in ${originalBlocks.length} blocks &rarr; Reformatted: <span id="charMemory_reformatAfterCount">${afterCount}</span> memories in <span id="charMemory_reformatBlockCount">${reformattedBlocks.length}</span> blocks
         </div>
         <div class="charMemory_consolidationToolbar">
-            <input type="button" id="charMemory_rerunReformat" class="menu_button" value="Re-run" title="Send original memories to the LLM again" />
-            <input type="button" id="charMemory_undoReformatRerun" class="menu_button" value="Undo" title="Revert to previous reformatted version" disabled />
-            <span id="charMemory_reformatRerunSpinner" style="display:none;">Working...</span>
+            <input type="button" id="charMemory_rerunReformat" class="menu_button" value="Re-run" data-i18n="[value]Re-run;[title]Send original memories to the LLM again" title="Send original memories to the LLM again" />
+            <input type="button" id="charMemory_undoReformatRerun" class="menu_button" value="Undo" data-i18n="[value]Undo;[title]Revert to previous reformatted version" title="Revert to previous reformatted version" disabled />
+            <span id="charMemory_reformatRerunSpinner" style="display:none;" data-i18n="Working...">Working...</span>
         </div>
         ${buildFindReplaceBar('charMemory_refFR')}
         <div class="charMemory_consolidationPanes">
             <div class="charMemory_consolidationPane">
-                <h4>Original Memories</h4>
+                <h4 data-i18n="Original Memories">Original Memories</h4>
                 <div class="charMemory_consolidationContent">${renderReadOnlyCards(originalBlocks)}</div>
             </div>
             <div class="charMemory_consolidationPane">
-                <h4>Reformatted Memories</h4>
+                <h4 data-i18n="Reformatted Memories">Reformatted Memories</h4>
                 <div class="charMemory_consolidationContent" id="charMemory_reformatEditorPane">${renderConsolidatedCards(reformattedBlocks, editingSet)}</div>
-                <button class="charMemory_editorAddBlock menu_button ${hasEditing ? '' : 'charMemory_editorAddBlock--hidden'}" id="charMemory_reformatAddBlock"><i class="fa-solid fa-plus fa-xs"></i> Add Block</button>
+                <button class="charMemory_editorAddBlock menu_button ${hasEditing ? '' : 'charMemory_editorAddBlock--hidden'}" id="charMemory_reformatAddBlock"><i class="fa-solid fa-plus fa-xs"></i> <span data-i18n="Add Block">Add Block</span></button>
             </div>
         </div>
     </div>`;
@@ -7386,7 +7391,7 @@ async function showReformatPreview(originalBlocks, reformattedBlocks, charName, 
     const initBlocks = editor.getBlocks();
     const initEditing = editor.getEditingSet();
     const dialogHtml = buildReformatDialog(originalBlocks, originalCount, initBlocks, initEditing);
-    const popup = callGenericPopup(dialogHtml, POPUP_TYPE.CONFIRM, '', { wide: true, allowVerticalScrolling: true, okButton: 'Save', cancelButton: 'Cancel' });
+    const popup = callGenericPopup(dialogHtml, POPUP_TYPE.CONFIRM, '', { wide: true, allowVerticalScrolling: true, okButton: t`Save`, cancelButton: t`Cancel` });
 
     // === Find/Replace bar ===
     const cleanupRefFR = wireFindReplaceEvents(editor, refreshEditor, 'charMemory_refFR', '.charMemoryRefFR');
@@ -7445,7 +7450,7 @@ async function showReformatPreview(originalBlocks, reformattedBlocks, charName, 
             newResult = await convertWithLLM(content, charName);
         } catch (err) {
             console.error(LOG_PREFIX, 'Re-run reformat failed:', err);
-            toastr.error(`Re-run failed: ${err.message || 'Unknown error'}`, 'CharMemory');
+            toastr.error(t`Re-run failed: ${err.message || 'Unknown error'}`, 'CharMemory');
             newResult = null;
         } finally {
             inApiCall = false;
@@ -7494,7 +7499,7 @@ async function showReformatPreview(originalBlocks, reformattedBlocks, charName, 
 
     // Guard: if a re-run is still in flight, don't save stale state
     if (inApiCall) {
-        toastr.warning('Cannot save while a re-run is in progress.', 'CharMemory');
+        toastr.warning(t`Cannot save while a re-run is in progress.`, 'CharMemory');
         return null;
     }
 
@@ -7512,13 +7517,13 @@ async function showReformatPreview(originalBlocks, reformattedBlocks, charName, 
  */
 async function reformatMemories() {
     if (inApiCall) {
-        toastr.warning('An API call is already in progress.', 'CharMemory');
+        toastr.warning(t`An API call is already in progress.`, 'CharMemory');
         return;
     }
 
     const targets = getMemoryTargets();
     if (targets.length === 0) {
-        toastr.warning('No character selected.', 'CharMemory');
+        toastr.warning(t`No character selected.`, 'CharMemory');
         return;
     }
 
@@ -7530,7 +7535,7 @@ async function reformatMemories() {
         const pickerHtml = targets.map((t, i) =>
             `<label class="checkbox_label"><input type="radio" name="charMemory_reformatTarget" value="${i}" ${i === 0 ? 'checked' : ''} /> ${escapeHtml(t.name)}</label>`,
         ).join('<br>');
-        const picked = await callGenericPopup(`Select a character to reformat memories for:<br><br>${pickerHtml}`, POPUP_TYPE.CONFIRM);
+        const picked = await callGenericPopup(t`Select a character to reformat memories for:<br><br>${pickerHtml}`, POPUP_TYPE.CONFIRM);
         if (!picked) return;
         const selectedIdx = Number($('input[name="charMemory_reformatTarget"]:checked').val()) || 0;
         target = targets[selectedIdx];
@@ -7540,7 +7545,7 @@ async function reformatMemories() {
     const originalBlocks = parseMemories(content);
 
     if (originalBlocks.length === 0) {
-        toastr.info('No memories found to reformat.', 'CharMemory');
+        toastr.info(t`No memories found to reformat.`, 'CharMemory');
         return;
     }
 
@@ -7550,7 +7555,7 @@ async function reformatMemories() {
     );
     if (allHaveTopicTags) {
         const proceed = await callGenericPopup(
-            'All memory blocks already have topic tags. Reformatting may still improve structure, but the memories may already be well-formatted.<br><br>Continue anyway?',
+            t`All memory blocks already have topic tags. Reformatting may still improve structure, but the memories may already be well-formatted.<br><br>Continue anyway?`,
             POPUP_TYPE.CONFIRM,
         );
         if (!proceed) return;
@@ -7561,22 +7566,22 @@ async function reformatMemories() {
 
     // Show busy state
     const $btn = $('#charMemory_formatBtn');
-    $btn.val('Reformatting\u2026').prop('disabled', true);
+    $btn.val(t`Reformatting\u2026`).prop('disabled', true);
 
     let result;
     try {
         inApiCall = true;
         const charName = target.name || 'Character';
         const sourceLabel = getSourceLabel();
-        toastr.info(`Sending to ${sourceLabel} for reformatting...`, 'CharMemory', { timeOut: 3000 });
+        toastr.info(t`Sending to ${sourceLabel} for reformatting...`, 'CharMemory', { timeOut: 3000 });
         result = await convertWithLLM(content, charName);
     } catch (err) {
         console.error(LOG_PREFIX, 'Reformat failed:', err);
-        toastr.error(`Reformat failed: ${err.message || 'Unknown error'}`, 'CharMemory');
+        toastr.error(t`Reformat failed: ${err.message || 'Unknown error'}`, 'CharMemory');
         return;
     } finally {
         inApiCall = false;
-        $btn.val('Reformat').prop('disabled', false);
+        $btn.val(t`Reformat`).prop('disabled', false);
     }
 
     for (const w of result.warnings) {
@@ -7584,7 +7589,7 @@ async function reformatMemories() {
     }
 
     if (result.blocks.length === 0) {
-        toastr.warning('LLM returned no usable memories. Reformat aborted.', 'CharMemory');
+        toastr.warning(t`LLM returned no usable memories. Reformat aborted.`, 'CharMemory');
         return;
     }
 
@@ -7593,7 +7598,7 @@ async function reformatMemories() {
 
     if (!editedBlocks) {
         logActivity('Reformat cancelled by user');
-        toastr.info('Reformat cancelled.', 'CharMemory');
+        toastr.info(t`Reformat cancelled.`, 'CharMemory');
         return;
     }
 
@@ -7605,14 +7610,14 @@ async function reformatMemories() {
         await writeMemoriesForCharacter(serializeMemories(editedBlocks), target.avatar, target.fileName);
     } catch (err) {
         console.error(LOG_PREFIX, 'Reformat save failed:', err);
-        toastr.error('Failed to save reformatted memories.', 'CharMemory');
+        toastr.error(t`Failed to save reformatted memories.`, 'CharMemory');
         reformatBackup = null;
         return;
     }
 
     const afterCount = countMemories(editedBlocks);
     logActivity(`Reformat complete: ${beforeCount} → ${afterCount} memories in ${editedBlocks.length} blocks`, 'success');
-    toastr.success(`Reformatted ${beforeCount} → ${afterCount} memories.`, 'CharMemory');
+    toastr.success(t`Reformatted ${beforeCount} → ${afterCount} memories.`, 'CharMemory');
     updateStatusDisplay();
 }
 
@@ -7621,18 +7626,18 @@ async function reformatMemories() {
  */
 async function undoReformat() {
     if (!reformatBackup) {
-        toastr.warning('No reformat to undo.', 'CharMemory');
+        toastr.warning(t`No reformat to undo.`, 'CharMemory');
         return;
     }
     const confirm = await callGenericPopup(
-        'Undo the last reformat and restore original memories?',
+        t`Undo the last reformat and restore original memories?`,
         POPUP_TYPE.CONFIRM,
     );
     if (!confirm) return;
 
     await writeMemoriesForCharacter(reformatBackup.content, reformatBackup.avatar, reformatBackup.fileName);
     reformatBackup = null;
-    toastr.info('Reformat undone — original memories restored.', 'CharMemory');
+    toastr.info(t`Reformat undone — original memories restored.`, 'CharMemory');
     logActivity('Reformat undone');
     updateStatusDisplay();
 }
@@ -7664,7 +7669,7 @@ function registerSlashCommands() {
             captureDiagnostics();
             console.log(LOG_PREFIX, 'Diagnostics:', lastDiagnostics);
             console.log(LOG_PREFIX, 'History:', diagnosticsHistory);
-            toastr.info('Diagnostics captured. Check console and Diagnostics panel.', 'CharMemory');
+            toastr.info(t`Diagnostics captured. Check console and Diagnostics panel.`, 'CharMemory');
             return '';
         },
         helpString: 'Capture and display CharMemory diagnostics data.',
@@ -7765,8 +7770,8 @@ function resetCurrentChatTracking() {
     saveMetadataDebounced();
     updateStatusDisplay();
     const msg = isGroupChat()
-        ? 'Extraction state reset for this group chat. All members will re-process from the beginning.'
-        : 'Extraction state reset. Next "Extract Now" will re-read all messages.';
+        ? t`Extraction state reset for this group chat. All members will re-process from the beginning.`
+        : t`Extraction state reset. Next "Extract Now" will re-read all messages.`;
     toastr.success(msg, 'CharMemory');
 }
 
@@ -7779,7 +7784,7 @@ function resetCurrentChatTracking() {
 function resetBatchProgress() {
     const charName = getCharacterName();
     if (!charName || !extension_settings[MODULE_NAME].batchState) {
-        toastr.info('No batch progress to clear.', 'CharMemory');
+        toastr.info(t`No batch progress to clear.`, 'CharMemory');
         return;
     }
     const prefix = `${charName}:`;
@@ -7792,9 +7797,9 @@ function resetBatchProgress() {
     }
     saveSettingsDebounced();
     if (count > 0) {
-        toastr.success(`Batch progress cleared for ${count} chat${count !== 1 ? 's' : ''}.`, 'CharMemory');
+        toastr.success(count === 1 ? t`Batch progress cleared for ${count} chat.` : t`Batch progress cleared for ${count} chats.`, 'CharMemory');
     } else {
-        toastr.info('No batch progress to clear.', 'CharMemory');
+        toastr.info(t`No batch progress to clear.`, 'CharMemory');
     }
 }
 
@@ -7834,10 +7839,10 @@ async function clearAllMemories() {
     saveSettingsDebounced();
 
     // Immediately update stats bar to avoid stale async reads
-    $('#charMemory_statCount').text('0 memories');
-    $('#charMemory_statProgress').text(`0/${extension_settings[MODULE_NAME].interval} msgs`);
+    $('#charMemory_statCount').text(t`0 memories`);
+    $('#charMemory_statProgress').text(t`0/${extension_settings[MODULE_NAME].interval} msgs`);
     updateStatusDisplay();
-    toastr.success('Memories cleared and extraction state reset for all chats. Next extraction will start from the beginning.', 'CharMemory');
+    toastr.success(t`Memories cleared and extraction state reset for all chats. Next extraction will start from the beginning.`, 'CharMemory');
 }
 
 function setupListeners() {
@@ -7997,11 +8002,11 @@ async function onPinMemoryClick() {
     // Strip HTML tags from message text
     const plainText = msg.mes.replace(/<[^>]*>/g, '').trim();
     if (!plainText) {
-        toastr.warning('Message has no text content.', 'CharMemory');
+        toastr.warning(t`Message has no text content.`, 'CharMemory');
         return;
     }
 
-    const edited = await callGenericPopup('Edit text to save as a memory:', POPUP_TYPE.INPUT, plainText, { rows: 6 });
+    const edited = await callGenericPopup(t`Edit text to save as a memory:`, POPUP_TYPE.INPUT, plainText, { rows: 6 });
     if (edited === null || edited === false) return; // cancelled
 
     const text = String(edited).trim();
@@ -8030,7 +8035,9 @@ async function onPinMemoryClick() {
     blocks.push({ chat: chatId, date: timestamp, bullets });
     await writeMemoriesForCharacter(serializeMemories(blocks), target.avatar, target.fileName);
 
-    toastr.success(`${bullets.length} memor${bullets.length === 1 ? 'y' : 'ies'} pinned${targets.length > 1 ? ` to ${target.name}` : ''}!`, 'CharMemory');
+    const pinnedLabel = bullets.length === 1 ? t`${bullets.length} memory` : t`${bullets.length} memories`;
+    const pinnedSuffix = targets.length > 1 ? t` to ${target.name}` : '';
+    toastr.success(t`${pinnedLabel} pinned${pinnedSuffix}!`, 'CharMemory');
     updateStatusDisplay();
 }
 
@@ -8168,7 +8175,7 @@ function renderLogDrawerEntries() {
     if (!$body.length) return;
 
     if (activityLog.length === 0) {
-        $body.html('<div class="charMemory_diagEmpty">No activity yet.</div>');
+        $body.html(`<div class="charMemory_diagEmpty">${t`No activity yet.`}</div>`);
         return;
     }
 
@@ -8406,7 +8413,7 @@ function showInjectionDrawer(messageIndex) {
     $label.text(`\u2014 Message #${messageIndex}`);
 
     if (!snapshot) {
-        $body.html('<div class="charMemory_diagEmpty">No injection data recorded for this message.</div>');
+        $body.html('<div class="charMemory_diagEmpty" data-i18n="No injection data recorded for this message.">No injection data recorded for this message.</div>');
         $toolbar.html('');
         toggleInjectionDrawer(true);
         return;
@@ -8426,10 +8433,10 @@ function showInjectionDrawer(messageIndex) {
     html += '<div class="charMemory_drawerSection">';
     html += '<div class="charMemory_drawerSectionHeader" data-section="promptbreakdown">';
     html += '<i class="fa-solid fa-chevron-down charMemory_drawerChevron"></i> ';
-    html += '<strong>Context</strong>';
+    html += '<strong data-i18n="Context">Context</strong>';
     html += '</div>';
     html += '<div class="charMemory_drawerSectionBody charMemory_promptBreakdownBody">';
-    html += '<div class="charMemory_diagEmpty"><i class="fa-solid fa-spinner fa-spin fa-sm"></i> Loading…</div>';
+    html += '<div class="charMemory_diagEmpty"><i class="fa-solid fa-spinner fa-spin fa-sm"></i> <span data-i18n="Loading…">Loading…</span></div>';
     html += '</div></div>';
 
     // ── Per-message health notes ──────────────────────────────────────────
@@ -8454,7 +8461,7 @@ function showInjectionDrawer(messageIndex) {
     html += '<div class="charMemory_drawerSection">';
     html += '<div class="charMemory_drawerSectionHeader" data-section="memories">';
     html += '<i class="fa-solid fa-chevron-down charMemory_drawerChevron"></i> ';
-    html += `<strong>Data Bank</strong> <span class="charMemory_drawerCount">(${memCount})</span>`;
+    html += `<strong data-i18n="Data Bank">Data Bank</strong> <span class="charMemory_drawerCount">(${memCount})</span>`;
     if (memTokens > 0) html += `<span class="charMemory_drawerTokenHint">~${memTokens.toLocaleString()} tk</span>`;
     html += '</div>';
     html += '<div class="charMemory_drawerSectionBody">';
@@ -8463,7 +8470,7 @@ function showInjectionDrawer(messageIndex) {
             html += `<div class="charMemory_drawerBullet">- ${escapeHtml(mem.text)}</div>`;
         }
     } else {
-        html += '<div class="charMemory_diagEmpty">No memories injected</div>';
+        html += '<div class="charMemory_diagEmpty" data-i18n="No memories injected">No memories injected</div>';
     }
     html += '</div></div>';
 
@@ -8472,7 +8479,7 @@ function showInjectionDrawer(messageIndex) {
     html += '<div class="charMemory_drawerSection">';
     html += '<div class="charMemory_drawerSectionHeader" data-section="worldinfo">';
     html += '<i class="fa-solid fa-chevron-down charMemory_drawerChevron"></i> ';
-    html += `<strong>Lorebook Entries</strong> <span class="charMemory_drawerCount">(${wiCount})</span>`;
+    html += `<strong data-i18n="Lorebook Entries">Lorebook Entries</strong> <span class="charMemory_drawerCount">(${wiCount})</span>`;
     if (wiTokens > 0) html += `<span class="charMemory_drawerTokenHint">~${wiTokens.toLocaleString()} tk</span>`;
     html += '</div>';
     html += '<div class="charMemory_drawerSectionBody">';
@@ -8491,7 +8498,7 @@ function showInjectionDrawer(messageIndex) {
             html += '</div>';
         }
     } else {
-        html += '<div class="charMemory_diagEmpty">No lorebook entries activated</div>';
+        html += '<div class="charMemory_diagEmpty" data-i18n="No lorebook entries activated">No lorebook entries activated</div>';
     }
     html += '</div></div>';
 
@@ -8505,7 +8512,7 @@ function showInjectionDrawer(messageIndex) {
     html += '<div class="charMemory_drawerSection">';
     html += '<div class="charMemory_drawerSectionHeader" data-section="prompts">';
     html += '<i class="fa-solid fa-chevron-down charMemory_drawerChevron"></i> ';
-    html += `<strong>Extension Prompts</strong> <span class="charMemory_drawerCount">(${epCount})</span>`;
+    html += `<strong data-i18n="Extension Prompts">Extension Prompts</strong> <span class="charMemory_drawerCount">(${epCount})</span>`;
     if (otherEpTokens > 0) html += `<span class="charMemory_drawerTokenHint">~${otherEpTokens.toLocaleString()} tk</span>`;
     html += '</div>';
     html += '<div class="charMemory_drawerSectionBody">';
@@ -8523,7 +8530,7 @@ function showInjectionDrawer(messageIndex) {
             html += '</div>';
         }
     } else {
-        html += '<div class="charMemory_diagEmpty">No extension prompts active</div>';
+        html += '<div class="charMemory_diagEmpty" data-i18n="No extension prompts active">No extension prompts active</div>';
     }
     html += '</div></div>';
 
@@ -8570,26 +8577,26 @@ let batchAbortController = null;
 async function showBatchPopup() {
     const charName = getCharacterName();
     if (!charName) {
-        toastr.warning('No character selected.', 'CharMemory');
+        toastr.warning(t`No character selected.`, 'CharMemory');
         return;
     }
 
     const batchHtml = `
         <div style="text-align:left;min-width:350px;">
             <div class="charMemory_buttonRow">
-                <input type="button" id="charMemory_batchRefresh" class="menu_button" value="Refresh" title="Load chat list for this character" />
-                <input type="button" id="charMemory_batchExtract" class="menu_button" value="Extract Selected" title="Run extraction on all selected chats" disabled />
-                <input type="button" id="charMemory_batchStop" class="menu_button" value="Stop" title="Cancel batch extraction" style="display:none;" />
+                <input type="button" id="charMemory_batchRefresh" class="menu_button" value="Refresh" data-i18n="[value]Refresh;[title]Load chat list for this character" title="Load chat list for this character" />
+                <input type="button" id="charMemory_batchExtract" class="menu_button" value="Extract Selected" data-i18n="[value]Extract Selected;[title]Run extraction on all selected chats" title="Run extraction on all selected chats" disabled />
+                <input type="button" id="charMemory_batchStop" class="menu_button" value="Stop" data-i18n="[value]Stop;[title]Cancel batch extraction" title="Cancel batch extraction" style="display:none;" />
             </div>
             <div id="charMemory_batchProgress" class="charMemory_batchProgress" style="display:none;">
                 <div class="charMemory_batchProgressText"></div>
                 <div class="charMemory_batchProgressBar"><div class="charMemory_batchProgressFill"></div></div>
             </div>
             <div class="charMemory_sectionHeader">
-                <small><b title="Chat files attached to this character. Select which ones to extract memories from.">Character Chats</b></small>
+                <small><b title="Chat files attached to this character. Select which ones to extract memories from." data-i18n="[title]Chat files attached to this character. Select which ones to extract memories from.">Character Chats</b></small>
                 <label class="checkbox_label">
                     <input type="checkbox" id="charMemory_batchSelectAll" />
-                    <small>Select all</small>
+                    <small data-i18n="Select all">Select all</small>
                 </label>
             </div>
             <div id="charMemory_batchChatList" class="charMemory_batchChatList" style="max-height:400px;">
@@ -8599,7 +8606,7 @@ async function showBatchPopup() {
     `;
 
     // Show the popup (non-blocking)
-    const popup = callGenericPopup(batchHtml, POPUP_TYPE.TEXT, 'Batch Extraction', { wide: true, okButton: 'Close' });
+    const popup = callGenericPopup(batchHtml, POPUP_TYPE.TEXT, t`Batch Extraction`, { wide: true, okButton: t`Close` });
 
     // Wire batch controls after DOM is inserted
     setTimeout(() => {
@@ -8677,7 +8684,7 @@ async function runBatchExtraction() {
     if (selected.length === 0) return;
 
     const confirmed = await callGenericPopup(
-        `Extract memories from ${selected.length} chat(s)? This may make multiple API calls per chat.`,
+        t`Extract memories from ${selected.length} chat(s)? This may make multiple API calls per chat.`,
         POPUP_TYPE.CONFIRM,
     );
     if (!confirmed) return;
@@ -8788,18 +8795,18 @@ jQuery(async function () {
         <div id="charMemory_injectionDrawer" class="charMemory_injectionDrawer">
             <div class="charMemory_drawerHeader">
                 <i class="fa-solid fa-circle" id="charMemory_drawerHealthDot" title="Injection health" style="font-size:10px;"></i>
-                <span class="charMemory_drawerTitle">Injected Context</span>
+                <span class="charMemory_drawerTitle" data-i18n="Injected Context">Injected Context</span>
                 <span class="charMemory_drawerMsgLabel" id="charMemory_drawerMsgLabel"></span>
-                <div class="charMemory_drawerClose" id="charMemory_drawerClose" title="Close"><i class="fa-solid fa-xmark"></i></div>
+                <div class="charMemory_drawerClose" id="charMemory_drawerClose" title="Close" data-i18n="[title]Close"><i class="fa-solid fa-xmark"></i></div>
             </div>
             <div class="charMemory_drawerToolbar" id="charMemory_drawerToolbar"></div>
             <div class="charMemory_drawerBody" id="charMemory_drawerBody">
-                <div class="charMemory_diagEmpty">Click the <i class="fa-solid fa-syringe"></i> icon on a message to view its injected context.</div>
+                <div class="charMemory_diagEmpty" data-i18n="Click the syringe icon on a message to view its injected context.">Click the <i class="fa-solid fa-syringe"></i> icon on a message to view its injected context.</div>
             </div>
             <div class="charMemory_drawerFooter" id="charMemory_drawerFooter"></div>
         </div>
         <div id="charMemory_drawerBackdrop" class="charMemory_drawerBackdrop"></div>
-        <div id="charMemory_drawerToggle" class="charMemory_drawerToggle" title="Toggle injection viewer">
+        <div id="charMemory_drawerToggle" class="charMemory_drawerToggle" title="Toggle injection viewer" data-i18n="[title]Toggle injection viewer">
             <i class="fa-solid fa-syringe"></i>
         </div>
     `);
@@ -8808,19 +8815,19 @@ jQuery(async function () {
     $('body').append(`
         <div id="charMemory_logDrawer" class="charMemory_logDrawer">
             <div class="charMemory_drawerHeader">
-                <span class="charMemory_drawerTitle">Activity Log</span>
+                <span class="charMemory_drawerTitle" data-i18n="Activity Log">Activity Log</span>
                 <div style="display:flex; gap:6px; align-items:center; margin-left:auto;">
                     <label class="checkbox_label" style="font-size:0.85em;">
                         <input type="checkbox" id="charMemory_logDrawerVerbose" />
-                        <span>Verbose</span>
+                        <span data-i18n="Verbose">Verbose</span>
                     </label>
-                    <button id="charMemory_logDrawerClear" class="menu_button" style="font-size:0.8em; padding:2px 8px;">Clear</button>
-                    <button id="charMemory_logDrawerSave" class="menu_button" style="font-size:0.8em; padding:2px 8px;">Save</button>
-                    <div class="charMemory_drawerClose" id="charMemory_logDrawerClose" title="Close"><i class="fa-solid fa-xmark"></i></div>
+                    <button id="charMemory_logDrawerClear" class="menu_button" style="font-size:0.8em; padding:2px 8px;" data-i18n="Clear">Clear</button>
+                    <button id="charMemory_logDrawerSave" class="menu_button" style="font-size:0.8em; padding:2px 8px;" data-i18n="Save">Save</button>
+                    <div class="charMemory_drawerClose" id="charMemory_logDrawerClose" title="Close" data-i18n="[title]Close"><i class="fa-solid fa-xmark"></i></div>
                 </div>
             </div>
             <div class="charMemory_drawerBody" id="charMemory_logDrawerBody">
-                <div class="charMemory_diagEmpty">No activity yet.</div>
+                <div class="charMemory_diagEmpty" data-i18n="No activity yet.">No activity yet.</div>
             </div>
         </div>
     `);
@@ -8831,7 +8838,7 @@ jQuery(async function () {
             <div class="charMemory_tabletHeader">
                 <b>CharMemory</b>
                 <div id="charMemory_tabletHeaderIcons" class="charMemory_tabletHeaderIcons"></div>
-                <div class="charMemory_drawerClose" id="charMemory_tabletClose" title="Close">
+                <div class="charMemory_drawerClose" id="charMemory_tabletClose" title="Close" data-i18n="[title]Close">
                     <i class="fa-solid fa-xmark"></i>
                 </div>
             </div>
@@ -8887,7 +8894,7 @@ jQuery(async function () {
     });
     $('#charMemory_logDrawerSave').on('click', function () {
         if (activityLog.length === 0) {
-            toastr.info('Activity log is empty.', 'CharMemory');
+            toastr.info(t`Activity log is empty.`, 'CharMemory');
             return;
         }
         const lines = activityLog.map(e => `[${e.timestamp}] [${e.type}] ${e.message}`).join('\n');
