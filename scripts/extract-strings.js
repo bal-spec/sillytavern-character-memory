@@ -217,7 +217,7 @@ const locale = loadLocale(localeFile);
 const localeKeys = new Set(Object.keys(locale));
 
 const missing = [...codeKeys].filter(k => !localeKeys.has(k)).sort();
-const orphaned = [...localeKeys].filter(k => !codeKeys.has(k)).sort();
+const orphaned = [...localeKeys].filter(k => !codeKeys.has(k) && !k.startsWith('_')).sort();
 const translated = [...codeKeys].filter(k => localeKeys.has(k)).sort();
 
 if (missingJsonMode) {

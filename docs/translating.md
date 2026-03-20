@@ -16,6 +16,9 @@ CharMemory uses SillyTavern's native i18n system. Translations are stored as JSO
 2. Edit the JSON file — translate the values, leave the keys unchanged:
    ```json
    {
+       "_translator": "Your Name or GitHub username",
+       "_language": "Français (French)",
+       "_last_updated": "2026-03-20",
        "Extract Now": "Extraire maintenant",
        "No character selected.": "Aucun personnage sélectionné.",
        "Saved ${0} memories.": "${0} souvenirs sauvegardés."
@@ -54,6 +57,21 @@ Locale files are flat JSON dictionaries. The key is always the English string ex
     "key (English)": "translated value"
 }
 ```
+
+### Translator credits
+
+JSON doesn't support comments, but you can add metadata keys prefixed with `_` to credit yourself and track the translation:
+
+```json
+{
+    "_translator": "Your Name or GitHub username",
+    "_language": "Language name in its native script",
+    "_last_updated": "2026-03-20",
+    "Extract Now": "..."
+}
+```
+
+These keys are ignored by the i18n system — they'll never match a UI string so they have no effect on the extension. The extraction script also skips `_` prefixed keys when reporting orphaned entries.
 
 ### Interpolation placeholders
 
