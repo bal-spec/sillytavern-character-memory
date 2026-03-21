@@ -11,6 +11,10 @@
 
 ### Bug Fixes
 
+- **Translate diagnostic report**: The diagnostic report (Troubleshooter → Diagnostic Report) now uses `t`-tagged strings for all section headings, field labels, and status text, so it renders fully in the active language instead of mixing translated health check content with English scaffolding.
+
+### Bug Fixes
+
 - **Fix extraction script generating incomplete translation templates**: `extract-strings.js --missing-json` without `--locale` was comparing against `zh-tw.json` by default, outputting only the keys missing from that locale instead of all translatable strings. New translations started from this template would be missing every key that zh-tw already had. Now `--missing-json` without `--locale` outputs all keys as a complete template; use `--missing-json --locale <file>` to find gaps in a specific locale.
 
 ## 2.1.9

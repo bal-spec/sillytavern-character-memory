@@ -6515,7 +6515,7 @@ async function buildDiagnosticReport() {
     ).join('\n');
 
     // Memory count
-    let memoryInfo = 'No memory file';
+    let memoryInfo = t`No memory file`;
     if (target) {
         const attachment = findMemoryAttachmentForCharacter(target.avatar, target.fileName);
         if (attachment) {
@@ -6523,22 +6523,22 @@ async function buildDiagnosticReport() {
                 const content = await getFileAttachment(attachment.url);
                 const blocks = parseMemories(content || '');
                 const count = countMemories(blocks);
-                memoryInfo = `${count} memories in ${blocks.length} blocks (file: ${target.fileName})`;
+                memoryInfo = t`${count} memories in ${blocks.length} blocks (file: ${target.fileName})`;
             } catch {
-                memoryInfo = `File exists but could not be read (${target.fileName})`;
+                memoryInfo = t`File exists but could not be read (${target.fileName})`;
             }
         } else {
-            memoryInfo = `No file found (expected: ${target.fileName})`;
+            memoryInfo = t`No file found (expected: ${target.fileName})`;
         }
     }
 
     // Last injection
     const dbPrompt = lastDiagnostics.extensionPrompts?.['4_vectors_data_bank'];
-    let injectionInfo = 'No injection data captured';
+    let injectionInfo = t`No injection data captured`;
     if (dbPrompt?.content) {
         const bullets = dbPrompt.content.split('\n')
             .map(l => l.trim()).filter(l => l.startsWith('- ')).length;
-        injectionInfo = `${bullets} memories injected (${dbPrompt.content.length} chars total)`;
+        injectionInfo = t`${bullets} memories injected (${dbPrompt.content.length} chars total)`;
     }
 
     // Activity log (last 10)
@@ -6546,13 +6546,16 @@ async function buildDiagnosticReport() {
         `  [${e.timestamp}] ${e.type}: ${e.message.split('\n')[0]}`
     ).join('\n');
 
-    const report = `=== CharMemory Diagnostic Report ===
-Generated: ${new Date().toISOString()}
-Version: ${MODULE_VERSION}
+    const yes = t`Yes`;
+    const no = t`No`;
 
---- Character ---
-Name: ${charName}
-Group chat: ${isGroupChat() ? 'Yes (' + targets.length + ' members found)' : 'No'}
+    const report = `=== ${t`CharMemory Diagnostic Report`} ===
+${t`Generated`}: ${new Date().toISOString()}
+${t`Version`}: ${MODULE_VERSION}
+
+--- ${t`Character`} ---
+${t`Name`}: ${charName}
+${t`Group chat`}: ${isGroupChat() ? yes + ' (' + targets.length + ' ' + t`members found` + ')' : no}
 ${(() => {
     if (!isGroupChat()) return '';
     const context = getContext();
@@ -6567,33 +6570,33 @@ ${(() => {
     if (unresolved.length > 0) out += `\nUnresolved avatars: ${unresolved.join(', ')}`;
     return out + '\n';
 })()}
---- Settings ---
-Source: ${s.source || 'provider'}
-Provider: ${s.selectedProvider || '(none)'}
-Interval: ${s.interval}
-Chunk size: ${s.maxMessagesPerExtraction}
-Response length: ${s.responseLength}
-Per-chat: ${s.perChat ? 'Yes' : 'No'}
+--- ${t`Settings`} ---
+${t`Source`}: ${s.source || 'provider'}
+${t`Provider`}: ${s.selectedProvider || '(none)'}
+${t`Interval`}: ${s.interval}
+${t`Chunk size`}: ${s.maxMessagesPerExtraction}
+${t`Response length`}: ${s.responseLength}
+${t`Per-chat`}: ${s.perChat ? yes : no}
 
---- Memories ---
+--- ${t`Memories`} ---
 ${memoryInfo}
 
---- Health Checks (${healthResult.level}) ---
-${healthLines || '  No checks run'}
+--- ${t`Health Checks`} (${healthResult.level}) ---
+${healthLines || '  ' + t`No checks run`}
 
---- Vector Storage ---
-Enabled (files): ${vecSettings.enabled_files ? 'Yes' : 'No'}
-Chunk size: ${vecSettings.chunk_size_db ?? 'default'}
-Overlap: ${vecSettings.overlap_percent_db ?? 0}%
-Retrieve chunks: ${vecSettings.chunk_count_db ?? 'default'}
-Score threshold: ${vecSettings.score_threshold ?? 'not set'}
+--- ${t`Vector Storage`} ---
+${t`Enabled (files)`}: ${vecSettings.enabled_files ? yes : no}
+${t`Chunk size`}: ${vecSettings.chunk_size_db ?? t`default`}
+${t`Overlap`}: ${vecSettings.overlap_percent_db ?? 0}%
+${t`Retrieve chunks`}: ${vecSettings.chunk_count_db ?? t`default`}
+${t`Score threshold`}: ${vecSettings.score_threshold ?? t`not set`}
 
---- Last Injection ---
+--- ${t`Last Injection`} ---
 ${injectionInfo}
-Timestamp: ${lastDiagnostics.timestamp || 'none'}
+${t`Timestamp`}: ${lastDiagnostics.timestamp || t`none`}
 
---- Recent Activity (last 10) ---
-${logLines || '  No activity logged'}
+--- ${t`Recent Activity`} (${t`last 10`}) ---
+${logLines || '  ' + t`No activity logged`}
 `;
     return report;
 }
