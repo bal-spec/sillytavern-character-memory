@@ -10,6 +10,7 @@
     "homePage": "",
     "auto_update": false,
     "i18n": {
-        "zh-tw": "locales/zh-tw.json"
+        "zh-tw": "locales/zh-tw.json",
+        "fr-fr": "locales/fr-fr.json"
     }
 }

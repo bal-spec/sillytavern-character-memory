@@ -6,10 +6,10 @@
  * and compares them against a locale JSON file.
  *
  * Usage:
- *   node scripts/extract-strings.js                          # summary report
- *   node scripts/extract-strings.js --missing-json           # output missing keys as JSON
- *   node scripts/extract-strings.js --locale locales/zh-tw.json
- *   node scripts/extract-strings.js --missing-json --locale locales/en_US.json
+ *   node scripts/extract-strings.js                          # summary report (vs zh-tw.json)
+ *   node scripts/extract-strings.js --locale locales/fr-fr.json  # audit a specific locale
+ *   node scripts/extract-strings.js --missing-json           # ALL keys as JSON template (for new translations)
+ *   node scripts/extract-strings.js --missing-json --locale locales/fr-fr.json  # only keys missing from that locale
  */
 
 import { readFileSync } from 'fs';
@@ -23,7 +23,8 @@ const ROOT = resolve(__dirname, '..');
 const args = process.argv.slice(2);
 const missingJsonMode = args.includes('--missing-json');
 const localeArgIdx = args.indexOf('--locale');
-const localeFile = localeArgIdx !== -1
+const hasExplicitLocale = localeArgIdx !== -1;
+const localeFile = hasExplicitLocale
     ? resolve(ROOT, args[localeArgIdx + 1])
     : resolve(ROOT, 'locales', 'zh-tw.json');
 
@@ -213,7 +214,11 @@ function loadLocale(filePath) {
 }
 
 const codeKeys = scanFiles(SOURCE_FILES);
-const locale = loadLocale(localeFile);
+
+// When --missing-json is used without --locale, output ALL keys as a translation template.
+// When --locale is explicit, compare against that file to find gaps.
+const useEmptyLocale = missingJsonMode && !hasExplicitLocale;
+const locale = useEmptyLocale ? {} : loadLocale(localeFile);
 const localeKeys = new Set(Object.keys(locale));
 
 const missing = [...codeKeys].filter(k => !localeKeys.has(k)).sort();
@@ -221,10 +226,15 @@ const orphaned = [...localeKeys].filter(k => !codeKeys.has(k) && !k.startsWith('
 const translated = [...codeKeys].filter(k => localeKeys.has(k)).sort();
 
 if (missingJsonMode) {
-    // Output missing keys as { "key": "key" } so translators can see what to translate.
+    // Output keys as { "key": "key" } so translators can see what to translate.
     const obj = {};
     for (const key of missing) obj[key] = key;
     process.stdout.write(JSON.stringify(obj, null, 4) + '\n');
+    if (!useEmptyLocale) {
+        process.stderr.write(`${missing.length} missing keys from ${localeFile}\n`);
+    } else {
+        process.stderr.write(`${missing.length} keys extracted (all — no --locale specified)\n`);
+    }
 } else {
     // Human-readable summary report
     console.log('='.repeat(60));

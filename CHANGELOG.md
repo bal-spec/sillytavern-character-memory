@@ -5,8 +5,13 @@
 ### New Features
 
 - **Internationalization (i18n) support**: The extension now uses SillyTavern's native i18n system, allowing the UI to be translated into any language ST supports. All user-facing strings — toastr messages, button labels, tooltips, modal headings, status text, health check labels, and form fields — are wrapped with ST's `t` tagged template literal or `data-i18n` HTML attributes. Locale files are registered via `manifest.json` and loaded automatically by ST's extension loader.
-- **Traditional Chinese (zh-tw) locale**: Ships with 243 translated strings covering the sidebar dashboard, Settings Modal, Setup Wizard, Troubleshooter, Prompts Modal, consolidation/conversion dialogs, Memory Manager, and all toastr notifications. Based on translations contributed by [@Minijinai75](https://github.com/Minijinai75) in [#12](https://github.com/bal-spec/sillytavern-character-memory/pull/12).
+- **Traditional Chinese (zh-tw) locale**: 243 translated strings covering the sidebar dashboard, Settings Modal, Setup Wizard, Troubleshooter, Prompts Modal, consolidation/conversion dialogs, Memory Manager, and all toastr notifications. Based on translations contributed by [@Minijinai75](https://github.com/Minijinai75) in [#12](https://github.com/bal-spec/sillytavern-character-memory/pull/12).
+- **French (fr-fr) locale**: Complete French translation — all 420 translatable strings.
 - **Translation guide and tooling**: New `docs/translating.md` explains how to create a locale file, the interpolation placeholder format, pluralization patterns, and how to contribute. New `scripts/extract-strings.js` audits translation coverage — run `node scripts/extract-strings.js` for a summary or `--missing-json` to generate a template of untranslated strings.
+
+### Bug Fixes
+
+- **Fix extraction script generating incomplete translation templates**: `extract-strings.js --missing-json` without `--locale` was comparing against `zh-tw.json` by default, outputting only the keys missing from that locale instead of all translatable strings. New translations started from this template would be missing every key that zh-tw already had. Now `--missing-json` without `--locale` outputs all keys as a complete template; use `--missing-json --locale <file>` to find gaps in a specific locale.
 
 ## 2.1.9
 

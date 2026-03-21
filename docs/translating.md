@@ -4,13 +4,15 @@ CharMemory uses SillyTavern's native i18n system. Translations are stored as JSO
 
 ## Quick start
 
-1. Copy an existing locale file (or start from the template):
+1. Generate a template with all translatable strings:
    ```bash
-   # Generate a template with all translatable strings
    node scripts/extract-strings.js --missing-json > locales/your-lang.json
+   ```
+   This outputs every key with its English text as the value — open it and translate the values.
 
-   # Or copy an existing translation as a starting point
-   cp locales/zh-tw.json locales/your-lang.json
+   Alternatively, copy an existing translation as a starting point:
+   ```bash
+   cp locales/fr-fr.json locales/your-lang.json
    ```
 
 2. Edit the JSON file — translate the values, leave the keys unchanged:
@@ -119,20 +121,20 @@ Languages that don't inflect for number (like Chinese) can use the same translat
 The `scripts/extract-strings.js` tool scans the source code and compares against a locale file:
 
 ```bash
-# Show a summary of translation coverage
+# Show a summary of translation coverage (defaults to zh-tw.json)
 node scripts/extract-strings.js
 
 # Show coverage for a specific locale
-node scripts/extract-strings.js --locale locales/zh-tw.json
+node scripts/extract-strings.js --locale locales/fr-fr.json
 
-# Output missing keys as JSON (starting point for translation)
-node scripts/extract-strings.js --missing-json > missing.json
+# Output ALL keys as a JSON template (for starting a new translation)
+node scripts/extract-strings.js --missing-json > locales/your-lang.json
 
-# Output missing keys for a specific locale
-node scripts/extract-strings.js --locale locales/fr-fr.json --missing-json > missing-fr.json
+# Output only keys missing from a specific locale (for filling gaps)
+node scripts/extract-strings.js --missing-json --locale locales/zh-tw.json > missing-zh.json
 ```
 
-The `--missing-json` output is a valid locale file where each value equals its key. Open it in a text editor, translate the values, and merge them into your locale file.
+Without `--locale`, `--missing-json` outputs **all** translatable keys — this is the right starting point for a new translation. With `--locale`, it outputs only the keys that locale is still missing. In both cases, the output is a valid locale file where each value equals its key. Translate the values and save (or merge into an existing locale file).
 
 ### Using SillyTavern's built-in tools
 
