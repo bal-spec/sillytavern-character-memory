@@ -6149,6 +6149,10 @@ async function showTroubleshooter(initialSection = 'health') {
                     </small>
                 </div>
                 <div class="charMemory_tsResetSection">
+                    <button class="menu_button" id="cm_ts_unhideExtracted" data-i18n="Unhide Extracted Messages">Unhide Extracted Messages</button>
+                    <small class="charMemory_helperText" data-i18n="Restores all messages that CharMemory hid after extraction. Makes them visible to the main LLM again and removes extraction tags.">Restores all messages that CharMemory hid after extraction. Makes them visible to the main LLM again and removes extraction tags.</small>
+                </div>
+                <div class="charMemory_tsResetSection">
                     <button class="menu_button charMemory_dangerBtn" id="cm_ts_clearMemories" data-i18n="Clear All Memories">Clear All Memories</button>
                     <small class="charMemory_helperText" data-i18n="Deletes this character's memory file (contains memories from all their chats) and resets extraction tracking. Cannot be undone.">Deletes this character's memory file (contains memories from all their chats) and resets extraction tracking. Cannot be undone.</small>
                 </div>
@@ -6511,6 +6515,34 @@ async function showTroubleshooter(initialSection = 'health') {
         );
         if (!confirmed) return;
         resetBatchProgress();
+    });
+    $('#cm_ts_unhideExtracted').off('click').on('click', async function () {
+        const context = getContext();
+        const chat = context.chat;
+        if (!chat || chat.length === 0) {
+            toastr.info(t`No chat loaded.`, 'CharMemory');
+            return;
+        }
+
+        let count = 0;
+        for (let i = 0; i < chat.length; i++) {
+            if (chat[i].extra?.charMemory_extracted) {
+                chat[i].is_system = false;
+                delete chat[i].extra.charMemory_extracted;
+                $(`.mes[mesid="${i}"]`).attr('is_system', 'false');
+                count++;
+            }
+        }
+
+        if (count === 0) {
+            toastr.info(t`No hidden extracted messages found.`, 'CharMemory');
+            return;
+        }
+
+        await context.saveChat();
+        updateStatusDisplay();
+        toastr.success(t`Unhid ${count} message(s).`, 'CharMemory');
+        logActivity(`Unhid ${count} extracted message(s)`, 'success');
     });
     $('#cm_ts_clearMemories').off('click').on('click', async function () {
         const charName = getCharacterName() || t`this character`;
