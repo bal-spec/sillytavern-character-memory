@@ -1616,6 +1616,23 @@ function updateStatusDisplay() {
     updateCooldownDisplay();
     startCooldownTimer();
 
+    // Stats bar: hidden extracted messages count
+    const chat = getContext().chat;
+    if (chat && chat.length > 0) {
+        let hiddenCount = 0;
+        for (const msg of chat) {
+            if (msg.extra?.charMemory_extracted && msg.is_system) hiddenCount++;
+        }
+        if (hiddenCount > 0) {
+            $('#charMemory_statHidden').text(t`${hiddenCount} hidden`);
+            $('#charMemory_statHiddenWrap').show();
+        } else {
+            $('#charMemory_statHiddenWrap').hide();
+        }
+    } else {
+        $('#charMemory_statHiddenWrap').hide();
+    }
+
     // Show resolved filename for 1:1 chats
     if (!isGroupChat()) {
         const charName = getCharacterName();
