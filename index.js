@@ -2695,6 +2695,47 @@ function buildExtractionPrompt(target, existingMemories, recentMessages, allTarg
 }
 
 /**
+ * Tag extracted messages and optionally hide them from the main LLM context.
+ * Only applies to the active 1:1 chat. Group chats and batch extraction are skipped.
+ * @param {Array} chatArray - The chat array to modify
+ * @param {number} startIdx - First message index in the extracted chunk (inclusive)
+ * @param {number} endIdx - Last message index in the extracted chunk (inclusive)
+ * @param {boolean} isActiveChat - Whether this is the active chat (false for batch extraction)
+ */
+function hideExtractedChunk(chatArray, startIdx, endIdx, isActiveChat) {
+    if (!isActiveChat || isGroupChat()) return;
+
+    const shouldHide = extension_settings[MODULE_NAME].hideExtractedMessages;
+    let taggedCount = 0;
+
+    for (let i = startIdx; i <= endIdx; i++) {
+        const msg = chatArray[i];
+        if (!msg) continue;
+
+        // Don't re-tag messages that were already extracted and manually unhidden
+        if (msg.extra?.charMemory_extracted) continue;
+
+        if (!msg.extra) msg.extra = {};
+        msg.extra.charMemory_extracted = true;
+        taggedCount++;
+
+        if (shouldHide) {
+            msg.is_system = true;
+            // Update DOM if the message element exists
+            $(`.mes[mesid="${i}"]`).attr('is_system', 'true');
+        }
+    }
+
+    if (taggedCount > 0) {
+        if (shouldHide) {
+            logActivity(`Tagged and hid ${taggedCount} extracted message(s) (indices ${startIdx}-${endIdx})`);
+        } else {
+            logActivity(`Tagged ${taggedCount} extracted message(s) (indices ${startIdx}-${endIdx})`);
+        }
+    }
+}
+
+/**
  * Run memory extraction — unified for both 1:1 and group chats.
  * Uses getMemoryTargets() to determine extraction targets. For 1:1 chats the
  * target loop runs once; for groups it runs once per active NPC character.
@@ -3006,6 +3047,7 @@ async function extractMemories({
             }
 
             // Advance lastExtractedIndex after each complete chunk
+            const chunkStartIdx = Math.max(0, currentLastExtracted + 1);
             currentLastExtracted = chunkEndIndex !== -1 ? chunkEndIndex : effectiveEnd - 1;
 
             if (isActiveChat) {
@@ -3013,6 +3055,7 @@ async function extractMemories({
                 chat_metadata[MODULE_NAME].lastExtractedIndex = currentLastExtracted;
                 saveMetadataDebounced();
                 logActivity(`Advanced lastExtractedIndex to ${currentLastExtracted}`);
+                hideExtractedChunk(chatArray || getContext().chat, chunkStartIdx, currentLastExtracted, isActiveChat);
             }
 
             chunksProcessed++;
@@ -3036,6 +3079,10 @@ async function extractMemories({
             ensureMetadata();
             chat_metadata[MODULE_NAME].messagesSinceExtraction = 0;
             saveMetadataDebounced();
+            // Save chat to persist extraction tags and hidden state
+            if (extension_settings[MODULE_NAME].hideExtractedMessages || totalMemories > 0) {
+                getContext().saveChat();
+            }
         }
 
         updateStatusDisplay();
