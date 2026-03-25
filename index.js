@@ -481,6 +481,7 @@ const defaultSettings = {
     displayMode: 'auto',
     protectRecentMessages: false,
     protectRecentMessagesCount: 4,
+    hideExtractedMessages: false,
 };
 
 const PROMPT_CONFIG = {
