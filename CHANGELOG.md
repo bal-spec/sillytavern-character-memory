@@ -4,6 +4,7 @@
 
 ### New Features
 
+- **Hide extracted messages from context**: New opt-in setting (Settings → Advanced) that marks extracted messages as hidden from the main LLM after each extraction. Saves context window tokens since the important information is already stored in the Data Bank and retrieved via Vector Storage. Hidden messages show SillyTavern's ghost icon and a dashboard counter shows the hidden count. Fully reversible via "Unhide Extracted Messages" in the Troubleshooter. Scoped to 1:1 chats; group chats and batch extraction are unaffected. Default off.
 - **Internationalization (i18n) support**: The extension now uses SillyTavern's native i18n system, allowing the UI to be translated into any language ST supports. All user-facing strings — toastr messages, button labels, tooltips, modal headings, status text, health check labels, and form fields — are wrapped with ST's `t` tagged template literal or `data-i18n` HTML attributes. Locale files are registered via `manifest.json` and loaded automatically by ST's extension loader.
 - **Traditional Chinese (zh-tw) locale**: 243 translated strings covering the sidebar dashboard, Settings Modal, Setup Wizard, Troubleshooter, Prompts Modal, consolidation/conversion dialogs, Memory Manager, and all toastr notifications. Based on translations contributed by [@Minijinai75](https://github.com/Minijinai75) in [#12](https://github.com/bal-spec/sillytavern-character-memory/pull/12).
 - **French (fr-fr) locale**: Complete French translation — all 420 translatable strings.

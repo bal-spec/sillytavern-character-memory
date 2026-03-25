@@ -51,6 +51,21 @@ When enabled (Settings → Extraction), this excludes the most recent messages f
 
 ![Settings Modal — Extraction tab showing Protect Recent Messages and other settings](../images/settings-modal-extraction.png)
 
+### Hide extracted messages
+
+When enabled (Settings → Advanced), CharMemory marks extracted messages as hidden from the main LLM after each extraction. Hidden messages show SillyTavern's ghost icon and "This message is invisible for the AI" indicator. The dashboard stats bar shows a count of hidden messages (e.g., "42 hidden").
+
+This saves context window tokens — the important information from those messages is already stored in the Data Bank and retrieved via Vector Storage, so the originals are redundant in the prompt.
+
+**Key behaviors:**
+
+- **Default off** — no change unless you enable it
+- **Only affects future extractions** — toggling the setting on does not retroactively hide already-extracted messages, and toggling it off does not unhide previously hidden messages
+- **Re-extraction safe** — if you reset extraction state and re-extract, hidden messages are still processed. CharMemory's extraction pipeline reads messages regardless of their hidden status.
+- **Manual unhide respected** — if you manually unhide a message using SillyTavern's eye icon, CharMemory will not re-hide it on subsequent extractions
+- **1:1 chats only** — group chats and batch extraction are not affected
+- **Reversible** — use the "Unhide Extracted Messages" button in the [Troubleshooter](troubleshooting.md#reset-tools) to restore all hidden messages at once
+
 ---
 
 ## Extract Now and Extract Here
@@ -180,11 +195,13 @@ Per-chat mode also works in group chats — each member gets a separate per-chat
 
 ## Reset and Clear
 
-Three options in Settings → Reset / Clear:
+Four options in Settings → Reset / Clear (and in the Troubleshooter):
 
 **Reset Extraction State** — resets the extraction pointer for the current chat. Next time you run Extract Now, it re-reads all messages from the beginning. Does not delete any memories. In group chats, all members share one extraction pointer so this resets all of them at once.
 
 **Reset Batch Progress** — clears the Batch tool's record of which messages it has processed across all of this character's chats. Use this when you want the Batch tool to re-process everything from scratch (e.g., after changing the extraction prompt). Does not affect Extract Now or auto-extraction. If you reset batch progress without also clearing memories, the next batch run will re-extract everything and may create duplicates.
+
+**Unhide Extracted Messages** — restores all messages that CharMemory hid after extraction (see [Hide extracted messages](#hide-extracted-messages) above). Makes them visible to the main LLM again and removes extraction tags. Does not affect memories or extraction state.
 
 **Clear All Memories** — deletes the character's memory file and resets all extraction tracking. In default (shared) mode, this file contains memories from **all** of that character's chats — not just the current one. Cannot be undone. **Back up first** — use SillyTavern's [backup tools](https://docs.sillytavern.app/usage/user-settings/) or download the memory file from the Data Bank before clearing.
 

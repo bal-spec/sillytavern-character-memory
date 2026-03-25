@@ -116,4 +116,5 @@ See [Managing Memories → Reset and Clear](managing-memories.md#reset-and-clear
 
 - **Reset Extraction State** — re-process messages from the beginning, no memory loss
 - **Reset Batch Progress** — re-run batch extraction from scratch, risk of duplicates if memories aren't also cleared
+- **Unhide Extracted Messages** — restores all messages that CharMemory hid after extraction. Makes them visible to the main LLM again and removes extraction tags. See [Managing Memories → Hide extracted messages](managing-memories.md#hide-extracted-messages).
 - **Clear All Memories** — deletes the memory file, cannot be undone
