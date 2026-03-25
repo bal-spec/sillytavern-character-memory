@@ -164,6 +164,26 @@ describe('formatChatMessages', () => {
         expect(result.text).toContain('Extension: Some extension text');
     });
 
+    it('keeps hidden user messages (is_system + is_user)', () => {
+        const chat = [
+            makeMsg('Human', 'I told you a secret', { is_system: true, is_user: true }),
+            makeMsg('Alice', 'I remember'),
+        ];
+        const result = formatChatMessages(chat, 0, chat.length);
+        expect(result.text).toContain('Human: I told you a secret');
+        expect(result.messageCount).toBe(2);
+    });
+
+    it('keeps hidden character messages (is_system + name)', () => {
+        const chat = [
+            makeMsg('Alice', 'She whispered softly', { is_system: true }),
+            makeMsg('Human', 'I heard you', { is_user: true }),
+        ];
+        const result = formatChatMessages(chat, 0, chat.length);
+        expect(result.text).toContain('Alice: She whispered softly');
+        expect(result.messageCount).toBe(2);
+    });
+
     it('strips non-diegetic content from messages', () => {
         const chat = [
             makeMsg('Alice', 'She smiled ```image prompt here``` and waved'),
