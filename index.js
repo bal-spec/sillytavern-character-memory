@@ -4094,6 +4094,13 @@ async function showSettingsModal() {
             </label>
             <small class="charMemory_helperText" data-i18n="Prefix each bullet with [date | chat_id] so standalone chunks retain their provenance.">Prefix each bullet with [date | chat_id] so standalone chunks retain their provenance.</small>
         </div>
+        <div class="charMemory_statusRow" style="margin-top:8px;">
+            <label class="checkbox_label" for="cm_modal_hideExtracted">
+                <input type="checkbox" id="cm_modal_hideExtracted" ${s.hideExtractedMessages ? 'checked' : ''} />
+                <span data-i18n="Hide extracted messages from context">Hide extracted messages from context</span>
+            </label>
+            <small class="charMemory_helperText" data-i18n="After extraction, hides processed messages from the main LLM so they don't consume context tokens. Memories are still retrieved via Vector Storage. Use &quot;Unhide&quot; in the Troubleshooter to reverse.">After extraction, hides processed messages from the main LLM so they don't consume context tokens. Memories are still retrieved via Vector Storage. Use "Unhide" in the Troubleshooter to reverse.</small>
+        </div>
 
         <hr class="charMemory_separator" />
         <h4 class="charMemory_modalSectionTitle" data-i18n="Reset">Reset</h4>
@@ -4472,6 +4479,11 @@ async function showSettingsModal() {
         saveSettingsDebounced();
         // Sync sidebar
         $('#charMemory_chunkMetadata').prop('checked', extension_settings[MODULE_NAME].chunkMetadata);
+    });
+
+    $('#cm_modal_hideExtracted').off('change').on('change', function () {
+        extension_settings[MODULE_NAME].hideExtractedMessages = $(this).is(':checked');
+        saveSettingsDebounced();
     });
 
     // Reset / Clear handlers
