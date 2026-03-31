@@ -674,7 +674,7 @@ async function convertWithLLM(content, charName) {
 
     let response;
     try {
-        response = await callLLM(prompt, extension_settings[MODULE_NAME].responseLength || 2000, 'You are a text restructuring assistant. Preserve all information faithfully.');
+        response = await callLLM(prompt, Math.max(extension_settings[MODULE_NAME].responseLength * 2 || 4000, 4000), 'You are a text restructuring assistant. Preserve all information faithfully.');
     } catch (err) {
         console.error(LOG_PREFIX, 'LLM conversion failed:', err);
         return { blocks: [], warnings: [`LLM call failed: ${err.message || 'Unknown error'}`] };
@@ -7130,7 +7130,7 @@ async function runConsolidationLLM(memories, charName) {
         const llmStartTime = Date.now();
         const result = await callLLM(
             prompt,
-            extension_settings[MODULE_NAME].responseLength * 2,
+            Math.max(extension_settings[MODULE_NAME].responseLength * 4, 4000),
             'You are a memory consolidation assistant.',
         );
 
@@ -7147,6 +7147,12 @@ async function runConsolidationLLM(memories, charName) {
             logActivity('Consolidation returned empty result', 'warning');
             toastr.warning(t`Consolidation returned empty result.`, 'CharMemory');
             return null;
+        }
+
+        // Detect truncated response — a complete response ends with </memory>
+        if (cleanResult.includes('<memory') && !/<\/memory>\s*$/.test(cleanResult)) {
+            logActivity('Consolidation response appears truncated — last block(s) may be missing. Try increasing Response Length in Settings → Extraction.', 'warning');
+            toastr.warning(t`Consolidation response may be truncated. Try increasing Response Length in Settings → Extraction.`, 'CharMemory', { timeOut: 8000 });
         }
 
         // Parse into memory format, then serialize back to plain text for the editor
