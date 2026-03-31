@@ -7,8 +7,8 @@
     "css": "style.css",
     "author": "bal-spec",
     "version": "2.2.0",
-    "homePage": "",
-    "auto_update": false,
+    "homePage": "https://github.com/bal-spec/sillytavern-character-memory",
+    "auto_update": true,
     "i18n": {
         "zh-tw": "locales/zh-tw.json",
         "fr-fr": "locales/fr-fr.json"

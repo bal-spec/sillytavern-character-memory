@@ -18,6 +18,16 @@
 
 - **Fix extraction script generating incomplete translation templates**: `extract-strings.js --missing-json` without `--locale` was comparing against `zh-tw.json` by default, outputting only the keys missing from that locale instead of all translatable strings. New translations started from this template would be missing every key that zh-tw already had. Now `--missing-json` without `--locale` outputs all keys as a complete template; use `--missing-json --locale <file>` to find gaps in a specific locale.
 
+## 2.1.10
+
+### Bug Fixes
+
+- **Fix consolidation and reformat silently dropping last memory blocks**: Consolidation was capped at `responseLength * 2` output tokens (2000 at default), and Reformat at `responseLength` (1000 at default). With large memory sets (40+ blocks), the LLM would hit this limit mid-response and stop, silently discarding the last 2–4 blocks. Both now use `Math.max(responseLength * 4, 4000)` and `Math.max(responseLength * 2, 4000)` respectively, guaranteeing at least 4000 output tokens. A truncation warning is also shown in the activity log and as a notification if the response appears cut off. Fixes [#13](https://github.com/bal-spec/sillytavern-character-memory/issues/13).
+
+### Other
+
+- Enable auto-update: ST's extension manager will now automatically check for and notify you of new versions.
+
 ## 2.1.9
 
 ### Improvements
