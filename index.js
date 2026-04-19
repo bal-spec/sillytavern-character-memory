@@ -8202,6 +8202,28 @@ function onViewInjectedClick() {
 }
 
 /**
+ * Compute a top offset that keeps a drawer below ST's top bar and track viewport
+ * changes (pinch-zoom on mobile) so the offset stays correct.
+ * @param {JQuery<HTMLElement>} $drawer - The drawer element.
+ */
+function positionDrawerBelowTopBar($drawer) {
+    const apply = () => {
+        const topBar = document.getElementById('top-settings-holder');
+        const topOffset = topBar ? topBar.getBoundingClientRect().bottom : 0;
+        $drawer.css({ top: topOffset + 'px', height: `calc(100vh - ${topOffset}px)` });
+    };
+    apply();
+
+    // Re-apply on visualViewport resize (pinch-zoom, on-screen keyboard showing).
+    // Guard against duplicate listeners — we only want one active per drawer.
+    const key = `_charMemoryDrawerVvHandler_${$drawer.attr('id') || 'anon'}`;
+    if (window.visualViewport && !window[key]) {
+        window[key] = apply;
+        window.visualViewport.addEventListener('resize', apply);
+    }
+}
+
+/**
  * Toggle the injection viewer drawer open/closed.
  * @param {boolean} [forceState] If provided, force open (true) or closed (false).
  */
@@ -8216,11 +8238,7 @@ function toggleInjectionDrawer(forceState) {
 
     // Position drawer below ST's top bar so header isn't clipped by browser chrome
     if (shouldOpen) {
-        const topBar = document.getElementById('top-settings-holder');
-        if (topBar) {
-            const topOffset = topBar.getBoundingClientRect().bottom;
-            $drawer.css({ top: topOffset + 'px', height: `calc(100vh - ${topOffset}px)` });
-        }
+        positionDrawerBelowTopBar($drawer);
     }
 
     $drawer.toggleClass('open', shouldOpen);
@@ -8249,11 +8267,7 @@ function toggleLogDrawer(forceState) {
 
     // Position drawer below ST's top bar so header isn't clipped by browser chrome
     if (shouldOpen) {
-        const topBar = document.getElementById('top-settings-holder');
-        if (topBar) {
-            const topOffset = topBar.getBoundingClientRect().bottom;
-            $drawer.css({ top: topOffset + 'px', height: `calc(100vh - ${topOffset}px)` });
-        }
+        positionDrawerBelowTopBar($drawer);
 
         // Populate log entries and sync verbose toggle
         $('#charMemory_logDrawerVerbose').prop('checked', !!extension_settings[MODULE_NAME].verboseLogging);
@@ -9194,8 +9208,9 @@ jQuery(async function () {
 
 
 
-    // Restore drawer state from settings
-    if (extension_settings[MODULE_NAME].injectionDrawerOpen) {
+    // Restore drawer state from settings (skip on narrow viewports — drawer would cover the whole screen)
+    const isNarrow = window.matchMedia('(max-width: 768px)').matches;
+    if (extension_settings[MODULE_NAME].injectionDrawerOpen && !isNarrow) {
         toggleInjectionDrawer(true);
     }
 
