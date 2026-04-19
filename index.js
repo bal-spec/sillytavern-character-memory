@@ -2970,8 +2970,10 @@ async function extractMemories({
                     result = await callLLM(prompt, extension_settings[MODULE_NAME].responseLength, 'You are a memory extraction assistant.');
                 } catch (llmErr) {
                     if (isMultiTarget) {
-                        logActivity(`${logLabel} LLM error: ${llmErr.message}`, 'error');
-                        continue; // Skip this target, try next
+                        logActivity(`${logLabel} LLM error: ${llmErr.message} — aborting chunk to preserve extraction pointer`, 'error');
+                        toastr.error(t`Extraction failed for ${target.name}: ${llmErr.message}`, 'CharMemory');
+                        chunkAborted = true;
+                        break;
                     }
                     if (llmErr.message?.includes('WebLLM is not available')) {
                         toastr.error(t`WebLLM is not available in this browser.`, 'CharMemory');
