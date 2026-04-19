@@ -195,9 +195,11 @@ Per-chat mode also works in group chats — each member gets a separate per-chat
 
 ## Reset and Clear
 
-Four options in Settings → Reset / Clear (and in the Troubleshooter):
+Five options in Settings → Reset / Clear (and in the Troubleshooter):
 
 **Reset Extraction State** — resets the extraction pointer for the current chat. Next time you run Extract Now, it re-reads all messages from the beginning. Does not delete any memories. In group chats, all members share one extraction pointer so this resets all of them at once.
+
+**Mark as Fully Extracted** — the inverse of "Reset Extraction State". Sets the extraction pointer to the last message so CharMemory treats the entire chat as already captured. Primary use case: you forked a chat and imported its existing memory file, but the fork reset the extraction pointer — click this to tell CharMemory "don't re-read these messages, their memories are already in the file." Auto-extraction then resumes only from new messages.
 
 **Reset Batch Progress** — clears the Batch tool's record of which messages it has processed across all of this character's chats. Use this when you want the Batch tool to re-process everything from scratch (e.g., after changing the extraction prompt). Does not affect Extract Now or auto-extraction. If you reset batch progress without also clearing memories, the next batch run will re-extract everything and may create duplicates.
 

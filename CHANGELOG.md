@@ -11,6 +11,7 @@
 - **Translation guide and tooling**: New `docs/translating.md` explains how to create a locale file, the interpolation placeholder format, pluralization patterns, and how to contribute. New `scripts/extract-strings.js` audits translation coverage — run `node scripts/extract-strings.js` for a summary or `--missing-json` to generate a template of untranslated strings.
 - **Extraction lag setting**: New "Extraction lag" slider in Settings → Extraction. Set how many additional messages to wait past the interval before automatic extraction fires. Useful on single-GPU local-inference setups — a lag of `2` means extraction runs while you read the reply rather than competing for the same GPU as the next response.
 - **Generation-aware extraction**: Automatic extraction now waits until the primary LLM finishes generating, then runs during the natural idle window before your next message. This prevents extraction and reply generation from contending for the same model on local inference setups. If a message arrives during generation, extraction is deferred and fires automatically once generation ends (unless the user aborted the generation).
+- **Mark as Fully Extracted button**: New action in the Troubleshooter's Reset / Clear section that marks the active chat's messages as already extracted. Useful when you've imported an existing memory file into a forked chat and want to stop CharMemory from re-reading every message from the beginning.
 
 ### Bug Fixes
 
