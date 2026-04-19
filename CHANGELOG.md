@@ -9,6 +9,8 @@
 - **Traditional Chinese (zh-tw) locale**: 243 translated strings covering the sidebar dashboard, Settings Modal, Setup Wizard, Troubleshooter, Prompts Modal, consolidation/conversion dialogs, Memory Manager, and all toastr notifications. Based on translations contributed by [@Minijinai75](https://github.com/Minijinai75) in [#12](https://github.com/bal-spec/sillytavern-character-memory/pull/12).
 - **French (fr-fr) locale**: Complete French translation — all 420 translatable strings.
 - **Translation guide and tooling**: New `docs/translating.md` explains how to create a locale file, the interpolation placeholder format, pluralization patterns, and how to contribute. New `scripts/extract-strings.js` audits translation coverage — run `node scripts/extract-strings.js` for a summary or `--missing-json` to generate a template of untranslated strings.
+- **Extraction lag setting**: New "Extraction lag" slider in Settings → Extraction. Set how many additional messages to wait past the interval before automatic extraction fires. Useful on single-GPU local-inference setups — a lag of `2` means extraction runs while you read the reply rather than competing for the same GPU as the next response.
+- **Generation-aware extraction**: Automatic extraction now waits until the primary LLM finishes generating, then runs during the natural idle window before your next message. This prevents extraction and reply generation from contending for the same model on local inference setups. If a message arrives during generation, extraction is deferred and fires automatically once generation ends (unless the user aborted the generation).
 
 ### Bug Fixes
 

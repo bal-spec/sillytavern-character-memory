@@ -55,6 +55,14 @@ Select your profile from the dropdown and click **Test Connection**. The profile
 
 Set how many character messages trigger an automatic extraction. The default is **20 messages** — a good starting point for most chat styles. Lower means more frequent extractions; higher means the LLM gets more context per call and tends to produce better, more selective memories.
 
+### Extraction lag
+
+Extra messages to wait past the interval before actually running extraction. Default is **0** (fire immediately once the threshold is reached).
+
+This is most useful on **single-GPU local-inference setups** where extraction and the next LLM reply would contend for the same hardware. A lag of `2` means extraction of message N only runs once message N+2 has been rendered — by then you're reading the reply, and extraction runs quietly in the background.
+
+In addition to the lag, CharMemory automatically defers extraction whenever the primary LLM is currently generating. Extraction runs once generation ends, during the natural idle window before your next message. The lag gives you extra breathing room on top of that.
+
 ### Vector Storage check
 
 The wizard checks your Vector Storage extension configuration and shows one of three states:
