@@ -6791,12 +6791,16 @@ async function showMemoryManager() {
             const count = blocks.reduce((sum, b) => sum + b.bullets.length, 0);
             return { ...t, count };
         }));
-        const pickerHtml = targetData.map((t, i) =>
-            `<label class="checkbox_label"><input type="radio" name="charMemory_mmTarget" value="${i}" ${i === 0 ? 'checked' : ''} /> ${escapeHtml(t.name)} <small style="opacity:0.5;">(${t.count} memories)</small></label>`,
+        const pickerHtml = targetData.map((tgt, i) =>
+            `<label class="checkbox_label"><input type="radio" name="charMemory_mmTarget" value="${i}" ${i === 0 ? 'checked' : ''} /> ${escapeHtml(tgt.name)} <small style="opacity:0.5;">(${tgt.count} memories)</small></label>`,
         ).join('<br>');
+        let selectedIdx = 0;
+        $(document).on('change.mmPicker', 'input[name="charMemory_mmTarget"]', function () {
+            selectedIdx = Number($(this).val()) || 0;
+        });
         const picked = await callGenericPopup(t`Select a character to view/edit memories for:<br><br>${pickerHtml}`, POPUP_TYPE.CONFIRM);
+        $(document).off('change.mmPicker');
         if (!picked) return;
-        const selectedIdx = Number($('input[name="charMemory_mmTarget"]:checked').val()) || 0;
         target = targets[selectedIdx];
     }
 
@@ -7268,12 +7272,16 @@ async function consolidateMemories() {
     if (targets.length === 1) {
         target = targets[0];
     } else {
-        const pickerHtml = targets.map((t, i) =>
-            `<label class="checkbox_label"><input type="radio" name="charMemory_consolTarget" value="${i}" ${i === 0 ? 'checked' : ''} /> ${escapeHtml(t.name)}</label>`,
+        const pickerHtml = targets.map((tgt, i) =>
+            `<label class="checkbox_label"><input type="radio" name="charMemory_consolTarget" value="${i}" ${i === 0 ? 'checked' : ''} /> ${escapeHtml(tgt.name)}</label>`,
         ).join('<br>');
+        let selectedIdx = 0;
+        $(document).on('change.consolPicker', 'input[name="charMemory_consolTarget"]', function () {
+            selectedIdx = Number($(this).val()) || 0;
+        });
         const picked = await callGenericPopup(t`Select a character to consolidate memories for:<br><br>${pickerHtml}`, POPUP_TYPE.CONFIRM);
+        $(document).off('change.consolPicker');
         if (!picked) return;
-        const selectedIdx = Number($('input[name="charMemory_consolTarget"]:checked').val()) || 0;
         target = targets[selectedIdx];
     }
 
@@ -7705,12 +7713,16 @@ async function reformatMemories() {
     if (targets.length === 1) {
         target = targets[0];
     } else {
-        const pickerHtml = targets.map((t, i) =>
-            `<label class="checkbox_label"><input type="radio" name="charMemory_reformatTarget" value="${i}" ${i === 0 ? 'checked' : ''} /> ${escapeHtml(t.name)}</label>`,
+        const pickerHtml = targets.map((tgt, i) =>
+            `<label class="checkbox_label"><input type="radio" name="charMemory_reformatTarget" value="${i}" ${i === 0 ? 'checked' : ''} /> ${escapeHtml(tgt.name)}</label>`,
         ).join('<br>');
+        let selectedIdx = 0;
+        $(document).on('change.reformatPicker', 'input[name="charMemory_reformatTarget"]', function () {
+            selectedIdx = Number($(this).val()) || 0;
+        });
         const picked = await callGenericPopup(t`Select a character to reformat memories for:<br><br>${pickerHtml}`, POPUP_TYPE.CONFIRM);
+        $(document).off('change.reformatPicker');
         if (!picked) return;
-        const selectedIdx = Number($('input[name="charMemory_reformatTarget"]:checked').val()) || 0;
         target = targets[selectedIdx];
     }
 
@@ -8223,10 +8235,29 @@ async function onPinMemoryClick() {
     const timestamp = getTimestamp();
     const chatId = context.chatId || 'unknown';
 
-    // Find the target matching the message sender (for groups, match by name)
     const targets = getMemoryTargets();
-    const senderName = msg.name;
-    const target = targets.find(t => t.name === senderName) || targets[0];
+    if (targets.length === 0) return;
+
+    // In group chats, show a character picker pre-selected to the message sender
+    let target;
+    if (targets.length === 1) {
+        target = targets[0];
+    } else {
+        const senderName = msg.name;
+        const senderIdx = targets.findIndex(tgt => tgt.name === senderName);
+        const defaultIdx = senderIdx >= 0 ? senderIdx : 0;
+        const pickerHtml = targets.map((tgt, i) =>
+            `<label class="checkbox_label"><input type="radio" name="charMemory_pinTarget" value="${i}" ${i === defaultIdx ? 'checked' : ''} /> ${escapeHtml(tgt.name)}</label>`,
+        ).join('<br>');
+        let selectedIdx = defaultIdx;
+        $(document).on('change.pinPicker', 'input[name="charMemory_pinTarget"]', function () {
+            selectedIdx = Number($(this).val()) || 0;
+        });
+        const picked = await callGenericPopup(t`Pin memory to which character?<br><br>${pickerHtml}`, POPUP_TYPE.CONFIRM);
+        $(document).off('change.pinPicker');
+        if (!picked) return;
+        target = targets[selectedIdx];
+    }
     if (!target) return;
 
     const existingContent = await readMemoriesForCharacter(target.avatar, target.fileName);
