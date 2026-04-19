@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.1.11
+
+### Bug Fixes
+
+- **Fix group chat character pickers always selecting first character**: In group chats, the Consolidate, Reformat, and Memory Manager character pickers silently ignored the user's selection and always operated on the first character. The selected radio button was read after `callGenericPopup` closed and destroyed the popup DOM, so the selector always returned `undefined`, which coerced to index `0`. Fixed by tracking the selection via a delegated `change` listener before the popup closes. Fixes [#14](https://github.com/bal-spec/sillytavern-character-memory/issues/14).
+- **Fix Pin always saving to first character in group chats**: The pin handler tried to auto-match the message sender by name, but silently fell back to the first group member whenever the match failed (user messages, name discrepancies, disabled members). Pin now shows an explicit character picker in group chats, pre-selected to the message sender when a match is found. Fixes [#14](https://github.com/bal-spec/sillytavern-character-memory/issues/14).
+
 ## 2.1.10
 
 ### Bug Fixes
