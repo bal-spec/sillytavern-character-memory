@@ -6193,6 +6193,10 @@ async function showTroubleshooter(initialSection = 'health') {
                     </small>
                 </div>
                 <div class="charMemory_tsResetSection">
+                    <button class="menu_button" id="cm_ts_markFullyExtracted" data-i18n="Mark as Fully Extracted">Mark as Fully Extracted</button>
+                    <small class="charMemory_helperText" data-i18n="Tells CharMemory this chat's messages are already captured in the memory file. Useful after importing an existing memory file into a forked chat — prevents full re-extraction.">Tells CharMemory this chat's messages are already captured in the memory file. Useful after importing an existing memory file into a forked chat — prevents full re-extraction.</small>
+                </div>
+                <div class="charMemory_tsResetSection">
                     <button class="menu_button" id="cm_ts_resetBatchProgress" data-i18n="Reset Batch Progress">Reset Batch Progress</button>
                     <small class="charMemory_helperText">
                         The Batch tool remembers the last message it processed in each chat file so future runs only extract new messages. Reset this to make Batch treat all of ${escapeHtml(charName || 'this character')}'s chats as unprocessed — for example, after changing the extraction prompt. Does not affect Extract Now or auto-extraction.
@@ -6555,6 +6559,22 @@ async function showTroubleshooter(initialSection = 'health') {
         );
         if (!confirmed) return;
         resetCurrentChatTracking();
+    });
+
+    $('#cm_ts_markFullyExtracted').off('click').on('click', async function () {
+        const charName = getCharacterName() || t`this character`;
+        const context = getContext();
+        const chatLen = context.chat ? context.chat.length : 0;
+        if (chatLen === 0) {
+            toastr.info(t`No messages in this chat to mark as extracted.`, 'CharMemory');
+            return;
+        }
+        const confirmed = await callGenericPopup(
+            t`This will mark all ${chatLen} messages in the active chat for <strong>${escapeHtml(charName)}</strong> as already extracted. Auto-extraction will only process new messages added after this point. Use this if you imported an existing memory file and don't want to re-extract.`,
+            POPUP_TYPE.CONFIRM, t`Mark as Fully Extracted`,
+        );
+        if (!confirmed) return;
+        markChatAsFullyExtracted();
     });
 
     $('#cm_ts_resetBatchProgress').off('click').on('click', async function () {
