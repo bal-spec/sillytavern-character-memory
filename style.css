@@ -2207,3 +2207,40 @@ body.charMemory-phone-mode .charMemory_modalNavItem.active {
 .charMemory_tabletPanel .charMemory_dashSection {
     padding: 10px 0;
 }
+
+/* ===== Mobile fixes (issue #16) ===== */
+@media (max-width: 768px) {
+    /* Browsers (iOS/Android) auto-zoom on focus when font-size < 16px. Lock editor
+       inputs to 16px so the viewport stays put when the user taps a memory to edit. */
+    .charMemory_settings input[type="text"],
+    .charMemory_settings input[type="number"],
+    .charMemory_settings textarea,
+    .charMemory_modal input[type="text"],
+    .charMemory_modal input[type="number"],
+    .charMemory_modal textarea,
+    .charMemory_injectionDrawer input,
+    .charMemory_injectionDrawer textarea,
+    .charMemory_logDrawer input,
+    .charMemory_logDrawer textarea,
+    .charMemory_memoryEditor input,
+    .charMemory_memoryEditor textarea {
+        font-size: 16px;
+    }
+
+    /* Drawer close buttons: increase hit target and disable double-tap zoom delay. */
+    .charMemory_drawerClose,
+    .charMemory_modalClose {
+        min-width: 44px;
+        min-height: 44px;
+        touch-action: manipulation;
+    }
+
+    /* Drawers should cover more of the viewport on narrow screens so the close
+       button isn't pushed behind ST's own sidebar. */
+    .charMemory_injectionDrawer,
+    .charMemory_logDrawer {
+        width: 90vw;
+        max-width: 90vw;
+        z-index: 1050; /* beat ST's sidebar which sits at 1000-1002 */
+    }
+}
