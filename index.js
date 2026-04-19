@@ -3966,6 +3966,16 @@ async function showSettingsModal() {
             </div>
         </div>
         <div class="charMemory_sliderRow">
+            <label title="Extra messages to wait past the interval before extracting. Useful on single-GPU setups so extraction runs while you read, not while you wait for the next reply." data-i18n="[title]Extra messages to wait past the interval before extracting.">
+                <small data-i18n="Extraction lag (messages)">Extraction lag (messages)</small>
+            </label>
+            <input class="neo-range-slider" type="range" id="cm_modal_extractionLag" min="0" max="20" step="1" value="${s.extractionLag || 0}" />
+            <div class="wide100p">
+                <input class="neo-range-input" type="number" min="0" max="20" step="1"
+                       data-for="cm_modal_extractionLag" id="cm_modal_extractionLagCounter" value="${s.extractionLag || 0}" />
+            </div>
+        </div>
+        <div class="charMemory_sliderRow">
             <label title="Minimum time between auto-extractions." data-i18n="[title]Minimum time between auto-extractions.">
                 <small data-i18n="Minimum wait between extractions (min)">Minimum wait between extractions (min)</small>
             </label>
@@ -4440,6 +4450,7 @@ async function showSettingsModal() {
     };
 
     sliderHandler('cm_modal_interval', 'cm_modal_intervalCounter', 'interval', 'charMemory_interval', 'charMemory_intervalCounter');
+    sliderHandler('cm_modal_extractionLag', 'cm_modal_extractionLagCounter', 'extractionLag', null, null);
     sliderHandler('cm_modal_minCooldown', 'cm_modal_minCooldownCounter', 'minCooldownMinutes', 'charMemory_minCooldown', 'charMemory_minCooldownCounter');
     sliderHandler('cm_modal_maxMessages', 'cm_modal_maxMessagesCounter', 'maxMessagesPerExtraction', 'charMemory_maxMessages', 'charMemory_maxMessagesCounter');
     sliderHandler('cm_modal_responseLength', 'cm_modal_responseLengthCounter', 'responseLength', 'charMemory_responseLength', 'charMemory_responseLengthCounter');
