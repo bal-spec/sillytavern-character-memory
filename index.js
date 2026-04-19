@@ -51,6 +51,7 @@ import {
     countMatchesInBlocks,
     replaceInBlocks,
     cloneMemoryBlocks,
+    shouldExtractNow,
 } from './lib.js';
 import { createMemoryEditor } from './editor.js';
 
@@ -3154,18 +3155,36 @@ function onCharacterMessageRendered(_messageIndex, type) {
     updateStatusDisplay();
 
     const count = chat_metadata[MODULE_NAME].messagesSinceExtraction;
-    const interval = extension_settings[MODULE_NAME].interval;
+    const settings = extension_settings[MODULE_NAME];
+    const decision = shouldExtractNow({
+        messagesSinceExtraction: count,
+        interval: settings.interval,
+        extractionLag: settings.extractionLag || 0,
+        isGenerating,
+        now: Date.now(),
+        lastExtractionTime,
+        cooldownMs: (settings.minCooldownMinutes || 0) * 60000,
+    });
 
-    if (count >= interval) {
-        const cooldownMs = (extension_settings[MODULE_NAME].minCooldownMinutes || 0) * 60000;
-        const elapsed = Date.now() - lastExtractionTime;
-        if (cooldownMs > 0 && elapsed < cooldownMs) {
-            const remaining = Math.ceil((cooldownMs - elapsed) / 60000);
-            logActivity(`Extraction skipped: cooldown active (${remaining}m remaining)`, 'warning');
-            return;
-        }
+    if (decision.fire) {
         extractMemories({ force: false });
+        return;
     }
+
+    if (decision.reason === 'generation-active') {
+        if (!pendingExtraction) {
+            pendingExtraction = true;
+            logActivity('Extraction deferred: primary LLM is generating — will run when it ends');
+        }
+        return;
+    }
+
+    if (decision.reason === 'cooldown') {
+        const remainingMin = Math.ceil(decision.remainingMs / 60000);
+        logActivity(`Extraction skipped: cooldown active (${remainingMin}m remaining)`, 'warning');
+        return;
+    }
+    // reason === 'below-interval' — silent, this is the common case on every message
 }
 
 /**
