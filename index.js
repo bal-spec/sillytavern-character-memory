@@ -7927,6 +7927,32 @@ function resetCurrentChatTracking() {
 }
 
 /**
+ * Mark the active chat as fully extracted — sets `lastExtractedIndex` to the
+ * last message index, so auto-extraction and "Extract Now" treat the chat as
+ * caught up. Useful after importing a Data Bank file into a forked chat where
+ * the memories already exist but the pointer has been reset.
+ */
+function markChatAsFullyExtracted() {
+    ensureMetadata();
+    const context = getContext();
+    const chat = context.chat;
+    if (!chat || chat.length === 0) {
+        toastr.info(t`No messages in this chat to mark as extracted.`, 'CharMemory');
+        return;
+    }
+    const lastIdx = chat.length - 1;
+    chat_metadata[MODULE_NAME].lastExtractedIndex = lastIdx;
+    chat_metadata[MODULE_NAME].messagesSinceExtraction = 0;
+    saveMetadataDebounced();
+    updateStatusDisplay();
+    const msg = isGroupChat()
+        ? t`This group chat marked as fully extracted (pointer set to message ${lastIdx}). All members share one pointer.`
+        : t`Chat marked as fully extracted (pointer set to message ${lastIdx}). Auto-extraction will resume from the next new message.`;
+    toastr.success(msg, 'CharMemory');
+    logActivity(`Marked chat as fully extracted: lastExtractedIndex=${lastIdx}`);
+}
+
+/**
  * Clear batch extraction progress records for all of this character's chats.
  * Does NOT affect the current chat's regular extraction pointer (chat_metadata).
  * For non-active chats, only batch records can be cleared from here — their regular
