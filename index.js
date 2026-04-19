@@ -448,6 +448,7 @@ const PROVIDER_PRESETS = {
 const defaultSettings = {
     enabled: true,
     interval: 20,
+    extractionLag: 0,
     maxMessagesPerExtraction: 20,
     responseLength: 1000,
     mergeChunks: false,
