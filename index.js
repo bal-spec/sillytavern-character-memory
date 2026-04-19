@@ -82,6 +82,8 @@ let consolidationBackup = null;
 let reformatBackup = null;
 // convertPreviewResult removed — conversion state now lives in the dialog closure
 let lastExtractionTime = 0; // session-only, resets on page load
+let isGenerating = false;
+let pendingExtraction = false;
 
 // ============ Activity Log ============
 
@@ -8987,6 +8989,22 @@ jQuery(async function () {
     // Event hooks
     eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, onCharacterMessageRendered);
     eventSource.on(event_types.CHAT_CHANGED, onChatChanged);
+    eventSource.on(event_types.GENERATION_STARTED, () => {
+        isGenerating = true;
+    });
+    eventSource.on(event_types.GENERATION_ENDED, () => {
+        isGenerating = false;
+        if (pendingExtraction) {
+            pendingExtraction = false;
+            logActivity('Running deferred extraction now that generation ended');
+            extractMemories({ force: false });
+        }
+    });
+    eventSource.on(event_types.GENERATION_STOPPED, () => {
+        isGenerating = false;
+        // Don't auto-run deferred extraction after user abort — they may want to edit and retry.
+        pendingExtraction = false;
+    });
 
     // Per-message buttons and indicators
     eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, onMessageRenderedAddButtons);
