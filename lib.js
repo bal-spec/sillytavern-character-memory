@@ -522,3 +522,47 @@ export function replaceInBlocks(blocks, find, replace, caseSensitive = false) {
     }
     return count;
 }
+
+/**
+ * Decide whether automatic extraction should fire right now.
+ * Pure function — caller supplies all state, including `now` for deterministic tests.
+ *
+ * Order of checks (first matching wins):
+ *   1. below-interval       — haven't accumulated enough new messages yet
+ *   2. generation-active    — a primary-LLM generation is in flight; defer to idle
+ *   3. cooldown             — not enough time has elapsed since the last extraction
+ *   4. fire                 — all gates pass
+ *
+ * @param {object} state
+ * @param {number} state.messagesSinceExtraction - Messages seen since last extraction.
+ * @param {number} state.interval - Configured extraction interval (messages).
+ * @param {number} [state.extractionLag=0] - Additional messages to wait past the interval.
+ * @param {boolean} state.isGenerating - True if a primary-LLM generation is currently running.
+ * @param {number} state.now - Current timestamp (ms).
+ * @param {number} state.lastExtractionTime - Timestamp of the last successful extraction (ms).
+ * @param {number} state.cooldownMs - Minimum ms between extractions (0 disables).
+ * @returns {{fire: true} | {fire: false, reason: string, remainingMs?: number}}
+ */
+export function shouldExtractNow({
+    messagesSinceExtraction,
+    interval,
+    extractionLag = 0,
+    isGenerating,
+    now,
+    lastExtractionTime,
+    cooldownMs,
+}) {
+    if (messagesSinceExtraction < interval + extractionLag) {
+        return { fire: false, reason: 'below-interval' };
+    }
+    if (isGenerating) {
+        return { fire: false, reason: 'generation-active' };
+    }
+    if (cooldownMs > 0) {
+        const elapsed = now - lastExtractionTime;
+        if (elapsed < cooldownMs) {
+            return { fire: false, reason: 'cooldown', remainingMs: cooldownMs - elapsed };
+        }
+    }
+    return { fire: true };
+}
