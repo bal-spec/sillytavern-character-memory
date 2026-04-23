@@ -54,6 +54,7 @@ import {
     shouldExtractNow,
     estimateConsolidationSize,
     packBlocksIntoChunks,
+    classifyBlocksForConsolidation,
 } from './lib.js';
 import { createMemoryEditor } from './editor.js';
 import { runChunkedConsolidation } from './consolidation.js';
@@ -7076,7 +7077,7 @@ function renderConsolidatedCards(blocks, editingSet, highlightPattern = null, pr
     }).join('');
 }
 
-function buildConsolidationDialog(beforeBlocks, beforeCount, consolidatedBlocks, editingSet) {
+function buildConsolidationDialog(beforeBlocks, beforeCount, consolidatedBlocks, editingSet, protectedPreviewIndices = new Set()) {
     const renderReadOnlyCards = (blocks) => {
         return blocks.map(b => {
             const bullets = b.bullets.map(bullet => `<li>${escapeHtml(bullet)}</li>`).join('');
@@ -7119,7 +7120,7 @@ function buildConsolidationDialog(beforeBlocks, beforeCount, consolidatedBlocks,
             </div>
             <div class="charMemory_consolidationPane">
                 <h4 data-i18n="Consolidated Memories">Consolidated Memories</h4>
-                <div class="charMemory_consolidationContent" id="charMemory_editorPane">${renderConsolidatedCards(consolidatedBlocks, editingSet)}</div>
+                <div class="charMemory_consolidationContent" id="charMemory_editorPane">${renderConsolidatedCards(consolidatedBlocks, editingSet, null, protectedPreviewIndices)}</div>
                 <button class="charMemory_editorAddBlock menu_button ${hasEditing ? '' : 'charMemory_editorAddBlock--hidden'}" id="charMemory_editorAddBlock"><i class="fa-solid fa-plus fa-xs"></i> <span data-i18n="Add Block">Add Block</span></button>
             </div>
         </div>
@@ -7397,8 +7398,53 @@ async function consolidateMemories() {
         return;
     }
 
-    const beforeCount = countMemories(memories);
-    logActivity(`Consolidation started for ${target.name}: ${beforeCount} memories in ${memories.length} blocks`);
+    // Classify blocks: protected blocks stay verbatim; eligible blocks go to the LLM.
+    // Classification is heuristic — the user can override via the "Change selection…" modal.
+    const { eligible: initialEligible, protected: initialProtected } = classifyBlocksForConsolidation(memories);
+
+    // Build eligibleIndices (Set<number>) tracking positions in the original `memories` list.
+    // We mutate this set if the user overrides, then derive eligible/protected from it again.
+    let eligibleIndices = new Set();
+    memories.forEach((b, i) => {
+        if (initialEligible.includes(b)) eligibleIndices.add(i);
+    });
+
+    // If any blocks are protected, show a confirm popup with an override option.
+    if (initialProtected.length > 0) {
+        const protectedCount = initialProtected.length;
+        const eligibleCount = initialEligible.length;
+        const summary = t`Protecting ${protectedCount} blocks from prior consolidations. Consolidating ${eligibleCount} new blocks.<br><br>Click <strong>Change selection…</strong> to adjust which blocks are protected, or <strong>Proceed</strong> to continue.`;
+        const proceed = await callGenericPopup(summary, POPUP_TYPE.CONFIRM, '', {
+            okButton: t`Proceed`,
+            cancelButton: t`Change selection…`,
+        });
+        if (!proceed) {
+            // User clicked "Change selection…" — open the picker modal.
+            const picked = await showBlockSelectionModal(memories, eligibleIndices, target.name);
+            if (picked === null) {
+                // Cancelled out of the picker — abort the whole consolidation.
+                logActivity('Consolidation cancelled — no changes made.');
+                return;
+            }
+            eligibleIndices = picked;
+        }
+    }
+
+    // Derive eligible and protected from the (possibly-overridden) eligibleIndices.
+    const eligible = memories.filter((_, i) => eligibleIndices.has(i));
+    const protectedBlocks = memories.filter((_, i) => !eligibleIndices.has(i));
+
+    if (eligible.length < 2) {
+        if (eligible.length === 0) {
+            toastr.info(t`All memories appear to be already consolidated — nothing new to do.`, 'CharMemory');
+        } else {
+            toastr.info(t`Only 1 new block since last consolidation — not enough to consolidate (minimum 2).`, 'CharMemory');
+        }
+        return;
+    }
+
+    const beforeCount = countMemories(eligible);
+    logActivity(`Consolidation started for ${target.name}: ${beforeCount} eligible memories in ${eligible.length} blocks (${protectedBlocks.length} protected)`);
 
     // Show busy state on button
     const $btn = $('#charMemory_consolidateBtn');
@@ -7407,7 +7453,7 @@ async function consolidateMemories() {
     // Route large memory sets through the chunked map-reduce orchestrator.
     const chunkBudget = extension_settings[MODULE_NAME].consolidationChunkChars;
     const outputRatio = extension_settings[MODULE_NAME].consolidationOutputRatio;
-    const sizing = estimateConsolidationSize(memories, { outputRatio });
+    const sizing = estimateConsolidationSize(eligible, { outputRatio });
     // sizing.outputCharsEstimate is reserved for future per-chunk pressure checks.
     const useChunked = sizing.memoriesChars > chunkBudget;
 
@@ -7417,7 +7463,7 @@ async function consolidateMemories() {
         if (useChunked) {
             // Re-enable so the user can click Cancel (Task 5 wires the click handler).
             $btn.val(t`Cancel`).prop('disabled', false);
-            initialResult = await runChunkedConsolidation(memories, {
+            initialResult = await runChunkedConsolidation(eligible, {
                 // runConsolidationLLM catches LLM errors and returns null, so the
                 // orchestrator's retry-on-throw path will not fire for transient
                 // failures. Failed chunks are skipped. Follow-up to propagate
@@ -7429,23 +7475,38 @@ async function consolidateMemories() {
                 parseOutput: (text) => parseMemories(text),
             });
         } else {
-            initialResult = await runConsolidationLLM(memories, target.name);
+            initialResult = await runConsolidationLLM(eligible, target.name);
         }
     } finally {
         $btn.val(t`Consolidate`).prop('disabled', false);
     }
     if (!initialResult) return;
 
-    const editor = createMemoryEditor({ blocks: parseMemories(initialResult) });
+    // Assemble finalBlocks = protected + newly consolidated. Protected blocks retain
+    // their original order; newly consolidated output is appended. Indices 0..N-1
+    // (where N = protectedBlocks.length) are the protected ones for visual marking.
+    const newlyConsolidatedBlocks = parseMemories(initialResult);
+    const assembledBlocks = [...protectedBlocks, ...newlyConsolidatedBlocks];
+    const protectedPreviewIndices = new Set(protectedBlocks.map((_, i) => i));
+
+    const editor = createMemoryEditor({ blocks: assembledBlocks });
     const rerunBackups = []; // separate stack for re-run undo
     let consolFindPattern = null;
 
-    // Re-render the editor pane from editor state
+    // Re-render the editor pane from editor state.
+    // Protected-block indices are derived from the current block list by matching
+    // against the original protectedBlocks array by reference. If the user edits
+    // or deletes protected blocks inside the preview, their "protected" visual
+    // marking naturally follows — we derive indices from the current list each refresh.
     const refreshEditor = (highlightPattern) => {
         if (highlightPattern !== undefined) consolFindPattern = highlightPattern;
         const blocks = editor.getBlocks();
         const editing = editor.getEditingSet();
-        $('#charMemory_editorPane').html(renderConsolidatedCards(blocks, editing, consolFindPattern));
+        const currentProtectedIndices = new Set();
+        blocks.forEach((b, i) => {
+            if (protectedBlocks.includes(b)) currentProtectedIndices.add(i);
+        });
+        $('#charMemory_editorPane').html(renderConsolidatedCards(blocks, editing, consolFindPattern, currentProtectedIndices));
         $('#charMemory_afterCount').text(countMemories(blocks));
         $('#charMemory_editorAddBlock').toggleClass('charMemory_editorAddBlock--hidden', editing.size === 0);
     };
@@ -7453,7 +7514,7 @@ async function consolidateMemories() {
     // Build and show the interactive dialog
     const initBlocks = editor.getBlocks();
     const initEditing = editor.getEditingSet();
-    const dialogHtml = buildConsolidationDialog(memories, beforeCount, initBlocks, initEditing);
+    const dialogHtml = buildConsolidationDialog(eligible, beforeCount, initBlocks, initEditing, protectedPreviewIndices);
     const popup = callGenericPopup(dialogHtml, POPUP_TYPE.CONFIRM, '', { wide: true, allowVerticalScrolling: true, okButton: t`Save`, cancelButton: t`Cancel` });
 
     // Set up the strategy dropdown and prompt viewer to match current setting
