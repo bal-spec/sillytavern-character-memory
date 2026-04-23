@@ -8,7 +8,10 @@ function makeDeps(overrides = {}) {
         runLLM: vi.fn(async (blocks) => `<memory chat="out">\n- processed ${blocks.length} blocks\n</memory>`),
         logProgress: vi.fn(),
         isCancelled: vi.fn(() => false),
-        packChunks: (mems) => [mems.slice(0, 2), mems.slice(2)],
+        // Splits into two chunks at index 2. Assumes >= 3 input blocks in
+        // tests (so the tail slice is non-empty); we .filter out the empty
+        // trailing chunk defensively just in case.
+        packChunks: (mems) => [mems.slice(0, 2), mems.slice(2)].filter(c => c.length > 0),
         parseOutput: (text) => [{ chat: 'parsed', date: '', bullets: [text] }],
         maxRetries: 1,
         ...overrides,
@@ -52,7 +55,8 @@ describe('runChunkedConsolidation', () => {
         const deps = makeDeps({ runLLM });
         const result = await runChunkedConsolidation([b(1), b(2), b(3)], deps);
         expect(result).not.toBeNull();
-        expect(runLLM.mock.calls.length).toBeGreaterThanOrEqual(3);
+        // 1 fail + 1 retry for chunk 1 = 2 calls, + chunk 2 (1) + reduce (1) = 4 total
+        expect(runLLM.mock.calls.length).toBe(4);
     });
 
     it('aborts with null after second consecutive failure', async () => {
@@ -72,6 +76,8 @@ describe('runChunkedConsolidation', () => {
         const deps = makeDeps({ runLLM });
         const result = await runChunkedConsolidation([b(1), b(2), b(3)], deps);
         expect(result).not.toBeNull();
+        // 2 map calls (chunk 1 empty, chunk 2 ok) + 1 reduce call = 3 total
+        expect(runLLM.mock.calls.length).toBe(3);
     });
 
     it('aborts when reduce pass returns null', async () => {

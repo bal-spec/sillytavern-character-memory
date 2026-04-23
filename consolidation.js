@@ -11,8 +11,12 @@
  *
  * @typedef {Object} ChunkedDeps
  * @property {(chunk: MemoryBlock[]) => Promise<string|null>} runLLM
- *           Runs one consolidation LLM call. Returns serialized memory text
- *           (the same shape runConsolidationLLM already produces), or null/empty on failure.
+ *           Runs one consolidation LLM call. Return serialized memory text
+ *           (the same shape runConsolidationLLM produces) on success. Return
+ *           null or empty string for a "soft" no-content result (skip and
+ *           continue). THROW for retriable failures (network error, timeout,
+ *           provider 5xx) — the orchestrator's retry loop only activates on
+ *           thrown errors, not on empty/null returns.
  * @property {(msg: string) => void} logProgress
  * @property {() => boolean} isCancelled  Checked between chunks.
  * @property {(memories: MemoryBlock[]) => MemoryBlock[][]} packChunks
@@ -63,7 +67,8 @@ export async function runChunkedConsolidation(memories, deps) {
         }
 
         if (lastErr) {
-            logProgress(`Chunk ${i + 1} failed after retry: ${lastErr.message}`);
+            const retryNote = maxRetries > 0 ? ` after ${maxRetries} retry${maxRetries === 1 ? '' : 's'}` : '';
+            logProgress(`Chunk ${i + 1} failed${retryNote}: ${lastErr.message}`);
             return null;
         }
 
@@ -81,7 +86,14 @@ export async function runChunkedConsolidation(memories, deps) {
     }
 
     logProgress('Running reduce pass…');
-    const combinedBlocks = mapOutputs.flatMap(out => parseOutput(out));
+    const combinedBlocks = [];
+    mapOutputs.forEach((out, i) => {
+        const parsed = parseOutput(out);
+        if (parsed.length === 0) {
+            logProgress(`Map output ${i + 1} produced no parseable blocks; excluding from reduce`);
+        }
+        combinedBlocks.push(...parsed);
+    });
     if (combinedBlocks.length === 0) {
         logProgress('No blocks parsed from map outputs; aborting consolidation');
         return null;
