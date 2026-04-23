@@ -52,8 +52,11 @@ import {
     replaceInBlocks,
     cloneMemoryBlocks,
     shouldExtractNow,
+    estimateConsolidationSize,
+    packBlocksIntoChunks,
 } from './lib.js';
 import { createMemoryEditor } from './editor.js';
+import { runChunkedConsolidation } from './consolidation.js';
 
 const MODULE_NAME = 'charMemory';
 const MODULE_VERSION = '2.2.0';
@@ -81,6 +84,7 @@ let inApiCall = false;
 let lastExtractionResult = null;
 let consolidationBackup = null;
 let reformatBackup = null;
+let consolidationCancelRequested = false;
 // convertPreviewResult removed — conversion state now lives in the dialog closure
 let lastExtractionTime = 0; // session-only, resets on page load
 let isGenerating = false;
@@ -458,6 +462,8 @@ const defaultSettings = {
     extractionPrompt: defaultExtractionPrompt,
     consolidationStrategy: 'balanced',
     consolidationPrompts: {},
+    consolidationChunkChars: 24000,
+    consolidationOutputRatio: 0.5,
     source: EXTRACTION_SOURCE.PROVIDER,
     fileName: DEFAULT_FILE_NAME,
     perChat: false,
@@ -7300,12 +7306,31 @@ async function consolidateMemories() {
     const $btn = $('#charMemory_consolidateBtn');
     $btn.val(t`Consolidating…`).prop('disabled', true);
 
-    // Run initial consolidation — returns serialized text, parse to blocks
+    // Size-aware dispatch: small sets go through the existing single-call path,
+    // large sets go through the chunked map-reduce orchestrator.
+    const chunkBudget = extension_settings[MODULE_NAME].consolidationChunkChars;
+    const outputRatio = extension_settings[MODULE_NAME].consolidationOutputRatio;
+    const sizing = estimateConsolidationSize(memories, { outputRatio });
+    const useChunked = sizing.memoriesChars > chunkBudget;
+
     let initialResult;
+    consolidationCancelRequested = false;
     try {
-        initialResult = await runConsolidationLLM(memories, target.name);
+        if (useChunked) {
+            $btn.val(t`Cancel`);
+            initialResult = await runChunkedConsolidation(memories, {
+                runLLM: (chunk) => runConsolidationLLM(chunk, target.name),
+                logProgress: (msg) => logActivity(msg),
+                isCancelled: () => consolidationCancelRequested,
+                packChunks: (mems) => packBlocksIntoChunks(mems, chunkBudget),
+                parseOutput: (text) => parseMemories(text),
+            });
+        } else {
+            initialResult = await runConsolidationLLM(memories, target.name);
+        }
     } finally {
         $btn.val(t`Consolidate`).prop('disabled', false);
+        consolidationCancelRequested = false;
     }
     if (!initialResult) return;
 
