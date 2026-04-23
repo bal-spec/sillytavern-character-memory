@@ -586,7 +586,9 @@ export function estimateConsolidationSize(memories, opts = {}) {
 }
 
 /**
- * Greedily pack memory blocks into chunks that each stay under a char budget.
+ * Greedily pack memory blocks into chunks, each at or under a char budget
+ * (boundary-inclusive: a block whose addition brings the chunk to exactly
+ * budgetChars is still placed in that chunk).
  * Preserves block order. A single block larger than the budget is placed
  * in its own chunk (no mid-block splitting).
  * @param {Array<{chat:string,date:string,bullets:string[]}>} memories
@@ -619,7 +621,10 @@ export function packBlocksIntoChunks(memories, budgetChars) {
 }
 
 function blockCharCount(b) {
-    const WRAPPER_OVERHEAD = 30; // <memory ...></memory> + newlines
+    // Tag skeleton + typical chat/date attribute content. Real tags vary
+    // (chat names especially), so this is a conservative estimate for sizing —
+    // callers that need exactness should use serializeMemories().length instead.
+    const WRAPPER_OVERHEAD = 30;
     const BULLET_OVERHEAD = 3;   // "- " + newline
     return WRAPPER_OVERHEAD + b.bullets.reduce((s, x) => s + x.length + BULLET_OVERHEAD, 0);
 }

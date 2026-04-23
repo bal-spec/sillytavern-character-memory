@@ -11,14 +11,14 @@ describe('estimateConsolidationSize', () => {
         expect(r.outputCharsEstimate).toBe(0);
     });
 
-    it('scales with bullet content and block count', () => {
+    it('scales linearly with identical block count (3 copies = 3× one)', () => {
         const small = estimateConsolidationSize([block(['hello'])]);
         const big = estimateConsolidationSize([
             block(['hello']),
             block(['hello']),
             block(['hello']),
         ]);
-        expect(big.memoriesChars).toBeGreaterThan(small.memoriesChars * 2);
+        expect(big.memoriesChars).toBe(small.memoriesChars * 3);
     });
 
     it('includes promptTemplateLength in promptChars', () => {
@@ -50,7 +50,7 @@ describe('packBlocksIntoChunks', () => {
         expect(chunks.length).toBeGreaterThan(1);
         const flat = chunks.flat();
         expect(flat.length).toBe(20);
-        flat.forEach((b, i) => expect(b.bullets[0]).toContain(`bullet content ${i}`));
+        flat.forEach((b, i) => expect(b).toBe(blocks[i]));
     });
 
     it('places a single oversize block alone without splitting it', () => {
@@ -60,5 +60,22 @@ describe('packBlocksIntoChunks', () => {
         expect(chunks.length).toBe(2);
         expect(chunks[0]).toEqual([huge]);
         expect(chunks[1]).toEqual([small]);
+    });
+
+    it('keeps a block that fits exactly at the budget in the current chunk', () => {
+        // Construct a first block whose blockCharCount is well under the budget,
+        // plus a second block that exactly fills the remaining headroom. Both
+        // should end up in the same chunk (boundary-inclusive packing).
+        const budget = 100;
+        // blockCharCount = 30 (wrapper) + bullets: each bullet contributes len(text) + 3
+        // First block: one bullet of 17 chars → 30 + 17 + 3 = 50 chars
+        // Second block: one bullet of 17 chars → 30 + 17 + 3 = 50 chars
+        // Total = 100, exactly at budget → should fit in same chunk.
+        const bullet = 'x'.repeat(17);
+        const a = block([bullet]);
+        const b = block([bullet]);
+        const chunks = packBlocksIntoChunks([a, b], budget);
+        expect(chunks.length).toBe(1);
+        expect(chunks[0].length).toBe(2);
     });
 });
