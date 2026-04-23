@@ -1740,29 +1740,57 @@ function isGroupChat() {
  * Returns only NPC characters — the user's persona is not in group.members.
  * @returns {{name: string, avatar: string, charIndex: number}[]}
  */
-function getGroupMembers() {
+/**
+ * Resolve group members and report both the successfully-resolved ones and
+ * any avatars that couldn't be found in the global `characters` array (the
+ * most common cause is a load-order race: CHAT_CHANGED fires before ST has
+ * finished populating characters for large groups).
+ *
+ * Outside a group chat, returns all-empty defaults.
+ *
+ * @returns {{
+ *   resolved: Array<{name:string, avatar:string, charIndex:number}>,
+ *   unresolvedAvatars: string[],
+ *   totalActive: number
+ * }}
+ */
+function getGroupMembersDetailed() {
     const context = getContext();
-    if (!context.groupId) return [];
+    if (!context.groupId) return { resolved: [], unresolvedAvatars: [], totalActive: 0 };
     const group = context.groups?.find(g => g.id === context.groupId);
     if (!group) {
         console.warn(LOG_PREFIX, `Group not found: groupId="${context.groupId}", available groups:`, context.groups?.map(g => g.id));
-        return [];
+        return { resolved: [], unresolvedAvatars: [], totalActive: 0 };
     }
     const activeMembers = group.members
         .filter(avatar => !group.disabled_members?.includes(avatar));
     if (activeMembers.length === 0) {
         console.warn(LOG_PREFIX, `Group "${group.name}" has no active members. members=${group.members?.length}, disabled=${group.disabled_members?.length}, mode=${group.generation_mode}`);
     }
-    return activeMembers
-        .map(avatar => {
-            const charIndex = characters.findIndex(c => c.avatar === avatar);
-            const char = characters[charIndex];
-            if (!char) {
-                console.warn(LOG_PREFIX, `Group member avatar "${avatar}" not found in characters array (${characters.length} characters loaded)`);
-            }
-            return char ? { name: char.name, avatar, charIndex } : null;
-        })
-        .filter(Boolean);
+    const resolved = [];
+    const unresolvedAvatars = [];
+    for (const avatar of activeMembers) {
+        const charIndex = characters.findIndex(c => c.avatar === avatar);
+        const char = characters[charIndex];
+        if (char) {
+            resolved.push({ name: char.name, avatar, charIndex });
+        } else {
+            unresolvedAvatars.push(avatar);
+        }
+    }
+    if (unresolvedAvatars.length > 0) {
+        console.warn(LOG_PREFIX, `${unresolvedAvatars.length} of ${activeMembers.length} group members could not be resolved: ${unresolvedAvatars.join(', ')} (characters.length=${characters.length})`);
+    }
+    return { resolved, unresolvedAvatars, totalActive: activeMembers.length };
+}
+
+/**
+ * Back-compat entry point used by 9+ callers. Returns only the resolved members.
+ * New code that needs visibility into unresolved avatars should call
+ * getGroupMembersDetailed() directly.
+ */
+function getGroupMembers() {
+    return getGroupMembersDetailed().resolved;
 }
 
 /**
