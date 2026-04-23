@@ -7327,6 +7327,7 @@ async function consolidateMemories() {
     const chunkBudget = extension_settings[MODULE_NAME].consolidationChunkChars;
     const outputRatio = extension_settings[MODULE_NAME].consolidationOutputRatio;
     const sizing = estimateConsolidationSize(memories, { outputRatio });
+    // sizing.outputCharsEstimate is reserved for future per-chunk pressure checks.
     const useChunked = sizing.memoriesChars > chunkBudget;
 
     let initialResult;

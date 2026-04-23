@@ -92,6 +92,21 @@ describe('runChunkedConsolidation', () => {
         expect(result).toBeNull();
     });
 
+    it('aborts when reduce pass throws', async () => {
+        let n = 0;
+        const runLLM = vi.fn(async () => {
+            n++;
+            if (n <= 2) return '<memory chat="ok">\n- ok\n</memory>';
+            throw new Error('reduce network failure');
+        });
+        const deps = makeDeps({ runLLM });
+        const result = await runChunkedConsolidation([b(1), b(2), b(3)], deps);
+        expect(result).toBeNull();
+        // Confirm the reduce failure was logged
+        const logs = deps.logProgress.mock.calls.map(c => c[0]).join('\n');
+        expect(logs).toMatch(/Reduce pass failed.*reduce network failure/);
+    });
+
     it('aborts when all map outputs are empty', async () => {
         const deps = makeDeps({ runLLM: vi.fn(async () => '') });
         const result = await runChunkedConsolidation([b(1), b(2), b(3)], deps);

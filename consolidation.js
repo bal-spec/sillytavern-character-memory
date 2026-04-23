@@ -99,7 +99,13 @@ export async function runChunkedConsolidation(memories, deps) {
         return null;
     }
 
-    const reduceResult = await runLLM(combinedBlocks);
+    let reduceResult;
+    try {
+        reduceResult = await runLLM(combinedBlocks);
+    } catch (err) {
+        logProgress(`Reduce pass failed: ${err.message}`);
+        return null;
+    }
     if (!reduceResult) {
         logProgress('Reduce pass returned empty');
         return null;

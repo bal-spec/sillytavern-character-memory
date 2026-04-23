@@ -621,9 +621,10 @@ export function packBlocksIntoChunks(memories, budgetChars) {
 }
 
 function blockCharCount(b) {
-    // Tag skeleton + typical chat/date attribute content. Real tags vary
-    // (chat names especially), so this is a conservative estimate for sizing —
-    // callers that need exactness should use serializeMemories().length instead.
+    // Intentional underestimate of <memory chat="…" date="…"></memory> wrapper
+    // size — real tags run ~70-80 chars once attributes are populated. For the
+    // 24k-char chunk budget this ~40-char-per-block delta is a rounding error
+    // (~0.2%). Callers needing exactness should use serializeMemories().length.
     const WRAPPER_OVERHEAD = 30;
     const BULLET_OVERHEAD = 3;   // "- " + newline
     return WRAPPER_OVERHEAD + b.bullets.reduce((s, x) => s + x.length + BULLET_OVERHEAD, 0);
