@@ -655,3 +655,16 @@ export function classifyBlocksForConsolidation(memories) {
     }
     return { eligible, protected: protectedBlocks };
 }
+
+/**
+ * Decide whether to skip the stale-metadata auto-reset in group chats.
+ * Returns true when member resolution is incomplete and we can't trust
+ * the "no memories anywhere" conclusion.
+ * @param {{isGroup:boolean, unresolvedCount:number, totalActive:number}} state
+ * @returns {boolean}
+ */
+export function shouldSkipStaleMetadataReset({ isGroup, unresolvedCount, totalActive }) {
+    if (!isGroup) return false;          // 1:1 chats are always complete
+    if (totalActive === 0) return true;  // can't conclude anything from zero members
+    return unresolvedCount > 0;          // any unresolved member invalidates the conclusion
+}
