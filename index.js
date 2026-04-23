@@ -3571,6 +3571,27 @@ async function computeHealthScore() {
         }
     }
 
+    // Check 0b (conditional): Group chat member resolution completeness.
+    // Surfaces the load-order race / genuinely-missing-card cases so they're
+    // not silent (issue #17). The guard in onChatChanged prevents the destructive
+    // pointer reset; this check tells the user why some group members might be
+    // missing from extraction/consolidation.
+    if (isGroupChat()) {
+        const detail = getGroupMembersDetailed();
+        if (detail.unresolvedAvatars.length > 0) {
+            const listed = detail.unresolvedAvatars.slice(0, 5).join(', ');
+            const more = detail.unresolvedAvatars.length > 5
+                ? t` (+ ${detail.unresolvedAvatars.length - 5} more)`
+                : '';
+            checks.push({
+                id: 'group_unresolved',
+                level: 'yellow',
+                label: t`Group members: ${detail.unresolvedAvatars.length} of ${detail.totalActive} could not be loaded`,
+                detail: t`These avatars couldn't be found in SillyTavern's character list: ${listed}${more}. This often resolves itself within seconds (the extension auto-retries 2s after chat change); check again shortly. If it persists, the character cards may have been renamed or deleted — extraction and consolidation will skip these members.`,
+            });
+        }
+    }
+
     // Check 1: Vector Storage enabled for files
     // Also verify VS extension is actually loaded — extension_settings.vectors persists
     // even when the VS extension is disabled, so we need both checks.
