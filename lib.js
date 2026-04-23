@@ -629,3 +629,29 @@ function blockCharCount(b) {
     const BULLET_OVERHEAD = 3;   // "- " + newline
     return WRAPPER_OVERHEAD + b.bullets.reduce((s, x) => s + x.length + BULLET_OVERHEAD, 0);
 }
+
+/**
+ * Classify memory blocks into "eligible" (candidates for re-consolidation) and
+ * "protected" (preserved verbatim). A block is protected when its chat label
+ * fails the URL-safe ID pattern — which is the convention for extraction chat
+ * IDs — OR when the block is structurally malformed or uses the "unknown"
+ * placeholder. Order is preserved within each bucket.
+ * @param {Array<{chat:string,date:string,bullets:string[]}>} memories
+ * @returns {{ eligible: Array, protected: Array }}
+ */
+export function classifyBlocksForConsolidation(memories) {
+    const ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
+    const eligible = [];
+    const protectedBlocks = [];
+    for (const b of memories) {
+        const hasBullets = Array.isArray(b?.bullets);
+        const chatLabel = typeof b?.chat === 'string' ? b.chat : '';
+        const isIdLike = chatLabel !== '' && chatLabel !== 'unknown' && ID_PATTERN.test(chatLabel);
+        if (hasBullets && isIdLike) {
+            eligible.push(b);
+        } else {
+            protectedBlocks.push(b);
+        }
+    }
+    return { eligible, protected: protectedBlocks };
+}
