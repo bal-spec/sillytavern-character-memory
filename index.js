@@ -7078,6 +7078,8 @@ function renderConsolidatedCards(blocks, editingSet, highlightPattern = null, pr
 }
 
 function buildConsolidationDialog(beforeBlocks, beforeCount, consolidatedBlocks, editingSet, protectedPreviewIndices = new Set()) {
+    const protectedCount = protectedPreviewIndices.size;
+
     const renderReadOnlyCards = (blocks) => {
         return blocks.map(b => {
             const bullets = b.bullets.map(bullet => `<li>${escapeHtml(bullet)}</li>`).join('');
@@ -7093,7 +7095,7 @@ function buildConsolidationDialog(beforeBlocks, beforeCount, consolidatedBlocks,
 
     return `<div class="charMemory_consolidationDialog">
         <div class="charMemory_consolidationStats" id="charMemory_consolidationStats">
-            Original: ${beforeCount} memories in ${beforeBlocks.length} blocks &rarr; Consolidated: <span id="charMemory_afterCount">${afterCount}</span> memories
+            ${protectedCount > 0 ? t`Consolidating: ${beforeCount} memories in ${beforeBlocks.length} blocks (+ ${protectedCount} protected)` : t`Original: ${beforeCount} memories in ${beforeBlocks.length} blocks`} &rarr; Consolidated: <span id="charMemory_afterCount">${afterCount}</span> memories
         </div>
         <div class="charMemory_consolidationToolbar">
             <select id="charMemory_consolidationDialogStrategy" class="text_pole" style="max-width:200px;">
@@ -7108,14 +7110,14 @@ function buildConsolidationDialog(beforeBlocks, beforeCount, consolidatedBlocks,
                     <input type="button" id="charMemory_dialogRestoreDefault" class="menu_button" value="Restore Default" data-i18n="[value]Restore Default" style="display:none;" />
                 </div>
             </details>
-            <input type="button" id="charMemory_rerunConsolidation" class="menu_button" value="Re-run" data-i18n="[value]Re-run;[title]Send original memories to the LLM again with current strategy" title="Send original memories to the LLM again with current strategy" />
+            <input type="button" id="charMemory_rerunConsolidation" class="menu_button" value="Re-run" data-i18n="[value]Re-run;[title]Re-send eligible memories to the LLM with current strategy" title="Re-send eligible memories to the LLM with current strategy" />
             <input type="button" id="charMemory_undoRerun" class="menu_button" value="Undo" data-i18n="[value]Undo;[title]Revert to previous consolidated version" title="Revert to previous consolidated version" disabled />
             <span id="charMemory_rerunSpinner" style="display:none;" data-i18n="Working...">Working...</span>
         </div>
         ${buildFindReplaceBar('charMemory_consolFR')}
         <div class="charMemory_consolidationPanes">
             <div class="charMemory_consolidationPane">
-                <h4 data-i18n="Original Memories">Original Memories</h4>
+                <h4 data-i18n="${protectedCount > 0 ? 'Memories to Consolidate' : 'Original Memories'}">${protectedCount > 0 ? t`Memories to Consolidate` : t`Original Memories`}</h4>
                 <div class="charMemory_consolidationContent">${renderReadOnlyCards(beforeBlocks)}</div>
             </div>
             <div class="charMemory_consolidationPane">
@@ -7323,6 +7325,9 @@ async function showBlockSelectionModal(allBlocks, initialEligible, charName) {
     const updateCount = () => {
         const checked = $('.charMemory_blockPickerCheck:checked').length;
         $('#charMemory_blockPickerCount').text(t`${checked} of ${allBlocks.length} selected`);
+        // Disable "Run consolidation" when fewer than 2 blocks are selected —
+        // the downstream pipeline requires a minimum of 2.
+        $('.dialogue_popup_ok').prop('disabled', checked < 2);
     };
     $(document).on('change.blockPicker', '.charMemory_blockPickerCheck', updateCount);
     $(document).on('click.blockPicker', '#charMemory_blockPickerAll', () => {
@@ -7498,18 +7503,23 @@ async function consolidateMemories() {
     const rerunBackups = []; // separate stack for re-run undo
     let consolFindPattern = null;
 
-    // Re-render the editor pane from editor state.
-    // Protected-block indices are derived from the current block list by matching
-    // against the original protectedBlocks array by reference. If the user edits
-    // or deletes protected blocks inside the preview, their "protected" visual
-    // marking naturally follows — we derive indices from the current list each refresh.
+    // Protected blocks are identified by structural fingerprint (chat + bullets)
+    // rather than reference, because createMemoryEditor clones blocks internally
+    // (editor.js calls cloneMemoryBlocks on init and on every getBlocks() call).
+    // Reference-equality checks would always fail against cloned objects, causing
+    // badges to vanish on the first refresh. If a user edits a protected block's
+    // chat label or bullets, the fingerprint changes and the badge disappears —
+    // which is semantically correct: the block is no longer "unchanged."
+    const fingerprint = (b) => `${b.chat}\x00${(b.bullets || []).join('\x00')}`;
+    const protectedFingerprints = new Set(protectedBlocks.map(fingerprint));
+
     const refreshEditor = (highlightPattern) => {
         if (highlightPattern !== undefined) consolFindPattern = highlightPattern;
         const blocks = editor.getBlocks();
         const editing = editor.getEditingSet();
         const currentProtectedIndices = new Set();
         blocks.forEach((b, i) => {
-            if (protectedBlocks.includes(b)) currentProtectedIndices.add(i);
+            if (protectedFingerprints.has(fingerprint(b))) currentProtectedIndices.add(i);
         });
         $('#charMemory_editorPane').html(renderConsolidatedCards(blocks, editing, consolFindPattern, currentProtectedIndices));
         $('#charMemory_afterCount').text(countMemories(blocks));
