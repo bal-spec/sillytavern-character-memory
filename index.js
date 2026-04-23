@@ -4160,6 +4160,16 @@ async function showSettingsModal() {
         </div>
 
         <hr class="charMemory_separator" />
+        <h4 class="charMemory_modalSectionTitle" data-i18n="Consolidation">Consolidation</h4>
+        <div class="charMemory_statusRow">
+            <label for="cm_modal_consolidationChunkChars">
+                <small data-i18n="Chunk size (chars)">Chunk size (chars)</small>
+            </label>
+            <input type="number" id="cm_modal_consolidationChunkChars" class="text_pole" min="4000" step="1000" value="${s.consolidationChunkChars || 24000}" />
+            <small class="charMemory_helperText" data-i18n="Large memory sets are split into chunks of this size to avoid consolidation truncation. Lower means more LLM calls but accommodates smaller output limits. Default 24000. Minimum 4000.">Large memory sets are split into chunks of this size to avoid consolidation truncation. Lower means more LLM calls but accommodates smaller output limits. Default 24000. Minimum 4000.</small>
+        </div>
+
+        <hr class="charMemory_separator" />
         <h4 class="charMemory_modalSectionTitle" data-i18n="Reset">Reset</h4>
         <div class="charMemory_statusRow">
             <input type="button" id="cm_modal_resetThisChat" class="menu_button" value="Reset This Chat" data-i18n="[value]Reset This Chat"
@@ -4541,6 +4551,13 @@ async function showSettingsModal() {
 
     $('#cm_modal_hideExtracted').off('change').on('change', function () {
         extension_settings[MODULE_NAME].hideExtractedMessages = $(this).is(':checked');
+        saveSettingsDebounced();
+    });
+
+    $('#cm_modal_consolidationChunkChars').off('input').on('input', function () {
+        const raw = Number($(this).val());
+        const clamped = Number.isFinite(raw) ? Math.max(4000, Math.floor(raw)) : 24000;
+        extension_settings[MODULE_NAME].consolidationChunkChars = clamped;
         saveSettingsDebounced();
     });
 
