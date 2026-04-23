@@ -1736,11 +1736,6 @@ function isGroupChat() {
 }
 
 /**
- * Get active (non-disabled) members of the current group chat.
- * Returns only NPC characters — the user's persona is not in group.members.
- * @returns {{name: string, avatar: string, charIndex: number}[]}
- */
-/**
  * Resolve group members and report both the successfully-resolved ones and
  * any avatars that couldn't be found in the global `characters` array (the
  * most common cause is a load-order race: CHAT_CHANGED fires before ST has
