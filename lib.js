@@ -566,3 +566,60 @@ export function shouldExtractNow({
     }
     return { fire: true };
 }
+
+// ─── Chunked consolidation helpers ─────────────────────────────────────
+
+/**
+ * Estimate the prompt and output size a consolidation call will produce.
+ * @param {Array<{chat:string,date:string,bullets:string[]}>} memories
+ * @param {{promptTemplateLength?:number, outputRatio?:number}} [opts]
+ * @returns {{memoriesChars:number, promptChars:number, outputCharsEstimate:number}}
+ */
+export function estimateConsolidationSize(memories, opts = {}) {
+    const { promptTemplateLength = 0, outputRatio = 0.5 } = opts;
+    const memoriesChars = memories.reduce((sum, b) => sum + blockCharCount(b), 0);
+    return {
+        memoriesChars,
+        promptChars: promptTemplateLength + memoriesChars,
+        outputCharsEstimate: Math.round(memoriesChars * outputRatio),
+    };
+}
+
+/**
+ * Greedily pack memory blocks into chunks that each stay under a char budget.
+ * Preserves block order. A single block larger than the budget is placed
+ * in its own chunk (no mid-block splitting).
+ * @param {Array<{chat:string,date:string,bullets:string[]}>} memories
+ * @param {number} budgetChars
+ * @returns {Array<Array<{chat:string,date:string,bullets:string[]}>>}
+ */
+export function packBlocksIntoChunks(memories, budgetChars) {
+    const chunks = [];
+    let current = [];
+    let currentChars = 0;
+
+    for (const b of memories) {
+        const bChars = blockCharCount(b);
+        if (current.length === 0) {
+            current.push(b);
+            currentChars = bChars;
+            continue;
+        }
+        if (currentChars + bChars > budgetChars) {
+            chunks.push(current);
+            current = [b];
+            currentChars = bChars;
+        } else {
+            current.push(b);
+            currentChars += bChars;
+        }
+    }
+    if (current.length > 0) chunks.push(current);
+    return chunks;
+}
+
+function blockCharCount(b) {
+    const WRAPPER_OVERHEAD = 30; // <memory ...></memory> + newlines
+    const BULLET_OVERHEAD = 3;   // "- " + newline
+    return WRAPPER_OVERHEAD + b.bullets.reduce((s, x) => s + x.length + BULLET_OVERHEAD, 0);
+}
