@@ -3307,6 +3307,30 @@ async function onChatChanged() {
     updateAllIndicators();
     updateHealthIndicator();
 
+    // Retry member resolution after 2 seconds to recover from the load-order
+    // race on large groups (issue #17 / #18). If the initial resolution was
+    // incomplete, re-read and log the outcome; updateHealthIndicator() will
+    // clear the yellow warning if the retry succeeded.
+    if (isGroupChat()) {
+        const initial = getGroupMembersDetailed();
+        if (initial.unresolvedAvatars.length > 0) {
+            const initialGroupId = getContext().groupId;
+            setTimeout(() => {
+                // Bail if the user switched to a different chat (1:1 or a different group) —
+                // logging retry outcome against the wrong group would misattribute.
+                if (!isGroupChat() || getContext().groupId !== initialGroupId) return;
+                const retry = getGroupMembersDetailed();
+                if (retry.unresolvedAvatars.length < initial.unresolvedAvatars.length) {
+                    const recovered = initial.unresolvedAvatars.length - retry.unresolvedAvatars.length;
+                    logActivity(`Retry resolved ${recovered} previously-unresolved group members.`);
+                } else {
+                    logActivity(`Retry did not resolve any additional group members (${retry.unresolvedAvatars.length} still unresolved).`, 'warning');
+                }
+                updateHealthIndicator();
+            }, 2000);
+        }
+    }
+
     // Inject buttons on already-rendered messages (with a small delay to
     // ensure the DOM has finished rendering the chat)
     setTimeout(addButtonsToExistingMessages, 500);
