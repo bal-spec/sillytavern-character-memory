@@ -7403,10 +7403,13 @@ async function consolidateMemories() {
     const { eligible: initialEligible, protected: initialProtected } = classifyBlocksForConsolidation(memories);
 
     // Build eligibleIndices (Set<number>) tracking positions in the original `memories` list.
-    // We mutate this set if the user overrides, then derive eligible/protected from it again.
+    // We rely on the classifier returning the same block references (not clones) so we can
+    // convert its output back to positions via a reference-keyed Set lookup (O(1) per block,
+    // vs O(N) with Array.includes, and future-resilient if the Set check is preserved).
+    const initialEligibleSet = new Set(initialEligible);
     let eligibleIndices = new Set();
     memories.forEach((b, i) => {
-        if (initialEligible.includes(b)) eligibleIndices.add(i);
+        if (initialEligibleSet.has(b)) eligibleIndices.add(i);
     });
 
     // If any blocks are protected, show a confirm popup with an override option.
@@ -7418,11 +7421,13 @@ async function consolidateMemories() {
             okButton: t`Proceed`,
             cancelButton: t`Change selection…`,
         });
+        // All non-Proceed dismissals (cancel button, Escape, backdrop click) open the
+        // picker modal — SillyTavern's POPUP_TYPE.CONFIRM doesn't distinguish between
+        // them. Abort-without-consolidating only happens from within the picker modal
+        // itself (via its Cancel button, which returns null).
         if (!proceed) {
-            // User clicked "Change selection…" — open the picker modal.
             const picked = await showBlockSelectionModal(memories, eligibleIndices, target.name);
             if (picked === null) {
-                // Cancelled out of the picker — abort the whole consolidation.
                 logActivity('Consolidation cancelled — no changes made.');
                 return;
             }
@@ -7619,7 +7624,9 @@ async function consolidateMemories() {
         $('#charMemory_rerunConsolidation').prop('disabled', true);
         $('#charMemory_editorPane').addClass('charMemory_editorDisabled');
 
-        const newResult = await runConsolidationLLM(memories, target.name);
+        // Re-run on the eligible subset only — protected blocks must not be
+        // re-sent to the LLM (they'd get re-consolidated and risk drift).
+        const newResult = await runConsolidationLLM(eligible, target.name);
 
         $('#charMemory_rerunSpinner').hide();
         $('#charMemory_rerunConsolidation').prop('disabled', false);
@@ -7628,7 +7635,9 @@ async function consolidateMemories() {
         if (newResult) {
             rerunBackups.push(backupBlocks);
             $('#charMemory_undoRerun').prop('disabled', false);
-            editor.replaceAll(parseMemories(newResult));
+            // Reassemble: protected blocks (unchanged) + newly re-consolidated output.
+            const newConsolidated = parseMemories(newResult);
+            editor.replaceAll([...protectedBlocks, ...newConsolidated]);
             refreshEditor();
         }
     });
