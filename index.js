@@ -7938,7 +7938,18 @@ function setupToolControls() {
     $('#charMemory_manageMemories').off('click').on('click', () => showMemoryManager());
 
     // Dashboard tool launcher buttons
-    $('#charMemory_consolidateBtn').off('click').on('click', () => consolidateMemories());
+    $('#charMemory_consolidateBtn').off('click').on('click', () => {
+        const $btn = $('#charMemory_consolidateBtn');
+        // If chunked consolidation is running, the button label is "Cancel" — treat the
+        // click as a cancellation request. Otherwise start a new consolidation.
+        if ($btn.val() === t`Cancel`) {
+            consolidationCancelRequested = true;
+            $btn.val(t`Cancelling…`).prop('disabled', true);
+            logActivity(t`Consolidation cancel requested — waiting for current chunk to finish`);
+            return;
+        }
+        consolidateMemories();
+    });
     $('#charMemory_batchBtn').off('click').on('click', () => showBatchPopup());
     $('#charMemory_formatBtn').off('click').on('click', () => reformatMemories());
     $('#charMemory_filesPopover').off('click').on('click', () => showTroubleshooter('databank'));
