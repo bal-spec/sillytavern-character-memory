@@ -7031,9 +7031,10 @@ function highlightText(rawText, pattern) {
     return result;
 }
 
-function renderConsolidatedCards(blocks, editingSet, highlightPattern = null) {
+function renderConsolidatedCards(blocks, editingSet, highlightPattern = null, protectedIndices = new Set()) {
     return blocks.map((b, bi) => {
         const isEditing = editingSet.has(bi);
+        const isProtected = protectedIndices.has(bi);
         const themeLabel = `${bi + 1}. ${b.chat}`;
 
         if (isEditing) {
@@ -7058,9 +7059,13 @@ function renderConsolidatedCards(blocks, editingSet, highlightPattern = null) {
         } else {
             const bullets = b.bullets.map(bullet => `<li>${highlightText(bullet, highlightPattern)}</li>`).join('');
             const headerHtml = highlightText(themeLabel, highlightPattern);
-            return `<div class="charMemory_card charMemory_editorCard" data-block="${bi}">
+            const cardClass = `charMemory_card charMemory_editorCard${isProtected ? ' charMemory_protectedBlock' : ''}`;
+            const badge = isProtected
+                ? `<span class="charMemory_protectedBadge" data-i18n="Protected — unchanged">Protected — unchanged</span>`
+                : '';
+            return `<div class="${cardClass}" data-block="${bi}">
                 <div class="charMemory_cardHeader">
-                    <strong>${headerHtml}</strong>
+                    <strong>${headerHtml}</strong>${badge}
                     <span class="charMemory_cardActions">
                         <button class="charMemory_editorToggleEdit menu_button menu_button_icon" data-block="${bi}" title="Edit block" data-i18n="[title]Edit block"><i class="fa-solid fa-pencil"></i></button>
                     </span>

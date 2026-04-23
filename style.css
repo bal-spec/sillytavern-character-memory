@@ -2244,3 +2244,23 @@ body.charMemory-phone-mode .charMemory_modalNavItem.active {
         z-index: 1050; /* beat ST's sidebar which sits at 1000-1002 */
     }
 }
+
+/* Selective consolidation: blocks preserved verbatim during consolidation */
+.charMemory_card.charMemory_protectedBlock {
+    opacity: 0.7;
+    background: rgba(128, 128, 128, 0.08);
+    border-left: 3px solid var(--SmartThemeQuoteColor, #888);
+}
+
+.charMemory_protectedBadge {
+    display: inline-block;
+    font-size: 0.75em;
+    font-weight: normal;
+    padding: 1px 6px;
+    margin-left: 8px;
+    background: rgba(128, 128, 128, 0.15);
+    border: 1px solid rgba(128, 128, 128, 0.3);
+    border-radius: 3px;
+    color: var(--SmartThemeBodyColor, inherit);
+    vertical-align: middle;
+}
