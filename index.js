@@ -7283,6 +7283,82 @@ async function runConsolidationLLM(memories, charName) {
     }
 }
 
+/**
+ * Show a modal letting the user pick which memory blocks to consolidate.
+ * Returns a Set<number> of block indices to use as the eligible set, or
+ * null if the user cancelled.
+ * @param {Array<{chat:string,date:string,bullets:string[]}>} allBlocks
+ * @param {Set<number>} initialEligible Indices to pre-check.
+ * @param {string} charName
+ * @returns {Promise<Set<number>|null>}
+ */
+async function showBlockSelectionModal(allBlocks, initialEligible, charName) {
+    const rows = allBlocks.map((b, i) => {
+        const firstBullet = (b.bullets && b.bullets[0]) ? b.bullets[0] : '';
+        const truncated = firstBullet.length > 120 ? firstBullet.slice(0, 117) + '…' : firstBullet;
+        const checked = initialEligible.has(i) ? 'checked' : '';
+        const badgeClass = initialEligible.has(i) ? 'charMemory_eligibleBadge' : 'charMemory_protectedBadge';
+        const badgeText = initialEligible.has(i) ? t`Will consolidate` : t`Protected`;
+        return `<div class="charMemory_blockPickerRow" data-index="${i}">
+            <label class="checkbox_label">
+                <input type="checkbox" class="charMemory_blockPickerCheck" data-index="${i}" ${checked} />
+                <span class="charMemory_blockPickerLabel"><strong>${escapeHtml(b.chat)}</strong> <span class="${badgeClass}">${badgeText}</span></span>
+            </label>
+            <div class="charMemory_blockPickerPreview">${escapeHtml(truncated)}</div>
+        </div>`;
+    }).join('');
+
+    const html = `<div class="charMemory_blockPicker">
+        <p>${t`Select which blocks of ${escapeHtml(charName)}'s memories to consolidate. Unchecked blocks are preserved verbatim.`}</p>
+        <div class="charMemory_blockPickerActions">
+            <button type="button" class="menu_button" id="charMemory_blockPickerAll" data-i18n="Select all">Select all</button>
+            <button type="button" class="menu_button" id="charMemory_blockPickerNone" data-i18n="Select none">Select none</button>
+            <span class="charMemory_blockPickerCount" id="charMemory_blockPickerCount"></span>
+        </div>
+        <div class="charMemory_blockPickerList">${rows}</div>
+    </div>`;
+
+    // Wire master checkboxes + live count once the popup is in the DOM
+    const updateCount = () => {
+        const checked = $('.charMemory_blockPickerCheck:checked').length;
+        $('#charMemory_blockPickerCount').text(t`${checked} of ${allBlocks.length} selected`);
+    };
+    $(document).on('change.blockPicker', '.charMemory_blockPickerCheck', updateCount);
+    $(document).on('click.blockPicker', '#charMemory_blockPickerAll', () => {
+        $('.charMemory_blockPickerCheck').prop('checked', true);
+        updateCount();
+    });
+    $(document).on('click.blockPicker', '#charMemory_blockPickerNone', () => {
+        $('.charMemory_blockPickerCheck').prop('checked', false);
+        updateCount();
+    });
+
+    // Schedule the initial count update after the popup renders
+    setTimeout(updateCount, 0);
+
+    const ok = await callGenericPopup(html, POPUP_TYPE.CONFIRM, '', {
+        wide: true,
+        allowVerticalScrolling: true,
+        okButton: t`Run consolidation`,
+        cancelButton: t`Cancel`,
+    });
+
+    // Read selection before teardown
+    let result = null;
+    if (ok) {
+        result = new Set();
+        $('.charMemory_blockPickerCheck:checked').each(function () {
+            result.add(Number($(this).data('index')));
+        });
+    }
+
+    // Teardown
+    $(document).off('change.blockPicker');
+    $(document).off('click.blockPicker');
+
+    return result;
+}
+
 async function consolidateMemories() {
     if (inApiCall) {
         toastr.warning(t`An API call is already in progress.`, 'CharMemory');

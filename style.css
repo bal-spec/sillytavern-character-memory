@@ -2264,3 +2264,23 @@ body.charMemory-phone-mode .charMemory_modalNavItem.active {
     color: var(--SmartThemeBodyColor, inherit);
     vertical-align: middle;
 }
+
+/* Block selection modal (selective consolidation override UI) */
+.charMemory_blockPicker { display: flex; flex-direction: column; gap: 8px; }
+.charMemory_blockPickerActions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.charMemory_blockPickerCount { margin-left: auto; font-size: 0.9em; opacity: 0.8; }
+.charMemory_blockPickerList { max-height: 60vh; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; border: 1px solid rgba(128, 128, 128, 0.3); padding: 8px; border-radius: 4px; }
+.charMemory_blockPickerRow { padding: 4px 6px; border-radius: 4px; }
+.charMemory_blockPickerRow:nth-child(even) { background: rgba(128, 128, 128, 0.05); }
+.charMemory_blockPickerLabel { margin-left: 4px; }
+.charMemory_blockPickerPreview { font-size: 0.85em; opacity: 0.75; margin-left: 24px; margin-top: 2px; }
+.charMemory_eligibleBadge {
+    display: inline-block;
+    font-size: 0.75em;
+    padding: 1px 6px;
+    margin-left: 6px;
+    background: rgba(80, 200, 80, 0.15);
+    border: 1px solid rgba(80, 200, 80, 0.3);
+    border-radius: 3px;
+    vertical-align: middle;
+}
