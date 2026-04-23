@@ -7306,8 +7306,7 @@ async function consolidateMemories() {
     const $btn = $('#charMemory_consolidateBtn');
     $btn.val(t`Consolidating…`).prop('disabled', true);
 
-    // Size-aware dispatch: small sets go through the existing single-call path,
-    // large sets go through the chunked map-reduce orchestrator.
+    // Route large memory sets through the chunked map-reduce orchestrator.
     const chunkBudget = extension_settings[MODULE_NAME].consolidationChunkChars;
     const outputRatio = extension_settings[MODULE_NAME].consolidationOutputRatio;
     const sizing = estimateConsolidationSize(memories, { outputRatio });
@@ -7317,8 +7316,13 @@ async function consolidateMemories() {
     consolidationCancelRequested = false;
     try {
         if (useChunked) {
-            $btn.val(t`Cancel`);
+            // Re-enable so the user can click Cancel (Task 5 wires the click handler).
+            $btn.val(t`Cancel`).prop('disabled', false);
             initialResult = await runChunkedConsolidation(memories, {
+                // runConsolidationLLM catches LLM errors and returns null, so the
+                // orchestrator's retry-on-throw path will not fire for transient
+                // failures. Failed chunks are skipped. Follow-up to propagate
+                // retriable errors is tracked separately.
                 runLLM: (chunk) => runConsolidationLLM(chunk, target.name),
                 logProgress: (msg) => logActivity(msg),
                 isCancelled: () => consolidationCancelRequested,
@@ -7330,7 +7334,6 @@ async function consolidateMemories() {
         }
     } finally {
         $btn.val(t`Consolidate`).prop('disabled', false);
-        consolidationCancelRequested = false;
     }
     if (!initialResult) return;
 
