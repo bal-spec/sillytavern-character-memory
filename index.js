@@ -55,6 +55,7 @@ import {
     estimateConsolidationSize,
     packBlocksIntoChunks,
     classifyBlocksForConsolidation,
+    shouldSkipStaleMetadataReset,
 } from './lib.js';
 import { createMemoryEditor } from './editor.js';
 import { runChunkedConsolidation } from './consolidation.js';
@@ -3254,20 +3255,37 @@ async function onChatChanged() {
     // chatId match would falsely reset the index every session after consolidation.
     if (lastIdx >= 0) {
         try {
-            let hasAnyMemories = false;
-            const targets = getMemoryTargets();
-            for (const target of targets) {
-                const content = await readMemoriesForCharacter(target.avatar, target.fileName);
-                const blocks = parseMemories(content);
-                if (blocks.length > 0) {
-                    hasAnyMemories = true;
-                    break;
+            // In group chats, if member resolution is incomplete we can't trust a
+            // "no memories anywhere" conclusion — the members we CAN see might
+            // legitimately lack memories while the ones we CAN'T see have them.
+            // Guard prevents the destructive reset that causes re-extraction from
+            // message 0 (issue #17 / #18).
+            const detail = isGroupChat()
+                ? getGroupMembersDetailed()
+                : { resolved: null, unresolvedAvatars: [], totalActive: 0 };
+            const skipReset = shouldSkipStaleMetadataReset({
+                isGroup: isGroupChat(),
+                unresolvedCount: detail.unresolvedAvatars.length,
+                totalActive: detail.totalActive,
+            });
+            if (skipReset) {
+                logActivity(`Skipped stale-metadata reset: ${detail.unresolvedAvatars.length} of ${detail.totalActive} group members could not be loaded (likely a load-order race). Pointer preserved at ${lastIdx}.`, 'warning');
+            } else {
+                let hasAnyMemories = false;
+                const targets = getMemoryTargets();
+                for (const target of targets) {
+                    const content = await readMemoriesForCharacter(target.avatar, target.fileName);
+                    const blocks = parseMemories(content);
+                    if (blocks.length > 0) {
+                        hasAnyMemories = true;
+                        break;
+                    }
                 }
-            }
-            if (!hasAnyMemories) {
-                meta.lastExtractedIndex = -1;
-                saveMetadataDebounced();
-                logActivity(`Auto-reset lastExtractedIndex: was ${lastIdx} but memory file is empty — stale metadata`, 'warning');
+                if (!hasAnyMemories) {
+                    meta.lastExtractedIndex = -1;
+                    saveMetadataDebounced();
+                    logActivity(`Auto-reset lastExtractedIndex: was ${lastIdx} but memory file is empty — stale metadata`, 'warning');
+                }
             }
         } catch { /* ignore read errors */ }
     }
