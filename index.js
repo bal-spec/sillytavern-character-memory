@@ -3322,7 +3322,9 @@ async function onChatChanged() {
                 const retry = getGroupMembersDetailed();
                 if (retry.unresolvedAvatars.length < initial.unresolvedAvatars.length) {
                     const recovered = initial.unresolvedAvatars.length - retry.unresolvedAvatars.length;
-                    logActivity(`Retry resolved ${recovered} previously-unresolved group members.`);
+                    const stillStuck = retry.unresolvedAvatars.length;
+                    const suffix = stillStuck > 0 ? ` (${stillStuck} still unresolved — check health indicator)` : '';
+                    logActivity(`Retry resolved ${recovered} previously-unresolved group members.${suffix}`);
                 } else {
                     logActivity(`Retry did not resolve any additional group members (${retry.unresolvedAvatars.length} still unresolved).`, 'warning');
                 }
