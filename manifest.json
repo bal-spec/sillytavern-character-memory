@@ -6,7 +6,7 @@
     "js": "index.js",
     "css": "style.css",
     "author": "bal-spec",
-    "version": "2.2.0",
+    "version": "2.3.0",
     "homePage": "https://github.com/bal-spec/sillytavern-character-memory",
     "auto_update": true,
     "i18n": {
