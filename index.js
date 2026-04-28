@@ -490,6 +490,8 @@ const defaultSettings = {
     chunkMetadata: false,
     conversionPrompt: '',
     injectionDrawerOpen: false,
+    injectionDrawerWidth: 0, // 0 = use CSS default; set by drag-to-resize
+    logDrawerWidth: 0,       // 0 = use CSS default; set by drag-to-resize
     displayMode: 'auto',
     protectRecentMessages: false,
     protectRecentMessagesCount: 4,
@@ -8609,6 +8611,74 @@ function positionDrawerBelowTopBar($drawer) {
 }
 
 /**
+ * Apply a saved drawer width (in px) as an inline style, clamped to a sane range.
+ * No-op if width is falsy (so the CSS default wins) or if the body is in phone-mode
+ * (drawer is forced full-screen by CSS — overriding it would defeat that).
+ * @param {JQuery<HTMLElement>} $drawer
+ * @param {number} width
+ */
+function applyDrawerWidth($drawer, width) {
+    if (!width || document.body.classList.contains('charMemory-phone-mode')) {
+        $drawer.css('width', '');
+        return;
+    }
+    const min = 320;
+    const max = Math.max(min, Math.floor(window.innerWidth * 0.95));
+    const clamped = Math.min(max, Math.max(min, Math.floor(width)));
+    $drawer.css('width', clamped + 'px');
+}
+
+/**
+ * Wire up drag-to-resize on a drawer's left-edge handle. The drawer is right-anchored
+ * (`position: fixed; right: 0`), so the new width is `viewportWidth - clientX`.
+ * Persists the chosen width to extension_settings under the given key.
+ * @param {string} drawerId  e.g. 'charMemory_injectionDrawer'
+ * @param {string} settingsKey  e.g. 'injectionDrawerWidth'
+ */
+function setupDrawerResize(drawerId, settingsKey) {
+    const drawer = document.getElementById(drawerId);
+    if (!drawer) return;
+    const handle = drawer.querySelector('.charMemory_drawerResizeHandle');
+    if (!handle) return;
+
+    handle.addEventListener('pointerdown', (e) => {
+        // Phone-mode forces 100vw — disable resize there.
+        if (document.body.classList.contains('charMemory-phone-mode')) return;
+        e.preventDefault();
+        handle.setPointerCapture(e.pointerId);
+        drawer.classList.add('charMemory_drawerResizing');
+
+        const onMove = (ev) => {
+            const newWidth = window.innerWidth - ev.clientX;
+            applyDrawerWidth($(drawer), newWidth);
+        };
+        const onUp = (ev) => {
+            handle.releasePointerCapture(ev.pointerId);
+            handle.removeEventListener('pointermove', onMove);
+            handle.removeEventListener('pointerup', onUp);
+            handle.removeEventListener('pointercancel', onUp);
+            drawer.classList.remove('charMemory_drawerResizing');
+            // Save the resolved px width (may differ from raw drag due to clamping)
+            const resolved = parseInt(drawer.style.width, 10) || 0;
+            if (resolved > 0) {
+                extension_settings[MODULE_NAME][settingsKey] = resolved;
+                saveSettingsDebounced();
+            }
+        };
+        handle.addEventListener('pointermove', onMove);
+        handle.addEventListener('pointerup', onUp);
+        handle.addEventListener('pointercancel', onUp);
+    });
+
+    // Double-click handle to reset to CSS default.
+    handle.addEventListener('dblclick', () => {
+        extension_settings[MODULE_NAME][settingsKey] = 0;
+        $(drawer).css('width', '');
+        saveSettingsDebounced();
+    });
+}
+
+/**
  * Toggle the injection viewer drawer open/closed.
  * @param {boolean} [forceState] If provided, force open (true) or closed (false).
  */
@@ -8624,6 +8694,7 @@ function toggleInjectionDrawer(forceState) {
     // Position drawer below ST's top bar so header isn't clipped by browser chrome
     if (shouldOpen) {
         positionDrawerBelowTopBar($drawer);
+        applyDrawerWidth($drawer, extension_settings[MODULE_NAME].injectionDrawerWidth);
     }
 
     $drawer.toggleClass('open', shouldOpen);
@@ -8653,6 +8724,7 @@ function toggleLogDrawer(forceState) {
     // Position drawer below ST's top bar so header isn't clipped by browser chrome
     if (shouldOpen) {
         positionDrawerBelowTopBar($drawer);
+        applyDrawerWidth($drawer, extension_settings[MODULE_NAME].logDrawerWidth);
 
         // Populate log entries and sync verbose toggle
         $('#charMemory_logDrawerVerbose').prop('checked', !!extension_settings[MODULE_NAME].verboseLogging);
@@ -9343,6 +9415,7 @@ jQuery(async function () {
     // Injection viewer drawer — appended to body, outside extension panel
     $('body').append(`
         <div id="charMemory_injectionDrawer" class="charMemory_injectionDrawer">
+            <div class="charMemory_drawerResizeHandle" data-drawer="injection" title="Drag to resize"></div>
             <div class="charMemory_drawerHeader">
                 <i class="fa-solid fa-circle" id="charMemory_drawerHealthDot" title="Injection health" style="font-size:10px;"></i>
                 <span class="charMemory_drawerTitle" data-i18n="Injected Context">Injected Context</span>
@@ -9364,6 +9437,7 @@ jQuery(async function () {
     // Log drawer — appended to body, outside extension panel
     $('body').append(`
         <div id="charMemory_logDrawer" class="charMemory_logDrawer">
+            <div class="charMemory_drawerResizeHandle" data-drawer="log" title="Drag to resize"></div>
             <div class="charMemory_drawerHeader">
                 <span class="charMemory_drawerTitle" data-i18n="Activity Log">Activity Log</span>
                 <div style="display:flex; gap:6px; align-items:center; margin-left:auto;">
@@ -9599,9 +9673,24 @@ jQuery(async function () {
         toggleInjectionDrawer(true);
     }
 
+    // Drag-to-resize on both drawers (left-edge handle, persisted to settings)
+    setupDrawerResize('charMemory_injectionDrawer', 'injectionDrawerWidth');
+    setupDrawerResize('charMemory_logDrawer', 'logDrawerWidth');
+
     // Apply display mode body class (for phone-mode CSS overrides)
     applyDisplayModeClass();
-    window.addEventListener('resize', applyDisplayModeClass);
+    window.addEventListener('resize', () => {
+        applyDisplayModeClass();
+        // Re-clamp saved widths against the new viewport for any open drawer.
+        const $inj = $('#charMemory_injectionDrawer');
+        if ($inj.hasClass('open')) {
+            applyDrawerWidth($inj, extension_settings[MODULE_NAME].injectionDrawerWidth);
+        }
+        const $log = $('#charMemory_logDrawer');
+        if ($log.hasClass('open')) {
+            applyDrawerWidth($log, extension_settings[MODULE_NAME].logDrawerWidth);
+        }
+    });
 
     console.log(LOG_PREFIX, 'Extension loaded');
 });

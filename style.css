@@ -856,6 +856,34 @@
     transform: translateX(0);
 }
 
+/* ── Drag-to-resize handle (left edge of right-anchored drawers) ──────── */
+.charMemory_drawerResizeHandle {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 6px;
+    height: 100%;
+    cursor: col-resize;
+    background: transparent;
+    z-index: 2;
+    /* Suppress native scroll/zoom while dragging on touch devices. */
+    touch-action: none;
+}
+.charMemory_drawerResizeHandle:hover,
+.charMemory_drawerResizing .charMemory_drawerResizeHandle {
+    background: var(--SmartThemeQuoteColor, rgba(120, 160, 220, 0.4));
+}
+/* While dragging: kill the open/close transition so the drawer tracks the
+   pointer in real time, and disable text selection across the page. */
+.charMemory_drawerResizing {
+    transition: none !important;
+    user-select: none;
+}
+/* Phone-mode forces full-screen, so a resize handle would do nothing. */
+body.charMemory-phone-mode .charMemory_drawerResizeHandle {
+    display: none;
+}
+
 /* Backdrop is hidden — kept in DOM but not used as a click-to-close overlay
    because it would interfere with the chat textarea. Instead, the drawer
    is closed via the X button, the toggle tab, or swipe gestures. */
