@@ -884,6 +884,25 @@ body.charMemory-phone-mode .charMemory_drawerResizeHandle {
     display: none;
 }
 
+/* ── Split-pane mode: push ST's chat panel left so the drawer doesn't overlay it.
+   `--cm-drawer-width` is updated live by syncChatPushFromDrawers() during open
+   and during drag-to-resize. Works because #sheld and #top-bar use the
+   `left:0; right:0; margin:0 auto` auto-margin centering trick — flipping `right`
+   to the drawer width re-centers them in the leftover space. The `max-width`
+   clamp handles users with a large `--sheldWidth` setting that would otherwise
+   overflow into the drawer. ───────────────────────────────────────────────── */
+body.charMemory_drawerPushing #sheld,
+body.charMemory_drawerPushing #top-bar {
+    right: var(--cm-drawer-width, 0) !important;
+    max-width: calc(100vw - var(--cm-drawer-width, 0px)) !important;
+    transition: right 0.2s ease, max-width 0.2s ease;
+}
+/* Disable the transition during an active drag so chat tracks the pointer. */
+body.charMemory_drawerResizingActive #sheld,
+body.charMemory_drawerResizingActive #top-bar {
+    transition: none !important;
+}
+
 /* Backdrop is hidden — kept in DOM but not used as a click-to-close overlay
    because it would interfere with the chat textarea. Instead, the drawer
    is closed via the X button, the toggle tab, or swipe gestures. */

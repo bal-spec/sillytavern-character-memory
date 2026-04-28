@@ -492,6 +492,7 @@ const defaultSettings = {
     injectionDrawerOpen: false,
     injectionDrawerWidth: 0, // 0 = use CSS default; set by drag-to-resize
     logDrawerWidth: 0,       // 0 = use CSS default; set by drag-to-resize
+    pushChatContent: true,   // when true, drawer pushes ST's chat panel left instead of overlaying
     displayMode: 'auto',
     protectRecentMessages: false,
     protectRecentMessagesCount: 4,
@@ -4219,6 +4220,13 @@ async function showSettingsModal() {
             <select id="cm_modal_displayMode" class="text_pole">${displayModeOptions}</select>
             <small class="charMemory_helperText" data-i18n="Controls dashboard layout. &quot;Auto&quot; detects your device. Desktop uses the sidebar; Tablet uses a floating panel; Phone adds wider drawers on top.">Controls dashboard layout. "Auto" detects your device. Desktop uses the sidebar; Tablet uses a floating panel; Phone adds wider drawers on top.</small>
         </div>
+        <div class="charMemory_statusRow" style="margin-top:8px;">
+            <label class="checkbox_label" for="cm_modal_pushChatContent">
+                <input type="checkbox" id="cm_modal_pushChatContent" ${s.pushChatContent !== false ? 'checked' : ''} />
+                <span data-i18n="Split chat when drawer is open">Split chat when drawer is open</span>
+            </label>
+            <small class="charMemory_helperText" data-i18n="When on, the Injected Context and Activity Log drawers push the chat panel left instead of overlaying it. Drag the drawer's left edge to resize.">When on, the Injected Context and Activity Log drawers push the chat panel left instead of overlaying it. Drag the drawer's left edge to resize.</small>
+        </div>
         <hr class="charMemory_separator" />
         <h4 class="charMemory_modalSectionTitle" data-i18n="Memory File Format">Memory File Format</h4>
         <div class="charMemory_statusRow">
@@ -4608,10 +4616,17 @@ async function showSettingsModal() {
         delete extension_settings[MODULE_NAME].tabletMode; // clean up legacy key
         saveSettingsDebounced();
         applyDisplayModeClass();
+        syncChatPushFromDrawers();
         // If switched to desktop while tablet panel is open, close it and restore sidebar
         if (!isTabletMode() && isTabletPanelOpen()) {
             toggleTabletPanel(false);
         }
+    });
+
+    $('#cm_modal_pushChatContent').off('change').on('change', function () {
+        extension_settings[MODULE_NAME].pushChatContent = !!$(this).prop('checked');
+        saveSettingsDebounced();
+        syncChatPushFromDrawers();
     });
 
     $('#cm_modal_chunkBoundary').off('change').on('change', async function () {
@@ -8611,6 +8626,40 @@ function positionDrawerBelowTopBar($drawer) {
 }
 
 /**
+ * Sync the `--cm-drawer-width` CSS custom property and the `charMemory_drawerPushing`
+ * body class so ST's chat panel (#sheld / #top-bar) re-centers into the leftover space
+ * when a drawer is open. No-op (and class removed) when:
+ *   - the user disabled `pushChatContent`
+ *   - we're in phone-mode (drawer is forced full-screen)
+ *   - no drawer is open
+ *
+ * Read the actual rendered width of whichever drawer is open so the chat tracks the
+ * drawer exactly during a drag-to-resize, regardless of whether the saved width or
+ * the CSS default is in effect.
+ */
+function syncChatPushFromDrawers() {
+    const body = document.body;
+    const inj = document.getElementById('charMemory_injectionDrawer');
+    const log = document.getElementById('charMemory_logDrawer');
+    const openDrawer = (inj && inj.classList.contains('open')) ? inj
+        : (log && log.classList.contains('open')) ? log
+            : null;
+
+    const enabled = !!extension_settings[MODULE_NAME].pushChatContent;
+    const phoneMode = body.classList.contains('charMemory-phone-mode');
+
+    if (!openDrawer || !enabled || phoneMode) {
+        body.classList.remove('charMemory_drawerPushing');
+        body.style.removeProperty('--cm-drawer-width');
+        return;
+    }
+
+    const w = openDrawer.getBoundingClientRect().width;
+    body.style.setProperty('--cm-drawer-width', `${Math.round(w)}px`);
+    body.classList.add('charMemory_drawerPushing');
+}
+
+/**
  * Apply a saved drawer width (in px) as an inline style, clamped to a sane range.
  * No-op if width is falsy (so the CSS default wins) or if the body is in phone-mode
  * (drawer is forced full-screen by CSS — overriding it would defeat that).
@@ -8647,10 +8696,12 @@ function setupDrawerResize(drawerId, settingsKey) {
         e.preventDefault();
         handle.setPointerCapture(e.pointerId);
         drawer.classList.add('charMemory_drawerResizing');
+        document.body.classList.add('charMemory_drawerResizingActive');
 
         const onMove = (ev) => {
             const newWidth = window.innerWidth - ev.clientX;
             applyDrawerWidth($(drawer), newWidth);
+            syncChatPushFromDrawers();
         };
         const onUp = (ev) => {
             handle.releasePointerCapture(ev.pointerId);
@@ -8658,6 +8709,7 @@ function setupDrawerResize(drawerId, settingsKey) {
             handle.removeEventListener('pointerup', onUp);
             handle.removeEventListener('pointercancel', onUp);
             drawer.classList.remove('charMemory_drawerResizing');
+            document.body.classList.remove('charMemory_drawerResizingActive');
             // Save the resolved px width (may differ from raw drag due to clamping)
             const resolved = parseInt(drawer.style.width, 10) || 0;
             if (resolved > 0) {
@@ -8699,6 +8751,7 @@ function toggleInjectionDrawer(forceState) {
 
     $drawer.toggleClass('open', shouldOpen);
     $toggle.toggleClass('open', shouldOpen);
+    syncChatPushFromDrawers();
 
     // Persist state
     extension_settings[MODULE_NAME].injectionDrawerOpen = shouldOpen;
@@ -8732,6 +8785,7 @@ function toggleLogDrawer(forceState) {
     }
 
     $drawer.toggleClass('open', shouldOpen);
+    syncChatPushFromDrawers();
 }
 
 /**
@@ -9690,6 +9744,7 @@ jQuery(async function () {
         if ($log.hasClass('open')) {
             applyDrawerWidth($log, extension_settings[MODULE_NAME].logDrawerWidth);
         }
+        syncChatPushFromDrawers();
     });
 
     console.log(LOG_PREFIX, 'Extension loaded');
