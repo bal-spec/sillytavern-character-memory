@@ -1054,11 +1054,12 @@
     transform: translateX(0);
 }
 
-/* ── Phone mode: widen drawers and raise above ST sidebar (z-index 3005) ── */
-/* Applied via body class from JS (auto-detected or user-selected in Settings > Advanced > Display Mode) */
+/* ── Phone mode: full-screen drawers and raise above ST sidebar (z-index 3005) ── */
+/* Applied via body class from JS (auto-detected or user-selected in Settings > Advanced > Display Mode).
+   Width is set to 100vw in the phone-grade rules below so a partial chat strip
+   isn't left visible on the left edge; this rule keeps the z-index bump. */
 body.charMemory-phone-mode .charMemory_injectionDrawer,
 body.charMemory-phone-mode .charMemory_logDrawer {
-    max-width: 85vw;
     z-index: 4000;
 }
 
@@ -2243,6 +2244,26 @@ body.charMemory-phone-mode .charMemory_modalNavItem.active {
         max-width: 90vw;
         z-index: 1050; /* beat ST's sidebar which sits at 1000-1002 */
     }
+}
+
+/* ── Phone-grade widths: drawer goes full-screen so a partial chat strip
+   isn't left visible on the left edge. Triggered by viewport width alone so
+   that desktop browsers resized narrow get the same treatment as actual
+   phones (the .charMemory-phone-mode body class only applies on touch
+   devices ≤600px). ────────────────────────────────────────────────────── */
+@media (max-width: 500px) {
+    .charMemory_injectionDrawer,
+    .charMemory_logDrawer {
+        width: 100vw;
+        max-width: 100vw;
+        border-left: none;
+    }
+}
+body.charMemory-phone-mode .charMemory_injectionDrawer,
+body.charMemory-phone-mode .charMemory_logDrawer {
+    width: 100vw;
+    max-width: 100vw;
+    border-left: none;
 }
 
 /* Selective consolidation: blocks preserved verbatim during consolidation */
