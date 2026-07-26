@@ -3076,15 +3076,25 @@ async function extractMemories({
                         .map(l => l.slice(2).trim())
                         .filter(Boolean);
 
+                    if (bullets.length === 0) {
+                        // No "- " bulleted lines in this entry — the extraction prompt
+                        // requires bullet format, so unbulleted prose here is most likely
+                        // a refusal, meta-commentary, or malformed output rather than a
+                        // real memory. Previously this raw text was saved verbatim as a
+                        // single bullet, which could persist something like "I can't help
+                        // with that" as if it were an extracted fact. Skip it instead.
+                        logActivity(`${logLabel} Skipped un-bulleted LLM output (likely a refusal or malformed response): "${truncateText(entry, 200)}"`, 'warning');
+                        continue;
+                    }
+
                     // Split blocks with multiple topic tags into separate blocks
                     const bulletGroups = splitMultiTagBullets(bullets);
                     if (bulletGroups.length > 1) {
                         console.log(LOG_PREFIX, `Split multi-tag block into ${bulletGroups.length} separate blocks`);
                     }
                     for (const group of bulletGroups) {
-                        const finalBullets = group.length > 0 ? group : [entry];
-                        existing.push({ chat: effectiveChatId, date: timestamp, bullets: finalBullets });
-                        newBulletCount += finalBullets.length;
+                        existing.push({ chat: effectiveChatId, date: timestamp, bullets: group });
+                        newBulletCount += group.length;
                     }
                 }
 
