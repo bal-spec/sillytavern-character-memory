@@ -2239,6 +2239,14 @@ async function generateOpenAICompatibleResponse(baseUrl, apiKey, model, messages
             throw new Error(`${preset.name || 'API'} error (via proxy): ${errorMsg}`);
         }
 
+        // A 200 with no choices/message at all is an unexpected shape, not a legitimate
+        // empty completion — some providers return this for malformed requests instead
+        // of an HTTP error. Surface it instead of silently returning '' (which reads
+        // upstream as "no new memories" and hides a real API problem).
+        if (!Array.isArray(data.choices) || data.choices.length === 0 || !msg) {
+            throw new Error(`${preset.name || 'API'} returned an unexpected response shape (no choices/message in body).`);
+        }
+
         // Fall back to reasoning_content for models that use thinking tokens
         return msg?.content || msg?.reasoning_content || '';
     }
@@ -2275,6 +2283,13 @@ async function generateOpenAICompatibleResponse(baseUrl, apiKey, model, messages
         const tokens = usage ? `${usage.prompt_tokens} prompt + ${usage.completion_tokens} completion` : 'no usage data';
         const hasReasoning = msg?.reasoning_content ? ` [reasoning: ${msg.reasoning_content.length} chars]` : '';
         logActivity(`Generate (direct) HTTP ${response.status}, model=${data.model || model}, finish=${data.choices?.[0]?.finish_reason || '?'}, ${tokens}${hasReasoning}`);
+    }
+
+    // A 200 with no choices/message at all is an unexpected shape, not a legitimate
+    // empty completion. Surface it instead of silently returning '' (which reads
+    // upstream as "no new memories" and hides a real API problem).
+    if (!Array.isArray(data.choices) || data.choices.length === 0 || !msg) {
+        throw new Error(`${preset.name || 'API'} returned an unexpected response shape (no choices/message in body).`);
     }
 
     // Fall back to reasoning_content for models that use thinking tokens
@@ -2344,7 +2359,14 @@ async function generateAnthropicResponse(baseUrl, apiKey, model, messages, maxTo
         logActivity(`Generate (Anthropic) HTTP ${response.status}, model=${data.model || model}, stop=${data.stop_reason || '?'}, ${tokens}`);
     }
 
-    return (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('') || '';
+    // A 200 with no content array at all is an unexpected shape, not a legitimate
+    // empty completion. Surface it instead of silently returning '' (which reads
+    // upstream as "no new memories" and hides a real API problem).
+    if (!Array.isArray(data.content)) {
+        throw new Error('Anthropic returned an unexpected response shape (no content array in body).');
+    }
+
+    return data.content.filter(b => b.type === 'text').map(b => b.text).join('') || '';
 }
 
 /**
