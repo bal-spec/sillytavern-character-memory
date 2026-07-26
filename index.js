@@ -8453,7 +8453,12 @@ function updateAllIndicators() {
  */
 function addButtonsToExistingMessages() {
     const context = getContext();
-    if (context.characterId === undefined) return;
+    // In group chats, ST leaves characterId unset outside of a live generation turn — the
+    // same condition used correctly elsewhere in this file (e.g. extractMemoriesInner's
+    // target check). Without the !context.groupId fallback here, this returned early for
+    // every group chat and no per-message buttons (Pin, Extract-here, Set-last-extracted)
+    // ever appeared on any message in a group chat.
+    if (context.characterId === undefined && !context.groupId) return;
 
     $('#chat .mes').each(function () {
         const mesId = Number($(this).attr('mesid'));
@@ -8487,7 +8492,7 @@ function addButtonsToExistingMessages() {
  */
 function onMessageRenderedAddButtons(messageIndex) {
     const context = getContext();
-    if (context.characterId === undefined) return;
+    if (context.characterId === undefined && !context.groupId) return;
 
     const msg = context.chat[messageIndex];
     if (!msg || msg.is_system) return;
