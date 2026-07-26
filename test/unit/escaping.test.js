@@ -48,6 +48,11 @@ describe('escapeAttr', () => {
         expect(escapeAttr('She said "hi"')).toBe('She said &quot;hi&quot;');
     });
 
+    it('escapes < and > so a theme label cannot break the <memory> tag it is embedded in', () => {
+        expect(escapeAttr('Trust > Betrayal')).toBe('Trust &gt; Betrayal');
+        expect(escapeAttr('A < B')).toBe('A &lt; B');
+    });
+
     it('handles combined special characters', () => {
         expect(escapeAttr('A & "B"')).toBe('A &amp; &quot;B&quot;');
     });
@@ -67,8 +72,18 @@ describe('unescapeAttr', () => {
         expect(unescapeAttr('She said &quot;hi&quot;')).toBe('She said "hi"');
     });
 
+    it('unescapes &lt; and &gt;', () => {
+        expect(unescapeAttr('Trust &gt; Betrayal')).toBe('Trust > Betrayal');
+        expect(unescapeAttr('A &lt; B')).toBe('A < B');
+    });
+
     it('round-trips with escapeAttr', () => {
         const original = 'Bob & Alice "together"';
+        expect(unescapeAttr(escapeAttr(original))).toBe(original);
+    });
+
+    it('round-trips a theme label containing > without corrupting it', () => {
+        const original = 'Meeting > Argument';
         expect(unescapeAttr(escapeAttr(original))).toBe(original);
     });
 
