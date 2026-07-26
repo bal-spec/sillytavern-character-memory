@@ -1726,7 +1726,11 @@ function startCooldownTimer() {
 function getCharacterName() {
     const context = getContext();
     if (context.characterId === undefined) return null;
-    return context.name2 || characters[this_chid]?.name || 'Character';
+    // Fall back to context.characterId, not the module-level this_chid global — they're
+    // normally the same, but reading through context keeps this consistent with the
+    // undefined-check above and avoids relying on this_chid staying in sync in a fast
+    // character-switch.
+    return context.name2 || characters[context.characterId]?.name || 'Character';
 }
 
 // ============ Group Chat Helpers ============
