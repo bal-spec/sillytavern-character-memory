@@ -1980,6 +1980,41 @@ async function writeMemoriesForCharacter(content, avatar, fileName) {
 }
 
 /**
+ * Guard against the "lost update" race in editor-based save flows: a dialog reads a
+ * memory file's content once, stays open for a while as the user edits (Memory Manager,
+ * Consolidation, Reformat, the Troubleshooter's file editor all do this), and on Save
+ * writes the edited result straight back with no re-check. If a concurrent write lands on
+ * the same file while the dialog is open — most realistically an auto-extraction, which
+ * only checks the inApiCall lock and the extraction interval, not whether any of these
+ * dialogs are open — that write is silently clobbered when the stale snapshot is saved.
+ *
+ * This doesn't attempt a full merge (the edited result may have deleted/reordered/
+ * reworded blocks in ways that make an automatic three-way merge unreliable) — it detects
+ * the conflict and asks the user, rather than overwriting silently.
+ *
+ * @param {string} avatar Character avatar filename.
+ * @param {string} fileName Memory filename.
+ * @param {string} originalContent The raw content read when the dialog was opened.
+ * @returns {Promise<boolean>} true if it's safe to proceed with the write (nothing changed,
+ *   the user confirmed anyway, or the check itself failed and we fail open rather than
+ *   blocking a save on an unrelated read error).
+ */
+async function confirmOverwriteIfChangedSinceSnapshot(avatar, fileName, originalContent) {
+    let currentContent;
+    try {
+        currentContent = await readMemoriesForCharacter(avatar, fileName);
+    } catch {
+        return true;
+    }
+    if ((currentContent || '') === (originalContent || '')) return true;
+
+    return !!(await callGenericPopup(
+        t`This memory file has changed since you started editing — most likely a new extraction ran in the background while this dialog was open. Saving now will overwrite those changes with what you see here. Save anyway?`,
+        POPUP_TYPE.CONFIRM,
+    ));
+}
+
+/**
  * Collect recent messages for extraction.
  * @param {Object} options
  * @param {number|null} options.endIndex Optional end message index (inclusive). Defaults to last message.
@@ -6521,6 +6556,8 @@ async function showTroubleshooter(initialSection = 'health') {
 
                 if (cleanBlocks.length === 0) {
                     toastr.warning(t`No memories to save.`, 'CharMemory');
+                } else if (!(await confirmOverwriteIfChangedSinceSnapshot(avatar, name, content))) {
+                    toastr.info(t`Save cancelled.`, 'CharMemory');
                 } else {
                     await writeMemoriesForCharacter(serializeMemories(cleanBlocks), avatar, name);
                     toastr.success(t`Saved ${countMemories(cleanBlocks)} memories to ${name}.`, 'CharMemory');
@@ -7045,6 +7082,11 @@ async function showMemoryManager() {
 
     if (cleanBlocks.length === 0) {
         toastr.warning(t`No memories to save.`, 'CharMemory');
+        return;
+    }
+
+    if (!(await confirmOverwriteIfChangedSinceSnapshot(target.avatar, target.fileName, content))) {
+        toastr.info(t`Save cancelled.`, 'CharMemory');
         return;
     }
 
@@ -7816,6 +7858,11 @@ async function consolidateMemories() {
         return;
     }
 
+    if (!(await confirmOverwriteIfChangedSinceSnapshot(target.avatar, target.fileName, content))) {
+        toastr.info(t`Save cancelled.`, 'CharMemory');
+        return;
+    }
+
     consolidationBackup = { content, avatar: target.avatar, fileName: target.fileName };
     await writeMemoriesForCharacter(serializeMemories(cleanBlocks), target.avatar, target.fileName);
 
@@ -8110,6 +8157,11 @@ async function reformatMemories() {
     if (!editedBlocks) {
         logActivity('Reformat cancelled by user');
         toastr.info(t`Reformat cancelled.`, 'CharMemory');
+        return;
+    }
+
+    if (!(await confirmOverwriteIfChangedSinceSnapshot(target.avatar, target.fileName, content))) {
+        toastr.info(t`Save cancelled.`, 'CharMemory');
         return;
     }
 
