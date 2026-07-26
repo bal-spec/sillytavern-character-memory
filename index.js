@@ -2923,6 +2923,24 @@ async function extractMemories({
     const savedChatId = context.chatId;
     const effectiveChatId = chatId || context.chatId || 'unknown';
 
+    // Batch extraction (isActiveChat === false) operates on an explicitly-passed
+    // chatArray/chatId and writes to extension_settings.batchState, never the live
+    // chat_metadata global, so it isn't affected by the user switching chats — always
+    // valid. For interactive extraction, re-check before EVERY chat_metadata write, not
+    // just once after the LLM call: readMemoriesForCharacter/writeMemoriesForCharacter
+    // below are also real awaits the user can switch chats during, and until now nothing
+    // re-validated context between those and the chunk/final bookkeeping writes further
+    // down — meaning a chat switch mid-write could commit this extraction's
+    // lastExtractedIndex, hidden-message state, and messagesSinceExtraction into whatever
+    // chat is NOW active instead of the one this extraction was actually for.
+    const contextStillValid = () => {
+        if (!isActiveChat) return true;
+        const newContext = getContext();
+        if (newContext.chatId !== savedChatId) return false;
+        if (!isMultiTarget && newContext.characterId !== savedCharId) return false;
+        return true;
+    };
+
     const sourceLabel = getSourceLabel();
 
     let totalMemories = 0;
@@ -3022,17 +3040,13 @@ async function extractMemories({
                     logActivity(`${logLabel} Raw response:\n${result}`);
                 }
 
-                // For active chats: verify context hasn't changed mid-extraction.
-                // In group chats we only check chatId — characterId legitimately flips
-                // between members as they reply and is not a signal of a context switch.
-                if (isActiveChat) {
-                    const newContext = getContext();
-                    const chatChanged = newContext.chatId !== savedChatId;
-                    const charChanged = !isMultiTarget && newContext.characterId !== savedCharId;
-                    if (chatChanged || charChanged) {
-                        logActivity('Context changed during extraction — discarding result', 'warning');
-                        return { totalMemories, chunksProcessed, lastExtractedIndex: currentLastExtracted };
-                    }
+                // Verify context hasn't changed mid-extraction (no-op for batch, see
+                // contextStillValid above). In group chats we only check chatId —
+                // characterId legitimately flips between members as they reply and is not
+                // a signal of a context switch.
+                if (!contextStillValid()) {
+                    logActivity('Context changed during extraction — discarding result', 'warning');
+                    return { totalMemories, chunksProcessed, lastExtractedIndex: currentLastExtracted };
                 }
 
                 let cleanResult = removeReasoningFromString(result);
@@ -3108,6 +3122,17 @@ async function extractMemories({
             currentLastExtracted = chunkEndIndex !== -1 ? chunkEndIndex : effectiveEnd - 1;
 
             if (isActiveChat) {
+                if (!contextStillValid()) {
+                    // The active chat/character changed while readMemoriesForCharacter/
+                    // writeMemoriesForCharacter above were in flight. The per-target memory
+                    // files are already safely saved (character-keyed, unaffected by which
+                    // chat is active), but writing lastExtractedIndex/hiding messages here
+                    // would corrupt whichever chat is NOW active instead of the one this
+                    // extraction was actually for. Stop rather than keep processing chunks
+                    // for a chat the user has already left.
+                    logActivity('Chat/character changed mid-extraction — stopping without updating extraction-pointer bookkeeping for the original (now inactive) chat', 'warning');
+                    break;
+                }
                 ensureMetadata();
                 chat_metadata[MODULE_NAME].lastExtractedIndex = currentLastExtracted;
                 saveMetadataDebounced();
@@ -3131,8 +3156,9 @@ async function extractMemories({
             }
         }
 
-        // Final status updates
-        if (isActiveChat) {
+        // Final status updates — skip if the chat/character changed since this extraction
+        // started (see contextStillValid above); same reasoning as the per-chunk guard.
+        if (isActiveChat && contextStillValid()) {
             ensureMetadata();
             chat_metadata[MODULE_NAME].messagesSinceExtraction = 0;
             saveMetadataDebounced();
@@ -3231,6 +3257,13 @@ async function onChatChanged() {
     const chatId = context.chatId || '(none)';
     const charName = getCharacterName() || '(none)';
     const msgCount = context.chat ? context.chat.length : 0;
+    // Used below to re-validate before writes that follow a real await (readMemoriesForCharacter
+    // is a network round trip) — the user can switch chats again while this invocation is
+    // still running, and a stale-metadata-reset write after that point would target the
+    // wrong chat's metadata object.
+    const savedChatId = context.chatId;
+    const savedGroupId = context.groupId;
+    const stillSameChat = () => getContext().chatId === savedChatId && getContext().groupId === savedGroupId;
 
     logActivity(`Chat changed: "${charName}" chat=${chatId} (${msgCount} messages)`);
 
@@ -3284,10 +3317,14 @@ async function onChatChanged() {
                         break;
                     }
                 }
-                if (!hasAnyMemories) {
+                if (hasAnyMemories) {
+                    // no reset needed
+                } else if (stillSameChat()) {
                     meta.lastExtractedIndex = -1;
                     saveMetadataDebounced();
                     logActivity(`Auto-reset lastExtractedIndex: was ${lastIdx} but memory file is empty — stale metadata`, 'warning');
+                } else {
+                    logActivity('Skipped stale-metadata reset — chat changed while checking memory files', 'warning');
                 }
             }
         } catch { /* ignore read errors */ }
