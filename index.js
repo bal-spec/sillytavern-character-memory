@@ -3249,6 +3249,33 @@ async function onChatChanged() {
     const meta = chat_metadata[MODULE_NAME];
     const lastIdx = meta.lastExtractedIndex ?? -1;
 
+    // If this chat has no extraction history yet, check whether it's a SillyTavern
+    // checkpoint/branch of another chat. ST does not copy chat_metadata into a new
+    // checkpoint — it builds a fresh { main_chat: <parent chat id> } object — so
+    // lastExtractedIndex always starts at -1 on a checkpoint even though the copied
+    // messages already had memories extracted from them in the parent. Previously
+    // this silently forced a full re-extraction unless the user manually clicked
+    // "Mark as Fully Extracted". Auto-inherit the parent's pointer instead, clamped
+    // to this chat's own length in case the checkpoint was made at an earlier point
+    // in the parent's history. Scoped to 1:1 chats — fetchChatMessages() reads via
+    // this_chid/character avatar and doesn't resolve group checkpoint files.
+    if (lastIdx === -1 && chat_metadata.main_chat && !isGroupChat() && msgCount > 0) {
+        try {
+            const parent = await fetchChatMessages(chat_metadata.main_chat);
+            const parentLastIdx = parent?.metadata?.[MODULE_NAME]?.lastExtractedIndex;
+            if (typeof parentLastIdx === 'number' && parentLastIdx >= 0) {
+                const inherited = Math.min(parentLastIdx, msgCount - 1);
+                if (inherited >= 0) {
+                    meta.lastExtractedIndex = inherited;
+                    saveMetadataDebounced();
+                    logActivity(`Inherited extraction pointer ${inherited} from parent chat "${chat_metadata.main_chat}" (checkpoint/branch) — existing messages won't be re-extracted.`, 'success');
+                }
+            }
+        } catch (err) {
+            console.error(LOG_PREFIX, 'Failed to inherit extraction pointer from parent chat:', err);
+        }
+    }
+
     // Detect stale metadata: lastExtractedIndex is set but the memory file is empty.
     // This happens when old code advanced the index even on NO_NEW_MEMORIES, or when
     // the user clears memories after extraction. Auto-reset so extraction can run.
