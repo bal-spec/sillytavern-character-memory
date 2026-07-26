@@ -1680,10 +1680,20 @@ function updateDashboardDiagSummary() {
         html += `</div>`;
 
         if (result.checks) {
-            const issues = result.checks.filter(c => c.status !== 'pass');
+            // computeHealthScore's checks only ever set `.level` ('green'/'yellow'/'red'),
+            // never `.status` — `c.status !== 'pass'` was always true regardless of health,
+            // so every check (including healthy ones) rendered here on every call.
+            const issues = result.checks.filter(c => c.level !== 'green');
             if (issues.length > 0) {
                 html += `<div style="font-size:0.8em;opacity:0.7;margin-top:2px;">`;
-                html += issues.slice(0, 2).map(c => `${c.label}: ${c.detail || c.status}`).join('<br>');
+                // c.label/c.detail can carry a user-typed custom Data Bank filename
+                // (extension_settings.charMemory.fileName / characterFileNames[avatar]) or
+                // an LLM-influenced value — unlike every other renderer of this same
+                // computeHealthScore() data (renderHealthDiagnosticsCard, the Troubleshooter
+                // health list, its re-run handler, the touch-drawer health popup), this one
+                // was missing escapeHtml(), making it a stored-HTML-injection sink reachable
+                // on every chat switch and every 60s health poll.
+                html += issues.slice(0, 2).map(c => `${escapeHtml(c.label)}: ${escapeHtml(c.detail || c.level)}`).join('<br>');
                 if (issues.length > 2) html += `<br>...and ${issues.length - 2} more`;
                 html += `</div>`;
             }
