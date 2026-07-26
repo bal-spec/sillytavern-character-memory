@@ -3520,7 +3520,17 @@ function captureDiagnostics(messageIndex) {
  * This mirrors what the VS extension itself does for its list operations.
  * @returns {Promise<string|null>} The model name, or null if unavailable.
  */
+// Caches a successfully-discovered KoboldCPP model name for the session. Only successes
+// are cached — failures/unavailability (server not up yet, misconfigured URL) are always
+// retried rather than cached, since those can be transient or fixed mid-session, but a
+// discovered model name realistically doesn't change mid-session. Without this, every
+// checkVectorizationStatus() call on the koboldcpp source re-does a full network
+// round trip just to re-learn the same answer — which computeHealthScore's group-member
+// fan-out (Check 3b) now calls once per group member on every health-check trigger.
+let cachedKoboldCppModel = null;
+
 async function discoverKoboldCppModel() {
+    if (cachedKoboldCppModel) return cachedKoboldCppModel;
     try {
         const vecSettings = extension_settings.vectors;
         let serverUrl;
@@ -3540,6 +3550,7 @@ async function discoverKoboldCppModel() {
         if (!response.ok) return null;
 
         const data = await response.json();
+        if (data.model) cachedKoboldCppModel = data.model;
         return data.model || null;
     } catch {
         return null;
@@ -3583,6 +3594,18 @@ async function checkVectorizationStatus(fileUrl) {
 }
 
 // ============ Injection Health Score ============
+
+// Cache for Check 3b's group-member fan-out below. computeHealthScore() can be triggered
+// frequently — the 60s health poll, twice per generation (an immediate call plus a
+// 4s-delayed recheck), on every chat load, and on drawer/tablet-panel open — and Check 3b's
+// cost scales with group size (group size - 1 network round trips per call, unbounded,
+// recurring for as long as an idle group chat's tab stays open). A short TTL cache means
+// bursts of near-simultaneous triggers (e.g. the immediate + 4s-delayed post-generation
+// checks) share one fan-out instead of doubling it, while the 60s poll still gets a
+// reasonably fresh result. This is a read-only health indicator, not data-critical, so a
+// few seconds of staleness is an acceptable trade for not hammering the local server.
+let groupHealthCache = null; // { groupId, timestamp, otherStatuses }
+const GROUP_HEALTH_CACHE_TTL_MS = 45000;
 
 /**
  * Compute the injection health score by running a series of checks
@@ -3699,14 +3722,21 @@ async function computeHealthScore() {
     // reported "all healthy" with no visibility into the other members at all.
     if (targets.length > 1) {
         const others = targets.slice(1);
-        const otherStatuses = await Promise.all(others.map(async (tgt) => {
-            const att = findMemoryAttachmentForCharacter(tgt.avatar, tgt.fileName);
-            if (!att) return { name: tgt.name, status: 'no-file' };
-            const vs = await checkVectorizationStatus(att.url);
-            if (vs === null) return { name: tgt.name, status: 'vec-unknown' };
-            if (vs === false) return { name: tgt.name, status: 'not-vectorized' };
-            return { name: tgt.name, status: 'ok' };
-        }));
+        const groupId = getContext().groupId;
+        let otherStatuses;
+        if (groupHealthCache && groupHealthCache.groupId === groupId && (Date.now() - groupHealthCache.timestamp) < GROUP_HEALTH_CACHE_TTL_MS) {
+            otherStatuses = groupHealthCache.otherStatuses;
+        } else {
+            otherStatuses = await Promise.all(others.map(async (tgt) => {
+                const att = findMemoryAttachmentForCharacter(tgt.avatar, tgt.fileName);
+                if (!att) return { name: tgt.name, status: 'no-file' };
+                const vs = await checkVectorizationStatus(att.url);
+                if (vs === null) return { name: tgt.name, status: 'vec-unknown' };
+                if (vs === false) return { name: tgt.name, status: 'not-vectorized' };
+                return { name: tgt.name, status: 'ok' };
+            }));
+            groupHealthCache = { groupId, timestamp: Date.now(), otherStatuses };
+        }
         const problems = otherStatuses.filter(s => s.status !== 'ok');
         if (problems.length > 0) {
             const listed = problems.map(p => {
