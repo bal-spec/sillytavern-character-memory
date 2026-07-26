@@ -2738,8 +2738,11 @@ function buildExtractionPrompt(target, existingMemories, recentMessages, allTarg
     if (isGroup) {
         const context = getContext();
         const userName = context.name1 || 'User';
+        // Exclude by identity (charIndex), not name — two active group members sharing a
+        // display name would otherwise both get excluded from each other's participant
+        // list instead of just the current target, under-listing who's actually present.
         const otherNames = allTargets
-            .filter(t => t.name !== charName)
+            .filter(t => t.charIndex !== target.charIndex)
             .map(t => t.name);
         otherNames.unshift(`${userName} (user)`);
         participants = otherNames.join(', ');
@@ -8326,12 +8329,14 @@ function markChatAsFullyExtracted() {
  * extraction pointers live in each chat's metadata and can only be reset when that chat is open.
  */
 function resetBatchProgress() {
-    const charName = getCharacterName();
-    if (!charName || !extension_settings[MODULE_NAME].batchState) {
+    // Keyed by avatar to match runBatchExtraction's batchStateKey — see the comment there
+    // for why display name (getCharacterName()) would collide across duplicate-named cards.
+    const avatar = characters[this_chid]?.avatar;
+    if (!avatar || !extension_settings[MODULE_NAME].batchState) {
         toastr.info(t`No batch progress to clear.`, 'CharMemory');
         return;
     }
-    const prefix = `${charName}:`;
+    const prefix = `${avatar}:`;
     let count = 0;
     for (const key of Object.keys(extension_settings[MODULE_NAME].batchState)) {
         if (key.startsWith(prefix)) {
@@ -8357,10 +8362,11 @@ async function clearAllMemories() {
     chat_metadata[MODULE_NAME].messagesSinceExtraction = 0;
     saveMetadataDebounced();
 
-    // Also clear batch state for all chats of this character
-    const charName = getCharacterName();
-    if (charName && extension_settings[MODULE_NAME].batchState) {
-        const prefix = `${charName}:`;
+    // Also clear batch state for all chats of this character (keyed by avatar — see
+    // resetBatchProgress/runBatchExtraction for why display name would collide)
+    const avatar = characters[this_chid]?.avatar;
+    if (avatar && extension_settings[MODULE_NAME].batchState) {
+        const prefix = `${avatar}:`;
         for (const key of Object.keys(extension_settings[MODULE_NAME].batchState)) {
             if (key.startsWith(prefix)) {
                 delete extension_settings[MODULE_NAME].batchState[key];
@@ -9424,8 +9430,13 @@ async function runBatchExtraction() {
             continue;
         }
 
-        // Get batch extraction state for this chat
-        const batchStateKey = `${getCharacterName()}:${chatName}`;
+        // Get batch extraction state for this chat. Keyed by avatar, not display name —
+        // SillyTavern doesn't enforce unique character names, so two cards sharing a
+        // display name (duplicate imports, common persona names) would otherwise collide
+        // on the same key: one character's batch progress would silently become the
+        // other's "already processed" boundary, permanently skipping messages, and
+        // clearing one character's batch progress would also wipe the other's.
+        const batchStateKey = `${characters[this_chid]?.avatar}:${chatName}`;
         if (!extension_settings[MODULE_NAME].batchState) {
             extension_settings[MODULE_NAME].batchState = {};
         }
