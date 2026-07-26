@@ -1951,10 +1951,21 @@ async function writeMemoriesForCharacter(content, avatar, fileName) {
     const fileUrl = await uploadFileAttachment(uniqueFileName, base64Data);
     if (!fileUrl) return;
 
-    // Now that the new file is confirmed uploaded, remove the old one.
+    // Now that the new file is confirmed uploaded, remove the old one. Best-effort: if
+    // the delete fails (network blip, server error, or the record already gone
+    // server-side), don't let that exception skip the push()/saveSettingsDebounced()
+    // below - the new content already landed successfully, so failing here would orphan
+    // that upload (never linked into extension_settings, findMemoryAttachmentForCharacter
+    // keeps returning the OLD attachment on every future read) purely because a cleanup
+    // step that isn't actually required for correctness failed. An orphaned old file
+    // lingering on the server is a much smaller problem than that.
     const existing = findMemoryAttachmentForCharacter(avatar, fileName);
     if (existing) {
-        await deleteFileFromServer(existing.url, true);
+        try {
+            await deleteFileFromServer(existing.url, true);
+        } catch (err) {
+            console.warn(LOG_PREFIX, `Failed to delete previous memory file for ${avatar} (leaving it orphaned on the server):`, err);
+        }
         extension_settings.character_attachments[avatar] =
             extension_settings.character_attachments[avatar].filter(a => a.url !== existing.url);
     }
