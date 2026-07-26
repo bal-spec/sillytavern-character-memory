@@ -8469,15 +8469,15 @@ function addButtonsToExistingMessages() {
         if ($extraBtns.find('.charMemory_extractHereBtn, .charMemory_pinMemoryBtn, .charMemory_viewInjectedBtn, .charMemory_setLastExtractedBtn').length) return;
 
         // Pin as memory — all non-system messages
-        $extraBtns.prepend(`<div class="mes_button charMemory_pinMemoryBtn" data-mesid="${mesId}" title="Pin as memory"><i class="fa-solid fa-bookmark"></i></div>`);
+        $extraBtns.prepend(`<div class="mes_button charMemory_pinMemoryBtn" data-mesid="${mesId}" title="Pin as memory" data-i18n="[title]Pin as memory"><i class="fa-solid fa-bookmark"></i></div>`);
 
         // Extract from here — character messages only
         if (!msg.is_user) {
-            $extraBtns.prepend(`<div class="mes_button charMemory_extractHereBtn" data-mesid="${mesId}" title="Extract memories up to here"><i class="fa-solid fa-brain"></i></div>`);
+            $extraBtns.prepend(`<div class="mes_button charMemory_extractHereBtn" data-mesid="${mesId}" title="Extract memories up to here" data-i18n="[title]Extract memories up to here"><i class="fa-solid fa-brain"></i></div>`);
             // Set extraction pointer to here — moves lastExtractedIndex without re-running extraction
             $extraBtns.prepend(`<div class="mes_button charMemory_setLastExtractedBtn" data-mesid="${mesId}" title="Set as last-extracted point (moves the pointer without extracting)" data-i18n="[title]Set as last-extracted point (moves the pointer without extracting)"><i class="fa-solid fa-map-pin"></i></div>`);
             // View injected context
-            $extraBtns.prepend(`<div class="mes_button charMemory_viewInjectedBtn" data-mesid="${mesId}" title="View injected context"><i class="fa-solid fa-syringe"></i></div>`);
+            $extraBtns.prepend(`<div class="mes_button charMemory_viewInjectedBtn" data-mesid="${mesId}" title="View injected context" data-i18n="[title]View injected context"><i class="fa-solid fa-syringe"></i></div>`);
             updateIndicatorForMessage(this, mesId);
         }
     });
@@ -8504,15 +8504,15 @@ function onMessageRenderedAddButtons(messageIndex) {
     $extraBtns.find('.charMemory_extractHereBtn, .charMemory_pinMemoryBtn, .charMemory_viewInjectedBtn, .charMemory_setLastExtractedBtn').remove();
 
     // Pin as memory — available on all non-system messages (user + character)
-    $extraBtns.prepend(`<div class="mes_button charMemory_pinMemoryBtn" data-mesid="${messageIndex}" title="Pin as memory"><i class="fa-solid fa-bookmark"></i></div>`);
+    $extraBtns.prepend(`<div class="mes_button charMemory_pinMemoryBtn" data-mesid="${messageIndex}" title="Pin as memory" data-i18n="[title]Pin as memory"><i class="fa-solid fa-bookmark"></i></div>`);
 
     // Extract from here — character messages only
     if (!msg.is_user) {
-        $extraBtns.prepend(`<div class="mes_button charMemory_extractHereBtn" data-mesid="${messageIndex}" title="Extract memories up to here"><i class="fa-solid fa-brain"></i></div>`);
+        $extraBtns.prepend(`<div class="mes_button charMemory_extractHereBtn" data-mesid="${messageIndex}" title="Extract memories up to here" data-i18n="[title]Extract memories up to here"><i class="fa-solid fa-brain"></i></div>`);
         // Set extraction pointer to here — moves lastExtractedIndex without re-running extraction
         $extraBtns.prepend(`<div class="mes_button charMemory_setLastExtractedBtn" data-mesid="${messageIndex}" title="Set as last-extracted point (moves the pointer without extracting)" data-i18n="[title]Set as last-extracted point (moves the pointer without extracting)"><i class="fa-solid fa-map-pin"></i></div>`);
         // View injected context
-        $extraBtns.prepend(`<div class="mes_button charMemory_viewInjectedBtn" data-mesid="${messageIndex}" title="View injected context"><i class="fa-solid fa-syringe"></i></div>`);
+        $extraBtns.prepend(`<div class="mes_button charMemory_viewInjectedBtn" data-mesid="${messageIndex}" title="View injected context" data-i18n="[title]View injected context"><i class="fa-solid fa-syringe"></i></div>`);
         updateIndicatorForMessage($mes, messageIndex);
     }
 }
