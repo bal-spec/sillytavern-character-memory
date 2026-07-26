@@ -7482,21 +7482,32 @@ async function showBlockSelectionModal(allBlocks, initialEligible, charName) {
         <div class="charMemory_blockPickerList">${rows}</div>
     </div>`;
 
-    // Wire master checkboxes + live count once the popup is in the DOM
+    // Track the checked set in JS as the source of truth. callGenericPopup's DOM is torn
+    // down as part of resolving its promise, so a DOM query after `await` below always
+    // comes back empty — the same root cause as issue #14. Every place that can change the
+    // selection (individual checkboxes, Select all/none) updates this Set directly instead.
+    const selected = new Set(initialEligible);
+
     const updateCount = () => {
-        const checked = $('.charMemory_blockPickerCheck:checked').length;
-        $('#charMemory_blockPickerCount').text(t`${checked} of ${allBlocks.length} selected`);
+        $('#charMemory_blockPickerCount').text(t`${selected.size} of ${allBlocks.length} selected`);
         // Disable "Run consolidation" when fewer than 2 blocks are selected —
         // the downstream pipeline requires a minimum of 2.
-        $('.dialogue_popup_ok').prop('disabled', checked < 2);
+        $('.dialogue_popup_ok').prop('disabled', selected.size < 2);
     };
-    $(document).on('change.blockPicker', '.charMemory_blockPickerCheck', updateCount);
+    $(document).on('change.blockPicker', '.charMemory_blockPickerCheck', function () {
+        const index = Number($(this).data('index'));
+        if ($(this).prop('checked')) selected.add(index);
+        else selected.delete(index);
+        updateCount();
+    });
     $(document).on('click.blockPicker', '#charMemory_blockPickerAll', () => {
         $('.charMemory_blockPickerCheck').prop('checked', true);
+        allBlocks.forEach((_, i) => selected.add(i));
         updateCount();
     });
     $(document).on('click.blockPicker', '#charMemory_blockPickerNone', () => {
         $('.charMemory_blockPickerCheck').prop('checked', false);
+        selected.clear();
         updateCount();
     });
 
@@ -7510,14 +7521,7 @@ async function showBlockSelectionModal(allBlocks, initialEligible, charName) {
         cancelButton: t`Cancel`,
     });
 
-    // Read selection before teardown
-    let result = null;
-    if (ok) {
-        result = new Set();
-        $('.charMemory_blockPickerCheck:checked').each(function () {
-            result.add(Number($(this).data('index')));
-        });
-    }
+    const result = ok ? new Set(selected) : null;
 
     // Teardown
     $(document).off('change.blockPicker');
