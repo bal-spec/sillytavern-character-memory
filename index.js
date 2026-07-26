@@ -4504,9 +4504,12 @@ async function showSettingsModal() {
         renderModalModelList($('#cm_modal_modelSearch').val(), cachedNanoGptModels || []);
     });
 
-    $('#cm_modal_refreshModels').off('click').on('click', function () {
+    $('#cm_modal_refreshModels').off('click').on('click', async function () {
         const pk = extension_settings[MODULE_NAME].selectedProvider;
-        populateProviderModels(pk, true).then(async () => {
+        const $btn = $(this);
+        $btn.prop('disabled', true);
+        try {
+            await populateProviderModels(pk, true);
             const ps = getProviderSettings(pk);
             const match = currentModelList.find(m => m.id === ps.model);
             $('#cm_modal_providerModel').val(ps.model || '');
@@ -4514,7 +4517,16 @@ async function showSettingsModal() {
             const rawModels = pk === 'nanogpt' ? (cachedNanoGptModels || []) : [];
             $('#cm_modal_modelList').show();
             renderModalModelList('', rawModels);
-        });
+        } catch (err) {
+            // populateProviderModels/fetchProviderModels can reject on a network-level
+            // failure (not just a non-2xx status) - this handler previously had no
+            // .catch() at all, so that rejection became a silently-swallowed unhandled
+            // promise rejection with zero user-facing feedback. The sibling Connect
+            // button already handles this identically.
+            toastr.error(t`Failed to refresh models: ${err.message || 'Unknown error'}`, 'CharMemory');
+        } finally {
+            $btn.prop('disabled', false);
+        }
     });
 
     $('#cm_modal_modelInput').off('input').on('input', function () {
@@ -9381,6 +9393,14 @@ async function runBatchExtraction() {
 
     logActivity(`Batch extraction started: ${selected.length} chat(s) selected`);
 
+    // The loop below has real, unguarded network calls (fetchChatMessages has no internal
+    // try/catch of its own) across potentially many chats. Without a try/catch here, a
+    // single transient failure partway through left the popup permanently stuck: frozen
+    // progress bar, Stop button stuck visible, Extract/Refresh stuck disabled, since the
+    // "Done" cleanup below never ran. Wrap the loop and move cleanup into finally so the UI
+    // always recovers.
+    let batchError = null;
+    try {
     for (let i = 0; i < selected.length; i++) {
         if (batchAbortController.signal.aborted) break;
 
@@ -9443,21 +9463,33 @@ async function runBatchExtraction() {
 
         totalMemories += result.totalMemories;
     }
+    } catch (err) {
+        console.error(LOG_PREFIX, 'Batch extraction failed:', err);
+        logActivity(`Batch extraction failed: ${err.message}`, 'error');
+        toastr.error(t`Batch extraction failed: ${err.message || 'Unknown error'}`, 'CharMemory');
+        batchError = err;
+    } finally {
+        // Done (always runs, including on a thrown error, so the popup can't get stuck)
+        $progressFill.css('width', '100%');
+        const aborted = !!batchAbortController?.signal.aborted;
+        if (batchError) {
+            $progressText.text(t`Failed: ${totalMemories} memories extracted before the error.`);
+        } else {
+            $progressText.text(aborted
+                ? `Stopped. ${totalMemories} memories extracted before cancellation.`
+                : `Done! ${totalMemories} memories extracted from ${selected.length} chat(s).`
+            );
+        }
+        $('#charMemory_batchStop').hide();
+        $('#charMemory_batchExtract').prop('disabled', false);
+        $('#charMemory_batchRefresh').prop('disabled', false);
+        batchAbortController = null;
 
-    // Done
-    $progressFill.css('width', '100%');
-    const aborted = batchAbortController.signal.aborted;
-    $progressText.text(aborted
-        ? `Stopped. ${totalMemories} memories extracted before cancellation.`
-        : `Done! ${totalMemories} memories extracted from ${selected.length} chat(s).`
-    );
-    $('#charMemory_batchStop').hide();
-    $('#charMemory_batchExtract').prop('disabled', false);
-    $('#charMemory_batchRefresh').prop('disabled', false);
-    batchAbortController = null;
-
-    logActivity(`Batch extraction ${aborted ? 'stopped' : 'complete'}: ${totalMemories} memories from ${selected.length} chats`, aborted ? 'warning' : 'success');
-    updateStatusDisplay();
+        if (!batchError) {
+            logActivity(`Batch extraction ${aborted ? 'stopped' : 'complete'}: ${totalMemories} memories from ${selected.length} chats`, aborted ? 'warning' : 'success');
+        }
+        updateStatusDisplay();
+    }
 }
 
 // ============ Init ============
