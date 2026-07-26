@@ -9573,8 +9573,8 @@ async function runBatchExtraction() {
             $progressText.text(t`Failed: ${totalMemories} memories extracted before the error.`);
         } else {
             $progressText.text(aborted
-                ? `Stopped. ${totalMemories} memories extracted before cancellation.`
-                : `Done! ${totalMemories} memories extracted from ${selected.length} chat(s).`
+                ? t`Stopped. ${totalMemories} memories extracted before cancellation.`
+                : t`Done! ${totalMemories} memories extracted from ${selected.length} chat(s).`
             );
         }
         $('#charMemory_batchStop').hide();
