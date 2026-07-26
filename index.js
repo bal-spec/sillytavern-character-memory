@@ -7339,7 +7339,7 @@ Output ONLY <memory> blocks. No headers, no commentary, no extra text.`;
     return prompt;
 }
 
-async function runConsolidationLLM(memories, charName) {
+async function runConsolidationLLM(memories, charName, { rethrow = false } = {}) {
     let memoriesText = memories.map((b, i) =>
         `[Block ${i + 1}]\n${b.bullets.map(bullet => `- ${bullet}`).join('\n')}`,
     ).join('\n\n');
@@ -7461,6 +7461,16 @@ async function runConsolidationLLM(memories, charName) {
     } catch (err) {
         console.error(LOG_PREFIX, 'Consolidation failed:', err);
         logActivity(`Consolidation failed: ${err.message}`, 'error');
+        if (rethrow) {
+            // Chunked consolidation's retry orchestrator (runChunkedConsolidation) only
+            // retries on a thrown error — a returned null/empty is treated as a "soft"
+            // no-content result and skipped without retrying. Swallowing every failure
+            // here meant a transient network blip during chunked consolidation just
+            // dropped that chunk's memories instead of ever getting retried. Let it
+            // propagate so the orchestrator can actually retry; skip the toast here so
+            // a retry that then succeeds doesn't show an alarming error in between.
+            throw err;
+        }
         toastr.error(t`Memory consolidation failed. Check console for details.`, 'CharMemory');
         return null;
     } finally {
@@ -7656,11 +7666,11 @@ async function consolidateMemories() {
             // Re-enable so the user can click Cancel (Task 5 wires the click handler).
             $btn.val(t`Cancel`).prop('disabled', false);
             initialResult = await runChunkedConsolidation(eligible, {
-                // runConsolidationLLM catches LLM errors and returns null, so the
-                // orchestrator's retry-on-throw path will not fire for transient
-                // failures. Failed chunks are skipped. Follow-up to propagate
-                // retriable errors is tracked separately.
-                runLLM: (chunk) => runConsolidationLLM(chunk, target.name),
+                // { rethrow: true } makes runConsolidationLLM propagate LLM errors
+                // instead of swallowing them, so the orchestrator's retry-on-throw path
+                // actually fires for transient failures instead of silently skipping
+                // that chunk's memories.
+                runLLM: (chunk) => runConsolidationLLM(chunk, target.name, { rethrow: true }),
                 logProgress: (msg) => logActivity(msg),
                 isCancelled: () => consolidationCancelRequested,
                 packChunks: (mems) => packBlocksIntoChunks(mems, chunkBudget),
@@ -7672,7 +7682,17 @@ async function consolidateMemories() {
     } finally {
         $btn.val(t`Consolidate`).prop('disabled', false);
     }
-    if (!initialResult) return;
+    if (!initialResult) {
+        // The non-chunked path (runConsolidationLLM called directly, rethrow: false)
+        // already shows its own error toast from inside its catch block. The chunked
+        // path suppresses that per-chunk toast so a retry-then-succeed doesn't look
+        // alarming, so surface a single toast here once retries are exhausted —
+        // otherwise a fully-failed chunked consolidation ends in total silence.
+        if (useChunked) {
+            toastr.error(t`Consolidation failed. Check the activity log for details.`, 'CharMemory');
+        }
+        return;
+    }
 
     // Assemble finalBlocks = protected + newly consolidated. Protected blocks retain
     // their original order; newly consolidated output is appended. Indices 0..N-1
