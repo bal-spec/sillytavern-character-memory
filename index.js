@@ -7363,17 +7363,27 @@ async function runConsolidationLLM(memories, charName) {
         // Parse into memory format, then serialize back to plain text for the editor
         const timestamp = getTimestamp();
 
-        const consolidationRegex = /<memory(?:\s+chat="([^"]*)")?>([\s\S]*?)<\/memory>/gi;
+        // Tolerant tag matching (chat attribute pulled out separately, same approach
+        // parseMemories in lib.js already uses) instead of requiring an opening tag that's
+        // exactly <memory> or <memory chat="..."> with double quotes and nothing else —
+        // that strict form failed to match single-quoted or extra-attribute variants an
+        // LLM might invent, silently flattening every distinct theme into one block.
+        const extractTheme = (attrs) => {
+            const m = (attrs || '').match(/chat=["']([^"']*)["']/);
+            return m ? m[1] : 'Consolidated';
+        };
+
+        const consolidationRegex = /<memory\b([^>]*)>([\s\S]*?)<\/memory>/gi;
         const consolidationMatches = [...cleanResult.matchAll(consolidationRegex)];
         let rawEntries = consolidationMatches.length > 0
-            ? consolidationMatches.map(m => ({ theme: m[1] || 'Consolidated', content: m[2].trim() })).filter(e => e.content)
+            ? consolidationMatches.map(m => ({ theme: extractTheme(m[1]), content: m[2].trim() })).filter(e => e.content)
             : [];
 
         // Handle LLMs that produce self-closing <memory></memory> with bullets after the tag
         if (rawEntries.length === 0 && consolidationMatches.length > 0) {
-            const altRegex = /<memory(?:\s+chat="([^"]*)")?\s*>\s*<\/memory>([\s\S]*?)(?=<memory|$)/gi;
+            const altRegex = /<memory\b([^>]*)>\s*<\/memory>([\s\S]*?)(?=<memory|$)/gi;
             const altMatches = [...cleanResult.matchAll(altRegex)];
-            rawEntries = altMatches.map(m => ({ theme: m[1] || 'Consolidated', content: m[2].trim() })).filter(e => e.content);
+            rawEntries = altMatches.map(m => ({ theme: extractTheme(m[1]), content: m[2].trim() })).filter(e => e.content);
         }
 
         // Final fallback: treat entire response as one block
@@ -7381,14 +7391,38 @@ async function runConsolidationLLM(memories, charName) {
             rawEntries = [{ theme: 'Consolidated', content: cleanResult.trim() }].filter(e => e.content);
         }
 
-        const consolidated = rawEntries.map(entry => {
+        const consolidated = [];
+        for (const entry of rawEntries) {
             const bullets = entry.content.split('\n')
                 .map(l => l.trim())
                 .filter(l => l.startsWith('- '))
                 .map(l => l.slice(2).trim())
                 .filter(Boolean);
-            return { chat: entry.theme, date: timestamp, bullets: bullets.length > 0 ? bullets : [entry.content] };
-        });
+
+            if (bullets.length === 0) {
+                // No bulleted lines in this entry — the consolidation prompt requires
+                // bullet format, so unbulleted prose here is most likely a refusal,
+                // meta-commentary, or malformed output rather than real consolidated
+                // content. This is the consolidation-path instance of the same
+                // "unbulleted output saved verbatim" bug already fixed in extraction's
+                // equivalent fallback — that fix only touched extractMemoriesInner's loop.
+                // Stuffing the raw text into one bullet here would flatten every real
+                // eligible block being consolidated down into one junk entry.
+                logActivity(`Skipped un-bulleted consolidation output for theme "${entry.theme}": "${truncateText(entry.content, 200)}"`, 'warning');
+                continue;
+            }
+
+            consolidated.push({ chat: entry.theme, date: timestamp, bullets });
+        }
+
+        if (consolidated.length === 0) {
+            // Every parsed entry was un-bulleted and got skipped above — surface this
+            // here (rather than only relying on the caller's falsy-result check) so
+            // there's feedback regardless of whether this call came from the direct or
+            // the per-chunk chunked-consolidation path.
+            logActivity('Consolidation produced no usable blocks after filtering un-bulleted output', 'warning');
+            toastr.warning(t`Consolidation returned no usable memories.`, 'CharMemory');
+        }
 
         return serializeMemories(consolidated);
     } catch (err) {
