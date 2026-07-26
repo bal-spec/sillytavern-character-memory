@@ -1941,20 +1941,23 @@ async function readMemoriesForCharacter(avatar, fileName) {
 async function writeMemoriesForCharacter(content, avatar, fileName) {
     ensureCharacterAttachments(avatar);
 
-    // Delete existing file if present
+    // Upload the new content BEFORE removing the old file. Uploading first means a
+    // failed upload (network blip, server error) leaves the previous memories intact
+    // instead of being lost in the gap between deleting the old file and an upload
+    // that never lands.
+    const base64Data = convertTextToBase64(content);
+    const slug = getStringHash(fileName);
+    const uniqueFileName = `${Date.now()}_${slug}.txt`;
+    const fileUrl = await uploadFileAttachment(uniqueFileName, base64Data);
+    if (!fileUrl) return;
+
+    // Now that the new file is confirmed uploaded, remove the old one.
     const existing = findMemoryAttachmentForCharacter(avatar, fileName);
     if (existing) {
         await deleteFileFromServer(existing.url, true);
         extension_settings.character_attachments[avatar] =
             extension_settings.character_attachments[avatar].filter(a => a.url !== existing.url);
     }
-
-    // Upload new file
-    const base64Data = convertTextToBase64(content);
-    const slug = getStringHash(fileName);
-    const uniqueFileName = `${Date.now()}_${slug}.txt`;
-    const fileUrl = await uploadFileAttachment(uniqueFileName, base64Data);
-    if (!fileUrl) return;
 
     extension_settings.character_attachments[avatar].push({
         url: fileUrl,
