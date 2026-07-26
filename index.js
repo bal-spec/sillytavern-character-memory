@@ -2806,7 +2806,30 @@ function hideExtractedChunk(chatArray, startIdx, endIdx, isActiveChat) {
  * @param {string|null} options.progressLabel Label prefix for toast messages.
  * @returns {Promise<{totalMemories: number, chunksProcessed: number, lastExtractedIndex: number}>}
  */
-async function extractMemories({
+/**
+ * Public entry point — claims the `inApiCall` reentrancy lock before any `await`
+ * (including the manual-extraction confirm popup inside extractMemoriesInner) so a
+ * fast double-trigger can't slip both calls past the guard and run concurrently.
+ * try/finally guarantees the lock releases on every exit path from the inner
+ * function, including its early returns.
+ */
+async function extractMemories(opts = {}) {
+    const noopResult = { totalMemories: 0, chunksProcessed: 0, lastExtractedIndex: opts.lastExtractedIdx ?? -1 };
+
+    if (inApiCall) {
+        console.log(LOG_PREFIX, 'Already in API call, skipping');
+        return noopResult;
+    }
+
+    inApiCall = true;
+    try {
+        return await extractMemoriesInner(opts);
+    } finally {
+        inApiCall = false;
+    }
+}
+
+async function extractMemoriesInner({
     force = false,
     endIndex = null,
     chatArray = null,
@@ -2817,11 +2840,6 @@ async function extractMemories({
     progressLabel = null,
 } = {}) {
     const noopResult = { totalMemories: 0, chunksProcessed: 0, lastExtractedIndex: lastExtractedIdx ?? -1 };
-
-    if (inApiCall) {
-        console.log(LOG_PREFIX, 'Already in API call, skipping');
-        return noopResult;
-    }
 
     if (!extension_settings[MODULE_NAME].enabled && !force) {
         return noopResult;
@@ -2934,7 +2952,6 @@ async function extractMemories({
     const chunkExtractedByTarget = {};
 
     try {
-        inApiCall = true;
         lastExtractionTime = Date.now();
 
         for (let chunk = 0; chunk < totalChunks; chunk++) {
@@ -3164,8 +3181,6 @@ async function extractMemories({
         logActivity(`Extraction failed: ${err.message}`, 'error');
         toastr.error(t`Memory extraction failed. Check console for details.`, 'CharMemory');
         return { totalMemories, chunksProcessed, lastExtractedIndex: currentLastExtracted };
-    } finally {
-        inApiCall = false;
     }
 }
 
