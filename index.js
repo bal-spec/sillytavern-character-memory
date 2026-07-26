@@ -8475,7 +8475,7 @@ function addButtonsToExistingMessages() {
         if (!msg.is_user) {
             $extraBtns.prepend(`<div class="mes_button charMemory_extractHereBtn" data-mesid="${mesId}" title="Extract memories up to here"><i class="fa-solid fa-brain"></i></div>`);
             // Set extraction pointer to here — moves lastExtractedIndex without re-running extraction
-            $extraBtns.prepend(`<div class="mes_button charMemory_setLastExtractedBtn" data-mesid="${mesId}" title="Set as last-extracted point (moves the pointer without extracting)"><i class="fa-solid fa-map-pin"></i></div>`);
+            $extraBtns.prepend(`<div class="mes_button charMemory_setLastExtractedBtn" data-mesid="${mesId}" title="Set as last-extracted point (moves the pointer without extracting)" data-i18n="[title]Set as last-extracted point (moves the pointer without extracting)"><i class="fa-solid fa-map-pin"></i></div>`);
             // View injected context
             $extraBtns.prepend(`<div class="mes_button charMemory_viewInjectedBtn" data-mesid="${mesId}" title="View injected context"><i class="fa-solid fa-syringe"></i></div>`);
             updateIndicatorForMessage(this, mesId);
@@ -8510,7 +8510,7 @@ function onMessageRenderedAddButtons(messageIndex) {
     if (!msg.is_user) {
         $extraBtns.prepend(`<div class="mes_button charMemory_extractHereBtn" data-mesid="${messageIndex}" title="Extract memories up to here"><i class="fa-solid fa-brain"></i></div>`);
         // Set extraction pointer to here — moves lastExtractedIndex without re-running extraction
-        $extraBtns.prepend(`<div class="mes_button charMemory_setLastExtractedBtn" data-mesid="${messageIndex}" title="Set as last-extracted point (moves the pointer without extracting)"><i class="fa-solid fa-map-pin"></i></div>`);
+        $extraBtns.prepend(`<div class="mes_button charMemory_setLastExtractedBtn" data-mesid="${messageIndex}" title="Set as last-extracted point (moves the pointer without extracting)" data-i18n="[title]Set as last-extracted point (moves the pointer without extracting)"><i class="fa-solid fa-map-pin"></i></div>`);
         // View injected context
         $extraBtns.prepend(`<div class="mes_button charMemory_viewInjectedBtn" data-mesid="${messageIndex}" title="View injected context"><i class="fa-solid fa-syringe"></i></div>`);
         updateIndicatorForMessage($mes, messageIndex);
