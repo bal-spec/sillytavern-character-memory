@@ -702,11 +702,14 @@ async function convertWithLLM(content, charName) {
 
     const blocks = parseMemories(response);
     if (blocks.length === 0) {
-        // LLM may have returned plain bullets without <memory> tags — wrap them
-        const lines = response.split('\n').map(l => l.trim()).filter(l => l.startsWith('- '));
+        // LLM may have returned plain bullets without <memory> tags — wrap them.
+        // Accept both "- " and "* " markers (detectFileFormat elsewhere in this codebase
+        // already treats both as valid bullet styles; this fallback only recognized "- ",
+        // so a "* "-bulleted response was discarded entirely as unparseable).
+        const lines = response.split('\n').map(l => l.trim()).filter(l => /^[-*]\s/.test(l));
         if (lines.length > 0) {
             return {
-                blocks: [{ chat: 'imported', date: getTimestamp(), bullets: lines.map(l => l.slice(2).trim()) }],
+                blocks: [{ chat: 'imported', date: getTimestamp(), bullets: lines.map(l => l.replace(/^[-*]\s/, '').trim()) }],
                 warnings: ['LLM did not use <memory> tags — bullets wrapped automatically.'],
             };
         }
@@ -968,16 +971,25 @@ async function previewConversion(sourceFileUrl) {
         $('#charMemory_rerunConversion').prop('disabled', false);
         $('#charMemory_convEditorPane').removeClass('charMemory_editorDisabled');
 
-        if (newResult && newResult.blocks.length > 0) {
-            rerunBackups.push(backupBlocks);
-            $('#charMemory_undoConvRerun').prop('disabled', false);
-            editor.replaceAll(newResult.blocks);
-            refreshEditor();
+        if (newResult) {
+            // Show warnings unconditionally (previously gated behind blocks.length > 0,
+            // unlike the initial conversion call above) — a re-run that legitimately
+            // returns 0 blocks with an explanatory warning (e.g. "LLM response could not
+            // be parsed into memories") was silently swallowing that warning, leaving the
+            // dialog looking like the re-run button just did nothing.
             for (const w of newResult.warnings) {
                 toastr.warning(w, 'CharMemory');
             }
-            const newMethod = llmChecked && format !== 'memory_tags' ? 'LLM' : 'Heuristic';
-            $('#charMemory_convMethod').text(newMethod);
+            if (newResult.blocks.length > 0) {
+                rerunBackups.push(backupBlocks);
+                $('#charMemory_undoConvRerun').prop('disabled', false);
+                editor.replaceAll(newResult.blocks);
+                refreshEditor();
+                const newMethod = llmChecked && format !== 'memory_tags' ? 'LLM' : 'Heuristic';
+                $('#charMemory_convMethod').text(newMethod);
+            } else if (newResult.warnings.length === 0) {
+                toastr.warning(t`Re-run produced no memories. The editor is unchanged.`, 'CharMemory');
+            }
         }
     });
 
@@ -1047,6 +1059,22 @@ async function previewConversion(sourceFileUrl) {
     let existingBlocks = [];
     if (existingContent && existingContent.trim()) {
         existingBlocks = parseMemories(existingContent);
+    }
+
+    // readMemoriesForCharacter already auto-migrates recognized legacy formats, so
+    // reaching this with real existing content but zero parsed blocks means the file
+    // isn't in a format this extension recognizes at all (e.g. hand-edited, malformed
+    // <memory> tags). Merging below would silently drop that content on the write —
+    // confirm with the user before overwriting instead of doing it silently.
+    if (existingContent && existingContent.trim() && existingBlocks.length === 0) {
+        const overwriteAnyway = await callGenericPopup(
+            t`"${destFileName}" already has content that couldn't be parsed as CharMemory blocks — saving would replace it instead of appending to it. Overwrite anyway?`,
+            POPUP_TYPE.CONFIRM,
+        );
+        if (!overwriteAnyway) {
+            toastr.info(t`Save cancelled — existing file left untouched.`, 'CharMemory');
+            return;
+        }
     }
 
     const allBlocks = [...existingBlocks, ...cleanBlocks];
@@ -1251,7 +1279,7 @@ function getFilteredNanoGptModels(models, providerSettings) {
         if (s.nanogptFilterSubscription && m.subscription !== true) return false;
         if (s.nanogptFilterOpenSource && m.isOpenSource !== true) return false;
         if (s.nanogptFilterRoleplay && m.category !== 'Roleplay/storytelling models') return false;
-        if (s.nanogptFilterReasoning && !m.capabilities.includes('reasoning')) return false;
+        if (s.nanogptFilterReasoning && !(m.capabilities || []).includes('reasoning')) return false;
         return true;
     });
 }
