@@ -1602,6 +1602,20 @@ function ensureMetadata() {
     if (!chat_metadata[MODULE_NAME].injectionData) {
         chat_metadata[MODULE_NAME].injectionData = {};
     }
+
+    // No MESSAGE_DELETED hook exists anywhere in this extension, so deleting messages
+    // never adjusts lastExtractedIndex. If enough messages are deleted that the chat
+    // shrinks past the stored pointer, extractMemories()'s totalUnprocessed calc goes
+    // negative and every future extraction silently reports "no new messages" — even
+    // after many new messages arrive — until the chat grows back past the stale value.
+    // Clamp here so any read of the pointer self-heals instead of staying stuck.
+    const chatLen = getContext().chat?.length ?? 0;
+    if (chatLen > 0 && chat_metadata[MODULE_NAME].lastExtractedIndex >= chatLen) {
+        const staleIdx = chat_metadata[MODULE_NAME].lastExtractedIndex;
+        chat_metadata[MODULE_NAME].lastExtractedIndex = chatLen - 1;
+        logActivity(`Clamped stale extraction pointer ${staleIdx} → ${chatLen - 1} (chat is shorter now — likely deleted messages)`, 'warning');
+        saveMetadataDebounced();
+    }
 }
 
 let cooldownTimerInterval = null;
