@@ -87,6 +87,15 @@ let lastExtractionResult = null;
 let consolidationBackup = null;
 let reformatBackup = null;
 let consolidationCancelRequested = false;
+// Dedicated reentrancy flags for consolidateMemories/reformatMemories, separate from
+// inApiCall. inApiCall is only actually held during the real LLM call inside these flows
+// (set deep inside runConsolidationLLM/convertWithLLM), not during the character-picker /
+// protected-blocks confirmation popups that precede it — extending inApiCall itself across
+// those popups would block unrelated actions (like auto-extraction) for however long the
+// user takes to answer a dialog. These flags instead just stop the SAME flow (button click
+// or slash command) from being entered twice concurrently while its own popups are open.
+let consolidationInFlight = false;
+let reformatInFlight = false;
 // convertPreviewResult removed — conversion state now lives in the dialog closure
 let lastExtractionTime = 0; // session-only, resets on page load
 let isGenerating = false;
@@ -798,16 +807,27 @@ async function previewConversion(sourceFileUrl) {
         return;
     }
 
+    // Claim the lock before the first await (getFileAttachment) rather than only
+    // around the conversion call below — otherwise a second previewConversion (or
+    // any other inApiCall-guarded action) could start while this one is still
+    // reading the source file, since inApiCall was still false at that point.
+    // Released on every exit path below; re-acquired (redundantly but harmlessly)
+    // around the conversion call further down, which still releases it at the same
+    // point as before once the LLM/heuristic step finishes — the interactive preview
+    // dialog after that is intentionally NOT covered by this lock.
+    inApiCall = true;
     let sourceContent;
     try {
         sourceContent = await getFileAttachment(fileUrl);
     } catch (err) {
         console.error(LOG_PREFIX, 'Failed to read source file:', err);
         toastr.error(t`Could not read the selected file.`, 'CharMemory');
+        inApiCall = false;
         return;
     }
     if (!sourceContent) {
         toastr.error(t`Could not read the selected file.`, 'CharMemory');
+        inApiCall = false;
         return;
     }
 
@@ -7485,12 +7505,30 @@ async function showBlockSelectionModal(allBlocks, initialEligible, charName) {
     return result;
 }
 
+/**
+ * Public entry point — claims consolidationInFlight immediately (before the
+ * character-picker/protected-blocks popups below, unlike the old single function which
+ * left a window where a second click or the /consolidate-memories slash command could
+ * start a fully concurrent run). try/finally releases it on every exit path.
+ */
 async function consolidateMemories() {
     if (inApiCall) {
         toastr.warning(t`An API call is already in progress.`, 'CharMemory');
         return;
     }
+    if (consolidationInFlight) {
+        toastr.warning(t`Consolidation is already in progress.`, 'CharMemory');
+        return;
+    }
+    consolidationInFlight = true;
+    try {
+        return await consolidateMemoriesInner();
+    } finally {
+        consolidationInFlight = false;
+    }
+}
 
+async function consolidateMemoriesInner() {
     const targets = getMemoryTargets();
     if (targets.length === 0) {
         toastr.warning(t`No character selected.`, 'CharMemory');
@@ -8023,12 +8061,30 @@ async function showReformatPreview(originalBlocks, reformattedBlocks, charName, 
  * Main reformat flow: read memories, send through LLM conversion prompt,
  * show interactive preview, save on confirmation with backup for undo.
  */
+/**
+ * Public entry point — claims reformatInFlight immediately, before the character-picker
+ * popup below, so a second click or entry point can't start a fully concurrent run while
+ * this one is still waiting on the user to answer that popup. try/finally releases it on
+ * every exit path.
+ */
 async function reformatMemories() {
     if (inApiCall) {
         toastr.warning(t`An API call is already in progress.`, 'CharMemory');
         return;
     }
+    if (reformatInFlight) {
+        toastr.warning(t`Reformat is already in progress.`, 'CharMemory');
+        return;
+    }
+    reformatInFlight = true;
+    try {
+        return await reformatMemoriesInner();
+    } finally {
+        reformatInFlight = false;
+    }
+}
 
+async function reformatMemoriesInner() {
     const targets = getMemoryTargets();
     if (targets.length === 0) {
         toastr.warning(t`No character selected.`, 'CharMemory');
