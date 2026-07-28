@@ -56,6 +56,7 @@ import {
     packBlocksIntoChunks,
     classifyBlocksForConsolidation,
     shouldSkipStaleMetadataReset,
+    remapBatchStateKeys,
 } from './lib.js';
 import { createMemoryEditor } from './editor.js';
 import { runChunkedConsolidation } from './consolidation.js';
@@ -3464,6 +3465,10 @@ function onCharacterMessageRendered(_messageIndex, type) {
  * Event handler for CHAT_CHANGED — reset status display.
  */
 async function onChatChanged() {
+    // Self-heal batch keys as soon as the character roster is available, rather than
+    // waiting for the user to open a batch tool. No-ops once migrated.
+    migrateBatchStateKeys();
+
     const context = getContext();
     const chatId = context.chatId || '(none)';
     const charName = getCharacterName() || '(none)';
@@ -8758,12 +8763,66 @@ function markChatAsFullyExtracted() {
 }
 
 /**
+ * One-time migration of batchState keys from `${characterName}:${chatName}` to
+ * `${avatar}:${chatName}`.
+ *
+ * batchState used to be keyed by character display name, which collides across cards
+ * sharing a name (duplicate imports, common persona names). Re-keying by avatar fixed
+ * that, but without this migration every pre-existing record becomes unreachable:
+ * runBatchExtraction's `lastExtractedIndex ?? -1` lookup falls back to -1 on the new
+ * key, so the next batch run re-extracts every chat from message 0 and duplicates
+ * memories, while the old keys linger in settings forever (resetBatchProgress and
+ * clearAllMemories now only match the avatar prefix).
+ *
+ * Deliberately conservative: records that can't be attributed to exactly one character
+ * are left untouched rather than dropped. An unmatched key is inert (nothing reads it),
+ * whereas guessing an owner would reintroduce the very cross-character boundary
+ * corruption the avatar re-key exists to prevent.
+ *
+ * Idempotent, and safe to call before the character list has loaded — it defers instead
+ * of migrating against an empty roster.
+ */
+function migrateBatchStateKeys() {
+    const settings = extension_settings[MODULE_NAME];
+    if (!settings || settings.batchStateKeyedByAvatar) return;
+
+    const state = settings.batchState;
+    if (!state || Object.keys(state).length === 0) {
+        settings.batchStateKeyedByAvatar = true;
+        saveSettingsDebounced();
+        return;
+    }
+
+    // Characters load asynchronously — migrating against an empty/partial roster would
+    // leave real records unattributed. Defer; every call site fires repeatedly.
+    if (!Array.isArray(characters) || characters.length === 0) return;
+
+    const { batchState, moved, ambiguous, unmatched } = remapBatchStateKeys(state, characters);
+
+    settings.batchState = batchState;
+    settings.batchStateKeyedByAvatar = true;
+    saveSettingsDebounced();
+
+    if (moved || ambiguous || unmatched) {
+        const notes = [];
+        if (ambiguous) notes.push(`${ambiguous} ambiguous (duplicate character names)`);
+        if (unmatched) notes.push(`${unmatched} unmatched (character no longer present)`);
+        logActivity(
+            `Migrated ${moved} batch-progress record(s) to avatar keys` +
+            (notes.length ? ` — left ${notes.join(', ')} untouched` : ''),
+            moved ? 'success' : 'info',
+        );
+    }
+}
+
+/**
  * Clear batch extraction progress records for all of this character's chats.
  * Does NOT affect the current chat's regular extraction pointer (chat_metadata).
  * For non-active chats, only batch records can be cleared from here — their regular
  * extraction pointers live in each chat's metadata and can only be reset when that chat is open.
  */
 function resetBatchProgress() {
+    migrateBatchStateKeys();
     // Keyed by avatar to match runBatchExtraction's batchStateKey — see the comment there
     // for why display name (getCharacterName()) would collide across duplicate-named cards.
     const avatar = characters[this_chid]?.avatar;
@@ -8799,6 +8858,7 @@ async function clearAllMemories() {
 
     // Also clear batch state for all chats of this character (keyed by avatar — see
     // resetBatchProgress/runBatchExtraction for why display name would collide)
+    migrateBatchStateKeys();
     const avatar = characters[this_chid]?.avatar;
     if (avatar && extension_settings[MODULE_NAME].batchState) {
         const prefix = `${avatar}:`;
@@ -9808,6 +9868,10 @@ function updateBatchButtons() {
 }
 
 async function runBatchExtraction() {
+    // Must run before any batchState read below — an unmigrated name-keyed record would
+    // miss the avatar-keyed lookup and silently re-extract the chat from message 0.
+    migrateBatchStateKeys();
+
     const selected = [];
     $('.charMemory_batchChatCheck:checked').each(function () {
         selected.push(String($(this).data('filename')));

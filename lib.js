@@ -681,3 +681,70 @@ export function shouldSkipStaleMetadataReset({ isGroup, unresolvedCount, totalAc
     if (totalActive === 0) return true;  // can't conclude anything from zero members
     return unresolvedCount > 0;          // any unresolved member invalidates the conclusion
 }
+
+/**
+ * Re-key batch-extraction progress records from `${characterName}:${chatName}` to
+ * `${avatar}:${chatName}`.
+ *
+ * Character display names collide across cards (duplicate imports, common persona
+ * names); avatars don't. Records that can't be attributed to exactly one character are
+ * passed through untouched rather than dropped — an unmatched key is inert, whereas
+ * guessing an owner would reintroduce the cross-character boundary corruption that
+ * keying by avatar exists to prevent.
+ *
+ * @param {Record<string, any>} batchState Existing batch state, keyed by name or avatar.
+ * @param {{name?: string, avatar?: string}[]} characters The loaded character roster.
+ * @returns {{batchState: Record<string, any>, moved: number, ambiguous: number, unmatched: number}}
+ */
+export function remapBatchStateKeys(batchState, characters) {
+    const result = { batchState: {}, moved: 0, ambiguous: 0, unmatched: 0 };
+    if (!batchState || typeof batchState !== 'object') return result;
+    if (!Array.isArray(characters)) characters = [];
+
+    const avatars = [];
+    const avatarsByName = new Map();
+    for (const char of characters) {
+        if (!char?.avatar) continue;
+        avatars.push(char.avatar);
+        if (!char.name) continue;
+        if (!avatarsByName.has(char.name)) avatarsByName.set(char.name, []);
+        avatarsByName.get(char.name).push(char.avatar);
+    }
+
+    for (const [key, value] of Object.entries(batchState)) {
+        // Already avatar-keyed (partially-migrated settings, or written post-re-key).
+        if (avatars.some(avatar => key.startsWith(`${avatar}:`))) {
+            result.batchState[key] = value;
+            continue;
+        }
+
+        // Longest match wins — character names and chat names may both contain ':',
+        // so splitting on the first separator would mis-attribute those records.
+        let bestName = null;
+        for (const name of avatarsByName.keys()) {
+            if (key.startsWith(`${name}:`) && (bestName === null || name.length > bestName.length)) {
+                bestName = name;
+            }
+        }
+
+        if (bestName === null) {
+            result.batchState[key] = value;
+            result.unmatched++;
+            continue;
+        }
+
+        const owners = avatarsByName.get(bestName);
+        if (owners.length > 1) {
+            // The exact collision the re-key fixes: this boundary can't be attributed
+            // to either card, so keep it inert rather than assign it to one of them.
+            result.batchState[key] = value;
+            result.ambiguous++;
+            continue;
+        }
+
+        result.batchState[`${owners[0]}:${key.slice(bestName.length + 1)}`] = value;
+        result.moved++;
+    }
+
+    return result;
+}
