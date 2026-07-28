@@ -798,11 +798,21 @@ async function previewConvert() {
  * Parse the selected source file and show an interactive conversion preview dialog.
  * The dialog uses the same editable-card pattern as the consolidation feature.
  */
-async function previewConversion(sourceFileUrl) {
+async function previewConversion(sourceFileUrl, avatarOverride) {
     if (inApiCall) {
         toastr.warning(t`An API call is already in progress.`, 'CharMemory');
         return;
     }
+
+    // Resolves the destination member for the save step below. When called from the
+    // Troubleshooter's per-row "Convert file format" button, avatarOverride identifies
+    // exactly which group member's file this is. When called from the Settings Modal's
+    // Convert tool (no override), destTarget stays null here and the save step falls back
+    // to getMemoryTargets()[0] — the same member populateConvertSourceDropdown() resolves
+    // the source-file list for, so source and destination stay consistent.
+    const destTarget = avatarOverride
+        ? getMemoryTargets().find(tgt => tgt.avatar === avatarOverride)
+        : null;
 
     const fileUrl = sourceFileUrl || $('#charMemory_convertSource').val();
     if (!fileUrl) {
@@ -1055,12 +1065,16 @@ async function previewConversion(sourceFileUrl) {
         return;
     }
 
-    const context = getContext();
-    const avatar = characters[context.characterId]?.avatar;
-    if (!avatar) {
+    // Resolve destination via the same target used to build the source dropdown, not
+    // characters[context.characterId] — that's undefined in group chats outside a live
+    // generation turn, so this previously always failed with "No character selected" for
+    // any group chat regardless of which member's file was actually being converted.
+    const resolvedTarget = destTarget || getMemoryTargets()[0];
+    if (!resolvedTarget) {
         toastr.error(t`No character selected.`, 'CharMemory');
         return;
     }
+    const avatar = resolvedTarget.avatar;
 
     // destType and destCustomName are captured from closure (updated by event handlers)
     let destFileName;
@@ -1071,7 +1085,11 @@ async function previewConversion(sourceFileUrl) {
             return;
         }
     } else {
-        destFileName = getMemoryFileName();
+        // resolvedTarget.fileName is already resolved per-character (see
+        // getMemoryTargets()/getMemoryFileNameForCharacter) — calling getMemoryFileName()
+        // fresh here re-derives from context.characterId, which is exactly the value
+        // that's unreliable in group chats.
+        destFileName = resolvedTarget.fileName;
     }
 
     // If destination file already exists, append
@@ -1169,9 +1187,16 @@ async function populateConvertSourceDropdown() {
     $select.find('option:not(:first)').remove();
 
     const context = getContext();
-    if (!context.characterId && context.characterId !== 0) return;
-
-    const avatar = characters[context.characterId]?.avatar;
+    // In group chats, characterId is unset outside a live generation turn — this used to
+    // return early, leaving the source dropdown permanently empty for any group chat.
+    // Fall back to the first group member (same member previewConversion's save step
+    // falls back to when called with no explicit avatar), so the Settings-Modal-driven
+    // Convert tool is at least functional for group chats instead of silently doing
+    // nothing. Converting a specific non-first member's file is still available via the
+    // Troubleshooter's per-row "Convert file format" button, which passes an explicit
+    // avatar through.
+    const hasCharacterId = context.characterId !== undefined;
+    const avatar = hasCharacterId ? characters[context.characterId]?.avatar : getMemoryTargets()[0]?.avatar;
     if (!avatar) return;
 
     ensureCharacterAttachments(avatar);
@@ -3718,7 +3743,17 @@ function captureDiagnostics(messageIndex) {
  * This mirrors what the VS extension itself does for its list operations.
  * @returns {Promise<string|null>} The model name, or null if unavailable.
  */
+// Caches a successfully-discovered KoboldCPP model name for the session. Only successes
+// are cached — failures/unavailability (server not up yet, misconfigured URL) are always
+// retried rather than cached, since those can be transient or fixed mid-session, but a
+// discovered model name realistically doesn't change mid-session. Without this, every
+// checkVectorizationStatus() call on the koboldcpp source re-does a full network
+// round trip just to re-learn the same answer — which computeHealthScore's group-member
+// fan-out (Check 3b) now calls once per group member on every health-check trigger.
+let cachedKoboldCppModel = null;
+
 async function discoverKoboldCppModel() {
+    if (cachedKoboldCppModel) return cachedKoboldCppModel;
     try {
         const vecSettings = extension_settings.vectors;
         let serverUrl;
@@ -3738,6 +3773,7 @@ async function discoverKoboldCppModel() {
         if (!response.ok) return null;
 
         const data = await response.json();
+        if (data.model) cachedKoboldCppModel = data.model;
         return data.model || null;
     } catch {
         return null;
@@ -3781,6 +3817,18 @@ async function checkVectorizationStatus(fileUrl) {
 }
 
 // ============ Injection Health Score ============
+
+// Cache for Check 3b's group-member fan-out below. computeHealthScore() can be triggered
+// frequently — the 60s health poll, twice per generation (an immediate call plus a
+// 4s-delayed recheck), on every chat load, and on drawer/tablet-panel open — and Check 3b's
+// cost scales with group size (group size - 1 network round trips per call, unbounded,
+// recurring for as long as an idle group chat's tab stays open). A short TTL cache means
+// bursts of near-simultaneous triggers (e.g. the immediate + 4s-delayed post-generation
+// checks) share one fan-out instead of doubling it, while the 60s poll still gets a
+// reasonably fresh result. This is a read-only health indicator, not data-critical, so a
+// few seconds of staleness is an acceptable trade for not hammering the local server.
+let groupHealthCache = null; // { groupId, timestamp, otherStatuses }
+const GROUP_HEALTH_CACHE_TTL_MS = 45000;
 
 /**
  * Compute the injection health score by running a series of checks
@@ -3890,6 +3938,49 @@ async function computeHealthScore() {
         const chunkLabel = vecStatus.chunks === 1 ? t`${vecStatus.chunks} chunk` : t`${vecStatus.chunks} chunks`;
         checks.push({ id: 'file_vectorized', level: 'green', label: t`File vectorization`,
             detail: t`Vectorized: ${chunkLabel} via ${via}` });
+    }
+
+    // Check 3b (group chats only): checks 2 and 3 above only ever looked at targets[0],
+    // so a group chat with a healthy first member but broken/missing files for the rest
+    // reported "all healthy" with no visibility into the other members at all.
+    if (targets.length > 1) {
+        const others = targets.slice(1);
+        const groupId = getContext().groupId;
+        let otherStatuses;
+        if (groupHealthCache && groupHealthCache.groupId === groupId && (Date.now() - groupHealthCache.timestamp) < GROUP_HEALTH_CACHE_TTL_MS) {
+            otherStatuses = groupHealthCache.otherStatuses;
+        } else {
+            otherStatuses = await Promise.all(others.map(async (tgt) => {
+                const att = findMemoryAttachmentForCharacter(tgt.avatar, tgt.fileName);
+                if (!att) return { name: tgt.name, status: 'no-file' };
+                const vs = await checkVectorizationStatus(att.url);
+                if (vs === null) return { name: tgt.name, status: 'vec-unknown' };
+                if (vs === false) return { name: tgt.name, status: 'not-vectorized' };
+                return { name: tgt.name, status: 'ok' };
+            }));
+            groupHealthCache = { groupId, timestamp: Date.now(), otherStatuses };
+        }
+        const problems = otherStatuses.filter(s => s.status !== 'ok');
+        if (problems.length > 0) {
+            const listed = problems.map(p => {
+                if (p.status === 'no-file') return t`${p.name} (no memory file yet)`;
+                if (p.status === 'not-vectorized') return t`${p.name} (not vectorized yet)`;
+                return t`${p.name} (vectorization status unknown)`;
+            }).join(', ');
+            checks.push({
+                id: 'group_other_members_status',
+                level: 'yellow',
+                label: t`Other group members: ${problems.length} of ${others.length} need attention`,
+                detail: t`${listed}. The checks above only reflect ${target.name} — each group member has its own memory file and vectorization state.`,
+            });
+        } else {
+            checks.push({
+                id: 'group_other_members_status',
+                level: 'green',
+                label: t`Other group members`,
+                detail: t`All ${others.length} other group member(s) have a vectorized memory file.`,
+            });
+        }
     }
 
     // Check 4: Chunk overlap
@@ -6813,7 +6904,11 @@ async function showTroubleshooter(initialSection = 'health') {
     $modal.on('click', '.charMemory_tsConvertBtn', function () {
         const $row = $(this).closest('.charMemory_tsFileRow');
         const url = $row.data('url');
-        previewConversion(url);
+        // Pass the row's avatar through (same field the adjacent Delete-file handler
+        // above uses) so previewConversion saves back to the correct group member
+        // instead of falling back to context.characterId, which is unreliable in
+        // group chats.
+        previewConversion(url, $row.data('avatar'));
     });
 
     // Data Bank: Import file
@@ -7044,22 +7139,29 @@ async function buildDiagnosticReport() {
         `  [${c.level.toUpperCase()}] ${c.label}: ${c.detail}`
     ).join('\n');
 
-    // Memory count
-    let memoryInfo = t`No memory file`;
-    if (target) {
-        const attachment = findMemoryAttachmentForCharacter(target.avatar, target.fileName);
-        if (attachment) {
-            try {
-                const content = await getFileAttachment(attachment.url);
-                const blocks = parseMemories(content || '');
-                const count = countMemories(blocks);
-                memoryInfo = t`${count} memories in ${blocks.length} blocks (file: ${target.fileName})`;
-            } catch {
-                memoryInfo = t`File exists but could not be read (${target.fileName})`;
-            }
-        } else {
-            memoryInfo = t`No file found (expected: ${target.fileName})`;
+    // Memory count — for group chats, report every member (this used to only look at
+    // targets[0], so a report generated to diagnose a broken member[2] would show
+    // member[0]'s file/count instead, with no visibility into the member that was
+    // actually being diagnosed).
+    const describeTargetMemories = async (tgt) => {
+        const attachment = findMemoryAttachmentForCharacter(tgt.avatar, tgt.fileName);
+        if (!attachment) return t`No file found (expected: ${tgt.fileName})`;
+        try {
+            const content = await getFileAttachment(attachment.url);
+            const blocks = parseMemories(content || '');
+            const count = countMemories(blocks);
+            return t`${count} memories in ${blocks.length} blocks (file: ${tgt.fileName})`;
+        } catch {
+            return t`File exists but could not be read (${tgt.fileName})`;
         }
+    };
+
+    let memoryInfo = t`No memory file`;
+    if (targets.length > 1) {
+        const perMember = await Promise.all(targets.map(async (tgt) => `  ${tgt.name}: ${await describeTargetMemories(tgt)}`));
+        memoryInfo = perMember.join('\n');
+    } else if (target) {
+        memoryInfo = await describeTargetMemories(target);
     }
 
     // Last injection
@@ -8802,7 +8904,12 @@ function updateAllIndicators() {
  */
 function addButtonsToExistingMessages() {
     const context = getContext();
-    if (context.characterId === undefined) return;
+    // In group chats, ST leaves characterId unset outside of a live generation turn — the
+    // same condition used correctly elsewhere in this file (e.g. extractMemoriesInner's
+    // target check). Without the !context.groupId fallback here, this returned early for
+    // every group chat and no per-message buttons (Pin, Extract-here, Set-last-extracted)
+    // ever appeared on any message in a group chat.
+    if (context.characterId === undefined && !context.groupId) return;
 
     $('#chat .mes').each(function () {
         const mesId = Number($(this).attr('mesid'));
@@ -8836,7 +8943,7 @@ function addButtonsToExistingMessages() {
  */
 function onMessageRenderedAddButtons(messageIndex) {
     const context = getContext();
-    if (context.characterId === undefined) return;
+    if (context.characterId === undefined && !context.groupId) return;
 
     const msg = context.chat[messageIndex];
     if (!msg || msg.is_system) return;
