@@ -87,6 +87,15 @@ let lastExtractionResult = null;
 let consolidationBackup = null;
 let reformatBackup = null;
 let consolidationCancelRequested = false;
+// Dedicated reentrancy flags for consolidateMemories/reformatMemories, separate from
+// inApiCall. inApiCall is only actually held during the real LLM call inside these flows
+// (set deep inside runConsolidationLLM/convertWithLLM), not during the character-picker /
+// protected-blocks confirmation popups that precede it — extending inApiCall itself across
+// those popups would block unrelated actions (like auto-extraction) for however long the
+// user takes to answer a dialog. These flags instead just stop the SAME flow (button click
+// or slash command) from being entered twice concurrently while its own popups are open.
+let consolidationInFlight = false;
+let reformatInFlight = false;
 // convertPreviewResult removed — conversion state now lives in the dialog closure
 let lastExtractionTime = 0; // session-only, resets on page load
 let isGenerating = false;
@@ -801,16 +810,27 @@ async function previewConversion(sourceFileUrl) {
         return;
     }
 
+    // Claim the lock before the first await (getFileAttachment) rather than only
+    // around the conversion call below — otherwise a second previewConversion (or
+    // any other inApiCall-guarded action) could start while this one is still
+    // reading the source file, since inApiCall was still false at that point.
+    // Released on every exit path below; re-acquired (redundantly but harmlessly)
+    // around the conversion call further down, which still releases it at the same
+    // point as before once the LLM/heuristic step finishes — the interactive preview
+    // dialog after that is intentionally NOT covered by this lock.
+    inApiCall = true;
     let sourceContent;
     try {
         sourceContent = await getFileAttachment(fileUrl);
     } catch (err) {
         console.error(LOG_PREFIX, 'Failed to read source file:', err);
         toastr.error(t`Could not read the selected file.`, 'CharMemory');
+        inApiCall = false;
         return;
     }
     if (!sourceContent) {
         toastr.error(t`Could not read the selected file.`, 'CharMemory');
+        inApiCall = false;
         return;
     }
 
@@ -1609,6 +1629,20 @@ function ensureMetadata() {
     }
     if (!chat_metadata[MODULE_NAME].injectionData) {
         chat_metadata[MODULE_NAME].injectionData = {};
+    }
+
+    // No MESSAGE_DELETED hook exists anywhere in this extension, so deleting messages
+    // never adjusts lastExtractedIndex. If enough messages are deleted that the chat
+    // shrinks past the stored pointer, extractMemories()'s totalUnprocessed calc goes
+    // negative and every future extraction silently reports "no new messages" — even
+    // after many new messages arrive — until the chat grows back past the stale value.
+    // Clamp here so any read of the pointer self-heals instead of staying stuck.
+    const chatLen = getContext().chat?.length ?? 0;
+    if (chatLen > 0 && chat_metadata[MODULE_NAME].lastExtractedIndex >= chatLen) {
+        const staleIdx = chat_metadata[MODULE_NAME].lastExtractedIndex;
+        chat_metadata[MODULE_NAME].lastExtractedIndex = chatLen - 1;
+        logActivity(`Clamped stale extraction pointer ${staleIdx} → ${chatLen - 1} (chat is shorter now — likely deleted messages)`, 'warning');
+        saveMetadataDebounced();
     }
 }
 
@@ -2926,7 +2960,30 @@ function hideExtractedChunk(chatArray, startIdx, endIdx, isActiveChat) {
  * @param {string|null} options.progressLabel Label prefix for toast messages.
  * @returns {Promise<{totalMemories: number, chunksProcessed: number, lastExtractedIndex: number}>}
  */
-async function extractMemories({
+/**
+ * Public entry point — claims the `inApiCall` reentrancy lock before any `await`
+ * (including the manual-extraction confirm popup inside extractMemoriesInner) so a
+ * fast double-trigger can't slip both calls past the guard and run concurrently.
+ * try/finally guarantees the lock releases on every exit path from the inner
+ * function, including its early returns.
+ */
+async function extractMemories(opts = {}) {
+    const noopResult = { totalMemories: 0, chunksProcessed: 0, lastExtractedIndex: opts.lastExtractedIdx ?? -1 };
+
+    if (inApiCall) {
+        console.log(LOG_PREFIX, 'Already in API call, skipping');
+        return noopResult;
+    }
+
+    inApiCall = true;
+    try {
+        return await extractMemoriesInner(opts);
+    } finally {
+        inApiCall = false;
+    }
+}
+
+async function extractMemoriesInner({
     force = false,
     endIndex = null,
     chatArray = null,
@@ -2937,11 +2994,6 @@ async function extractMemories({
     progressLabel = null,
 } = {}) {
     const noopResult = { totalMemories: 0, chunksProcessed: 0, lastExtractedIndex: lastExtractedIdx ?? -1 };
-
-    if (inApiCall) {
-        console.log(LOG_PREFIX, 'Already in API call, skipping');
-        return noopResult;
-    }
 
     if (!extension_settings[MODULE_NAME].enabled && !force) {
         return noopResult;
@@ -3043,6 +3095,24 @@ async function extractMemories({
     const savedChatId = context.chatId;
     const effectiveChatId = chatId || context.chatId || 'unknown';
 
+    // Batch extraction (isActiveChat === false) operates on an explicitly-passed
+    // chatArray/chatId and writes to extension_settings.batchState, never the live
+    // chat_metadata global, so it isn't affected by the user switching chats — always
+    // valid. For interactive extraction, re-check before EVERY chat_metadata write, not
+    // just once after the LLM call: readMemoriesForCharacter/writeMemoriesForCharacter
+    // below are also real awaits the user can switch chats during, and until now nothing
+    // re-validated context between those and the chunk/final bookkeeping writes further
+    // down — meaning a chat switch mid-write could commit this extraction's
+    // lastExtractedIndex, hidden-message state, and messagesSinceExtraction into whatever
+    // chat is NOW active instead of the one this extraction was actually for.
+    const contextStillValid = () => {
+        if (!isActiveChat) return true;
+        const newContext = getContext();
+        if (newContext.chatId !== savedChatId) return false;
+        if (!isMultiTarget && newContext.characterId !== savedCharId) return false;
+        return true;
+    };
+
     const sourceLabel = getSourceLabel();
 
     let totalMemories = 0;
@@ -3054,7 +3124,6 @@ async function extractMemories({
     const chunkExtractedByTarget = {};
 
     try {
-        inApiCall = true;
         lastExtractionTime = Date.now();
 
         for (let chunk = 0; chunk < totalChunks; chunk++) {
@@ -3149,17 +3218,13 @@ async function extractMemories({
                     logActivity(`${logLabel} Raw response:\n${result}`);
                 }
 
-                // For active chats: verify context hasn't changed mid-extraction.
-                // In group chats we only check chatId — characterId legitimately flips
-                // between members as they reply and is not a signal of a context switch.
-                if (isActiveChat) {
-                    const newContext = getContext();
-                    const chatChanged = newContext.chatId !== savedChatId;
-                    const charChanged = !isMultiTarget && newContext.characterId !== savedCharId;
-                    if (chatChanged || charChanged) {
-                        logActivity('Context changed during extraction — discarding result', 'warning');
-                        return { totalMemories, chunksProcessed, lastExtractedIndex: currentLastExtracted };
-                    }
+                // Verify context hasn't changed mid-extraction (no-op for batch, see
+                // contextStillValid above). In group chats we only check chatId —
+                // characterId legitimately flips between members as they reply and is not
+                // a signal of a context switch.
+                if (!contextStillValid()) {
+                    logActivity('Context changed during extraction — discarding result', 'warning');
+                    return { totalMemories, chunksProcessed, lastExtractedIndex: currentLastExtracted };
                 }
 
                 let cleanResult = removeReasoningFromString(result);
@@ -3245,6 +3310,17 @@ async function extractMemories({
             currentLastExtracted = chunkEndIndex !== -1 ? chunkEndIndex : effectiveEnd - 1;
 
             if (isActiveChat) {
+                if (!contextStillValid()) {
+                    // The active chat/character changed while readMemoriesForCharacter/
+                    // writeMemoriesForCharacter above were in flight. The per-target memory
+                    // files are already safely saved (character-keyed, unaffected by which
+                    // chat is active), but writing lastExtractedIndex/hiding messages here
+                    // would corrupt whichever chat is NOW active instead of the one this
+                    // extraction was actually for. Stop rather than keep processing chunks
+                    // for a chat the user has already left.
+                    logActivity('Chat/character changed mid-extraction — stopping without updating extraction-pointer bookkeeping for the original (now inactive) chat', 'warning');
+                    break;
+                }
                 ensureMetadata();
                 chat_metadata[MODULE_NAME].lastExtractedIndex = currentLastExtracted;
                 saveMetadataDebounced();
@@ -3268,8 +3344,9 @@ async function extractMemories({
             }
         }
 
-        // Final status updates
-        if (isActiveChat) {
+        // Final status updates — skip if the chat/character changed since this extraction
+        // started (see contextStillValid above); same reasoning as the per-chunk guard.
+        if (isActiveChat && contextStillValid()) {
             ensureMetadata();
             chat_metadata[MODULE_NAME].messagesSinceExtraction = 0;
             saveMetadataDebounced();
@@ -3301,8 +3378,6 @@ async function extractMemories({
         logActivity(`Extraction failed: ${err.message}`, 'error');
         toastr.error(t`Memory extraction failed. Check console for details.`, 'CharMemory');
         return { totalMemories, chunksProcessed, lastExtractedIndex: currentLastExtracted };
-    } finally {
-        inApiCall = false;
     }
 }
 
@@ -3368,6 +3443,13 @@ async function onChatChanged() {
     const chatId = context.chatId || '(none)';
     const charName = getCharacterName() || '(none)';
     const msgCount = context.chat ? context.chat.length : 0;
+    // Used below to re-validate before writes that follow a real await (readMemoriesForCharacter
+    // is a network round trip) — the user can switch chats again while this invocation is
+    // still running, and a stale-metadata-reset write after that point would target the
+    // wrong chat's metadata object.
+    const savedChatId = context.chatId;
+    const savedGroupId = context.groupId;
+    const stillSameChat = () => getContext().chatId === savedChatId && getContext().groupId === savedGroupId;
 
     logActivity(`Chat changed: "${charName}" chat=${chatId} (${msgCount} messages)`);
 
@@ -3421,10 +3503,14 @@ async function onChatChanged() {
                         break;
                     }
                 }
-                if (!hasAnyMemories) {
+                if (hasAnyMemories) {
+                    // no reset needed
+                } else if (stillSameChat()) {
                     meta.lastExtractedIndex = -1;
                     saveMetadataDebounced();
                     logActivity(`Auto-reset lastExtractedIndex: was ${lastIdx} but memory file is empty — stale metadata`, 'warning');
+                } else {
+                    logActivity('Skipped stale-metadata reset — chat changed while checking memory files', 'warning');
                 }
             }
         } catch { /* ignore read errors */ }
@@ -7674,12 +7760,30 @@ async function showBlockSelectionModal(allBlocks, initialEligible, charName) {
     return result;
 }
 
+/**
+ * Public entry point — claims consolidationInFlight immediately (before the
+ * character-picker/protected-blocks popups below, unlike the old single function which
+ * left a window where a second click or the /consolidate-memories slash command could
+ * start a fully concurrent run). try/finally releases it on every exit path.
+ */
 async function consolidateMemories() {
     if (inApiCall) {
         toastr.warning(t`An API call is already in progress.`, 'CharMemory');
         return;
     }
+    if (consolidationInFlight) {
+        toastr.warning(t`Consolidation is already in progress.`, 'CharMemory');
+        return;
+    }
+    consolidationInFlight = true;
+    try {
+        return await consolidateMemoriesInner();
+    } finally {
+        consolidationInFlight = false;
+    }
+}
 
+async function consolidateMemoriesInner() {
     const targets = getMemoryTargets();
     if (targets.length === 0) {
         toastr.warning(t`No character selected.`, 'CharMemory');
@@ -8227,12 +8331,30 @@ async function showReformatPreview(originalBlocks, reformattedBlocks, charName, 
  * Main reformat flow: read memories, send through LLM conversion prompt,
  * show interactive preview, save on confirmation with backup for undo.
  */
+/**
+ * Public entry point — claims reformatInFlight immediately, before the character-picker
+ * popup below, so a second click or entry point can't start a fully concurrent run while
+ * this one is still waiting on the user to answer that popup. try/finally releases it on
+ * every exit path.
+ */
 async function reformatMemories() {
     if (inApiCall) {
         toastr.warning(t`An API call is already in progress.`, 'CharMemory');
         return;
     }
+    if (reformatInFlight) {
+        toastr.warning(t`Reformat is already in progress.`, 'CharMemory');
+        return;
+    }
+    reformatInFlight = true;
+    try {
+        return await reformatMemoriesInner();
+    } finally {
+        reformatInFlight = false;
+    }
+}
 
+async function reformatMemoriesInner() {
     const targets = getMemoryTargets();
     if (targets.length === 0) {
         toastr.warning(t`No character selected.`, 'CharMemory');
