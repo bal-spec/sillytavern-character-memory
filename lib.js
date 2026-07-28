@@ -9,11 +9,24 @@
 // ─── XML attribute escaping ────────────────────────────────────────────
 
 export function escapeAttr(text) {
-    return String(text).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+    // Escaping < and > (not just & and ") matters here specifically because
+    // parseMemories()'s <memory chat="..."> tag regex treats the first unescaped >
+    // after <memory as the end of the opening tag — a chat/theme label containing a
+    // literal > (fully user-editable free text, also sometimes LLM-generated during
+    // consolidation) would otherwise corrupt the tag it's embedded in on the next parse.
+    return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
 }
 
 export function unescapeAttr(text) {
-    return String(text).replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+    return String(text)
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&amp;/g, '&');
 }
 
 // ─── HTML escaping ─────────────────────────────────────────────────────

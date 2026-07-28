@@ -702,11 +702,14 @@ async function convertWithLLM(content, charName) {
 
     const blocks = parseMemories(response);
     if (blocks.length === 0) {
-        // LLM may have returned plain bullets without <memory> tags — wrap them
-        const lines = response.split('\n').map(l => l.trim()).filter(l => l.startsWith('- '));
+        // LLM may have returned plain bullets without <memory> tags — wrap them.
+        // Accept both "- " and "* " markers (detectFileFormat elsewhere in this codebase
+        // already treats both as valid bullet styles; this fallback only recognized "- ",
+        // so a "* "-bulleted response was discarded entirely as unparseable).
+        const lines = response.split('\n').map(l => l.trim()).filter(l => /^[-*]\s/.test(l));
         if (lines.length > 0) {
             return {
-                blocks: [{ chat: 'imported', date: getTimestamp(), bullets: lines.map(l => l.slice(2).trim()) }],
+                blocks: [{ chat: 'imported', date: getTimestamp(), bullets: lines.map(l => l.replace(/^[-*]\s/, '').trim()) }],
                 warnings: ['LLM did not use <memory> tags — bullets wrapped automatically.'],
             };
         }
@@ -968,16 +971,25 @@ async function previewConversion(sourceFileUrl) {
         $('#charMemory_rerunConversion').prop('disabled', false);
         $('#charMemory_convEditorPane').removeClass('charMemory_editorDisabled');
 
-        if (newResult && newResult.blocks.length > 0) {
-            rerunBackups.push(backupBlocks);
-            $('#charMemory_undoConvRerun').prop('disabled', false);
-            editor.replaceAll(newResult.blocks);
-            refreshEditor();
+        if (newResult) {
+            // Show warnings unconditionally (previously gated behind blocks.length > 0,
+            // unlike the initial conversion call above) — a re-run that legitimately
+            // returns 0 blocks with an explanatory warning (e.g. "LLM response could not
+            // be parsed into memories") was silently swallowing that warning, leaving the
+            // dialog looking like the re-run button just did nothing.
             for (const w of newResult.warnings) {
                 toastr.warning(w, 'CharMemory');
             }
-            const newMethod = llmChecked && format !== 'memory_tags' ? 'LLM' : 'Heuristic';
-            $('#charMemory_convMethod').text(newMethod);
+            if (newResult.blocks.length > 0) {
+                rerunBackups.push(backupBlocks);
+                $('#charMemory_undoConvRerun').prop('disabled', false);
+                editor.replaceAll(newResult.blocks);
+                refreshEditor();
+                const newMethod = llmChecked && format !== 'memory_tags' ? 'LLM' : 'Heuristic';
+                $('#charMemory_convMethod').text(newMethod);
+            } else if (newResult.warnings.length === 0) {
+                toastr.warning(t`Re-run produced no memories. The editor is unchanged.`, 'CharMemory');
+            }
         }
     });
 
@@ -1047,6 +1059,22 @@ async function previewConversion(sourceFileUrl) {
     let existingBlocks = [];
     if (existingContent && existingContent.trim()) {
         existingBlocks = parseMemories(existingContent);
+    }
+
+    // readMemoriesForCharacter already auto-migrates recognized legacy formats, so
+    // reaching this with real existing content but zero parsed blocks means the file
+    // isn't in a format this extension recognizes at all (e.g. hand-edited, malformed
+    // <memory> tags). Merging below would silently drop that content on the write —
+    // confirm with the user before overwriting instead of doing it silently.
+    if (existingContent && existingContent.trim() && existingBlocks.length === 0) {
+        const overwriteAnyway = await callGenericPopup(
+            t`"${destFileName}" already has content that couldn't be parsed as CharMemory blocks — saving would replace it instead of appending to it. Overwrite anyway?`,
+            POPUP_TYPE.CONFIRM,
+        );
+        if (!overwriteAnyway) {
+            toastr.info(t`Save cancelled — existing file left untouched.`, 'CharMemory');
+            return;
+        }
     }
 
     const allBlocks = [...existingBlocks, ...cleanBlocks];
@@ -1251,7 +1279,7 @@ function getFilteredNanoGptModels(models, providerSettings) {
         if (s.nanogptFilterSubscription && m.subscription !== true) return false;
         if (s.nanogptFilterOpenSource && m.isOpenSource !== true) return false;
         if (s.nanogptFilterRoleplay && m.category !== 'Roleplay/storytelling models') return false;
-        if (s.nanogptFilterReasoning && !m.capabilities.includes('reasoning')) return false;
+        if (s.nanogptFilterReasoning && !(m.capabilities || []).includes('reasoning')) return false;
         return true;
     });
 }
@@ -1680,10 +1708,20 @@ function updateDashboardDiagSummary() {
         html += `</div>`;
 
         if (result.checks) {
-            const issues = result.checks.filter(c => c.status !== 'pass');
+            // computeHealthScore's checks only ever set `.level` ('green'/'yellow'/'red'),
+            // never `.status` — `c.status !== 'pass'` was always true regardless of health,
+            // so every check (including healthy ones) rendered here on every call.
+            const issues = result.checks.filter(c => c.level !== 'green');
             if (issues.length > 0) {
                 html += `<div style="font-size:0.8em;opacity:0.7;margin-top:2px;">`;
-                html += issues.slice(0, 2).map(c => `${c.label}: ${c.detail || c.status}`).join('<br>');
+                // c.label/c.detail can carry a user-typed custom Data Bank filename
+                // (extension_settings.charMemory.fileName / characterFileNames[avatar]) or
+                // an LLM-influenced value — unlike every other renderer of this same
+                // computeHealthScore() data (renderHealthDiagnosticsCard, the Troubleshooter
+                // health list, its re-run handler, the touch-drawer health popup), this one
+                // was missing escapeHtml(), making it a stored-HTML-injection sink reachable
+                // on every chat switch and every 60s health poll.
+                html += issues.slice(0, 2).map(c => `${escapeHtml(c.label)}: ${escapeHtml(c.detail || c.level)}`).join('<br>');
                 if (issues.length > 2) html += `<br>...and ${issues.length - 2} more`;
                 html += `</div>`;
             }
@@ -1726,7 +1764,11 @@ function startCooldownTimer() {
 function getCharacterName() {
     const context = getContext();
     if (context.characterId === undefined) return null;
-    return context.name2 || characters[this_chid]?.name || 'Character';
+    // Fall back to context.characterId, not the module-level this_chid global — they're
+    // normally the same, but reading through context keeps this consistent with the
+    // undefined-check above and avoids relying on this_chid staying in sync in a fast
+    // character-switch.
+    return context.name2 || characters[context.characterId]?.name || 'Character';
 }
 
 // ============ Group Chat Helpers ============
@@ -2728,8 +2770,11 @@ function buildExtractionPrompt(target, existingMemories, recentMessages, allTarg
     if (isGroup) {
         const context = getContext();
         const userName = context.name1 || 'User';
+        // Exclude by identity (charIndex), not name — two active group members sharing a
+        // display name would otherwise both get excluded from each other's participant
+        // list instead of just the current target, under-listing who's actually present.
         const otherNames = allTargets
-            .filter(t => t.name !== charName)
+            .filter(t => t.charIndex !== target.charIndex)
             .map(t => t.name);
         otherNames.unshift(`${userName} (user)`);
         participants = otherNames.join(', ');
@@ -8316,12 +8361,14 @@ function markChatAsFullyExtracted() {
  * extraction pointers live in each chat's metadata and can only be reset when that chat is open.
  */
 function resetBatchProgress() {
-    const charName = getCharacterName();
-    if (!charName || !extension_settings[MODULE_NAME].batchState) {
+    // Keyed by avatar to match runBatchExtraction's batchStateKey — see the comment there
+    // for why display name (getCharacterName()) would collide across duplicate-named cards.
+    const avatar = characters[this_chid]?.avatar;
+    if (!avatar || !extension_settings[MODULE_NAME].batchState) {
         toastr.info(t`No batch progress to clear.`, 'CharMemory');
         return;
     }
-    const prefix = `${charName}:`;
+    const prefix = `${avatar}:`;
     let count = 0;
     for (const key of Object.keys(extension_settings[MODULE_NAME].batchState)) {
         if (key.startsWith(prefix)) {
@@ -8347,10 +8394,11 @@ async function clearAllMemories() {
     chat_metadata[MODULE_NAME].messagesSinceExtraction = 0;
     saveMetadataDebounced();
 
-    // Also clear batch state for all chats of this character
-    const charName = getCharacterName();
-    if (charName && extension_settings[MODULE_NAME].batchState) {
-        const prefix = `${charName}:`;
+    // Also clear batch state for all chats of this character (keyed by avatar — see
+    // resetBatchProgress/runBatchExtraction for why display name would collide)
+    const avatar = characters[this_chid]?.avatar;
+    if (avatar && extension_settings[MODULE_NAME].batchState) {
+        const prefix = `${avatar}:`;
         for (const key of Object.keys(extension_settings[MODULE_NAME].batchState)) {
             if (key.startsWith(prefix)) {
                 delete extension_settings[MODULE_NAME].batchState[key];
@@ -9414,8 +9462,13 @@ async function runBatchExtraction() {
             continue;
         }
 
-        // Get batch extraction state for this chat
-        const batchStateKey = `${getCharacterName()}:${chatName}`;
+        // Get batch extraction state for this chat. Keyed by avatar, not display name —
+        // SillyTavern doesn't enforce unique character names, so two cards sharing a
+        // display name (duplicate imports, common persona names) would otherwise collide
+        // on the same key: one character's batch progress would silently become the
+        // other's "already processed" boundary, permanently skipping messages, and
+        // clearing one character's batch progress would also wipe the other's.
+        const batchStateKey = `${characters[this_chid]?.avatar}:${chatName}`;
         if (!extension_settings[MODULE_NAME].batchState) {
             extension_settings[MODULE_NAME].batchState = {};
         }

@@ -170,6 +170,17 @@ describe('serializeMemories', () => {
         expect(parsed).toEqual(blocks);
     });
 
+    it('round-trips a theme label containing > without corrupting the tag', () => {
+        // Before escapeAttr escaped < and >, a literal > in the chat/theme label (fully
+        // user-editable free text, also sometimes LLM-generated during consolidation)
+        // ended the <memory chat="..."> opening tag early, corrupting the block's
+        // chat/date on the next parse.
+        const withAngleBracket = [{ chat: 'Trust > Betrayal', date: '2024', bullets: ['test'] }];
+        const serialized = serializeMemories(withAngleBracket);
+        const parsed = parseMemories(serialized);
+        expect(parsed).toEqual(withAngleBracket);
+    });
+
     it('round-trips with metadata through parseMemories', () => {
         const fmt = { boundary: 'bullet', separator: '\n\n', metadata: true };
         const serialized = serializeMemories(blocks, fmt);
