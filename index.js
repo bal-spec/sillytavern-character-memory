@@ -1983,20 +1983,34 @@ async function readMemoriesForCharacter(avatar, fileName) {
 async function writeMemoriesForCharacter(content, avatar, fileName) {
     ensureCharacterAttachments(avatar);
 
-    // Delete existing file if present
-    const existing = findMemoryAttachmentForCharacter(avatar, fileName);
-    if (existing) {
-        await deleteFileFromServer(existing.url, true);
-        extension_settings.character_attachments[avatar] =
-            extension_settings.character_attachments[avatar].filter(a => a.url !== existing.url);
-    }
-
-    // Upload new file
+    // Upload the new content BEFORE removing the old file. Uploading first means a
+    // failed upload (network blip, server error) leaves the previous memories intact
+    // instead of being lost in the gap between deleting the old file and an upload
+    // that never lands.
     const base64Data = convertTextToBase64(content);
     const slug = getStringHash(fileName);
     const uniqueFileName = `${Date.now()}_${slug}.txt`;
     const fileUrl = await uploadFileAttachment(uniqueFileName, base64Data);
     if (!fileUrl) return;
+
+    // Now that the new file is confirmed uploaded, remove the old one. Best-effort: if
+    // the delete fails (network blip, server error, or the record already gone
+    // server-side), don't let that exception skip the push()/saveSettingsDebounced()
+    // below - the new content already landed successfully, so failing here would orphan
+    // that upload (never linked into extension_settings, findMemoryAttachmentForCharacter
+    // keeps returning the OLD attachment on every future read) purely because a cleanup
+    // step that isn't actually required for correctness failed. An orphaned old file
+    // lingering on the server is a much smaller problem than that.
+    const existing = findMemoryAttachmentForCharacter(avatar, fileName);
+    if (existing) {
+        try {
+            await deleteFileFromServer(existing.url, true);
+        } catch (err) {
+            console.warn(LOG_PREFIX, `Failed to delete previous memory file for ${avatar} (leaving it orphaned on the server):`, err);
+        }
+        extension_settings.character_attachments[avatar] =
+            extension_settings.character_attachments[avatar].filter(a => a.url !== existing.url);
+    }
 
     extension_settings.character_attachments[avatar].push({
         url: fileUrl,
@@ -2005,6 +2019,41 @@ async function writeMemoriesForCharacter(content, avatar, fileName) {
         created: Date.now(),
     });
     saveSettingsDebounced();
+}
+
+/**
+ * Guard against the "lost update" race in editor-based save flows: a dialog reads a
+ * memory file's content once, stays open for a while as the user edits (Memory Manager,
+ * Consolidation, Reformat, the Troubleshooter's file editor all do this), and on Save
+ * writes the edited result straight back with no re-check. If a concurrent write lands on
+ * the same file while the dialog is open — most realistically an auto-extraction, which
+ * only checks the inApiCall lock and the extraction interval, not whether any of these
+ * dialogs are open — that write is silently clobbered when the stale snapshot is saved.
+ *
+ * This doesn't attempt a full merge (the edited result may have deleted/reordered/
+ * reworded blocks in ways that make an automatic three-way merge unreliable) — it detects
+ * the conflict and asks the user, rather than overwriting silently.
+ *
+ * @param {string} avatar Character avatar filename.
+ * @param {string} fileName Memory filename.
+ * @param {string} originalContent The raw content read when the dialog was opened.
+ * @returns {Promise<boolean>} true if it's safe to proceed with the write (nothing changed,
+ *   the user confirmed anyway, or the check itself failed and we fail open rather than
+ *   blocking a save on an unrelated read error).
+ */
+async function confirmOverwriteIfChangedSinceSnapshot(avatar, fileName, originalContent) {
+    let currentContent;
+    try {
+        currentContent = await readMemoriesForCharacter(avatar, fileName);
+    } catch {
+        return true;
+    }
+    if ((currentContent || '') === (originalContent || '')) return true;
+
+    return !!(await callGenericPopup(
+        t`This memory file has changed since you started editing — most likely a new extraction ran in the background while this dialog was open. Saving now will overwrite those changes with what you see here. Save anyway?`,
+        POPUP_TYPE.CONFIRM,
+    ));
 }
 
 /**
@@ -6552,6 +6601,8 @@ async function showTroubleshooter(initialSection = 'health') {
 
                 if (cleanBlocks.length === 0) {
                     toastr.warning(t`No memories to save.`, 'CharMemory');
+                } else if (!(await confirmOverwriteIfChangedSinceSnapshot(avatar, name, content))) {
+                    toastr.info(t`Save cancelled.`, 'CharMemory');
                 } else {
                     await writeMemoriesForCharacter(serializeMemories(cleanBlocks), avatar, name);
                     toastr.success(t`Saved ${countMemories(cleanBlocks)} memories to ${name}.`, 'CharMemory');
@@ -7079,6 +7130,11 @@ async function showMemoryManager() {
         return;
     }
 
+    if (!(await confirmOverwriteIfChangedSinceSnapshot(target.avatar, target.fileName, content))) {
+        toastr.info(t`Save cancelled.`, 'CharMemory');
+        return;
+    }
+
     await writeMemoriesForCharacter(serializeMemories(cleanBlocks), target.avatar, target.fileName);
     const savedCount = countMemories(cleanBlocks);
     toastr.success(t`Saved ${savedCount} memories.`, 'CharMemory');
@@ -7471,21 +7527,32 @@ async function showBlockSelectionModal(allBlocks, initialEligible, charName) {
         <div class="charMemory_blockPickerList">${rows}</div>
     </div>`;
 
-    // Wire master checkboxes + live count once the popup is in the DOM
+    // Track the checked set in JS as the source of truth. callGenericPopup's DOM is torn
+    // down as part of resolving its promise, so a DOM query after `await` below always
+    // comes back empty — the same root cause as issue #14. Every place that can change the
+    // selection (individual checkboxes, Select all/none) updates this Set directly instead.
+    const selected = new Set(initialEligible);
+
     const updateCount = () => {
-        const checked = $('.charMemory_blockPickerCheck:checked').length;
-        $('#charMemory_blockPickerCount').text(t`${checked} of ${allBlocks.length} selected`);
+        $('#charMemory_blockPickerCount').text(t`${selected.size} of ${allBlocks.length} selected`);
         // Disable "Run consolidation" when fewer than 2 blocks are selected —
         // the downstream pipeline requires a minimum of 2.
-        $('.dialogue_popup_ok').prop('disabled', checked < 2);
+        $('.dialogue_popup_ok').prop('disabled', selected.size < 2);
     };
-    $(document).on('change.blockPicker', '.charMemory_blockPickerCheck', updateCount);
+    $(document).on('change.blockPicker', '.charMemory_blockPickerCheck', function () {
+        const index = Number($(this).data('index'));
+        if ($(this).prop('checked')) selected.add(index);
+        else selected.delete(index);
+        updateCount();
+    });
     $(document).on('click.blockPicker', '#charMemory_blockPickerAll', () => {
         $('.charMemory_blockPickerCheck').prop('checked', true);
+        allBlocks.forEach((_, i) => selected.add(i));
         updateCount();
     });
     $(document).on('click.blockPicker', '#charMemory_blockPickerNone', () => {
         $('.charMemory_blockPickerCheck').prop('checked', false);
+        selected.clear();
         updateCount();
     });
 
@@ -7499,14 +7566,7 @@ async function showBlockSelectionModal(allBlocks, initialEligible, charName) {
         cancelButton: t`Cancel`,
     });
 
-    // Read selection before teardown
-    let result = null;
-    if (ok) {
-        result = new Set();
-        $('.charMemory_blockPickerCheck:checked').each(function () {
-            result.add(Number($(this).data('index')));
-        });
-    }
+    const result = ok ? new Set(selected) : null;
 
     // Teardown
     $(document).off('change.blockPicker');
@@ -7847,6 +7907,11 @@ async function consolidateMemories() {
         return;
     }
 
+    if (!(await confirmOverwriteIfChangedSinceSnapshot(target.avatar, target.fileName, content))) {
+        toastr.info(t`Save cancelled.`, 'CharMemory');
+        return;
+    }
+
     consolidationBackup = { content, avatar: target.avatar, fileName: target.fileName };
     await writeMemoriesForCharacter(serializeMemories(cleanBlocks), target.avatar, target.fileName);
 
@@ -8141,6 +8206,11 @@ async function reformatMemories() {
     if (!editedBlocks) {
         logActivity('Reformat cancelled by user');
         toastr.info(t`Reformat cancelled.`, 'CharMemory');
+        return;
+    }
+
+    if (!(await confirmOverwriteIfChangedSinceSnapshot(target.avatar, target.fileName, content))) {
+        toastr.info(t`Save cancelled.`, 'CharMemory');
         return;
     }
 
