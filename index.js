@@ -2274,7 +2274,7 @@ function resolveBaseUrl(preset, providerSettings) {
  * @param {object} preset Provider preset.
  * @returns {Promise<string>} The assistant's response content.
  */
-async function generateOpenAICompatibleResponse(baseUrl, apiKey, model, messages, maxTokens, preset) {
+async function generateOpenAICompatibleResponse(baseUrl, apiKey, model, messages, maxTokens, preset, abortSignal) {
     const verbose = extension_settings[MODULE_NAME].verboseLogging;
 
     // Route through ST server proxy if provider requires it (CORS bypass)
@@ -2295,6 +2295,7 @@ async function generateOpenAICompatibleResponse(baseUrl, apiKey, model, messages
             method: 'POST',
             headers: getRequestHeaders(),
             body: JSON.stringify(proxyBody),
+            signal: abortSignal,
         });
 
         if (!response.ok) {
@@ -2329,6 +2330,14 @@ async function generateOpenAICompatibleResponse(baseUrl, apiKey, model, messages
             throw new Error(`${preset.name || 'API'} error (via proxy): ${errorMsg}`);
         }
 
+        // A 200 with no choices/message at all is an unexpected shape, not a legitimate
+        // empty completion — some providers return this for malformed requests instead
+        // of an HTTP error. Surface it instead of silently returning '' (which reads
+        // upstream as "no new memories" and hides a real API problem).
+        if (!Array.isArray(data.choices) || data.choices.length === 0 || !msg) {
+            throw new Error(`${preset.name || 'API'} returned an unexpected response shape (no choices/message in body).`);
+        }
+
         // Fall back to reasoning_content for models that use thinking tokens
         return msg?.content || msg?.reasoning_content || '';
     }
@@ -2343,6 +2352,7 @@ async function generateOpenAICompatibleResponse(baseUrl, apiKey, model, messages
             max_tokens: maxTokens,
             temperature: 0.3,
         }),
+        signal: abortSignal,
     });
 
     if (!response.ok) {
@@ -2366,6 +2376,13 @@ async function generateOpenAICompatibleResponse(baseUrl, apiKey, model, messages
         logActivity(`Generate (direct) HTTP ${response.status}, model=${data.model || model}, finish=${data.choices?.[0]?.finish_reason || '?'}, ${tokens}${hasReasoning}`);
     }
 
+    // A 200 with no choices/message at all is an unexpected shape, not a legitimate
+    // empty completion. Surface it instead of silently returning '' (which reads
+    // upstream as "no new memories" and hides a real API problem).
+    if (!Array.isArray(data.choices) || data.choices.length === 0 || !msg) {
+        throw new Error(`${preset.name || 'API'} returned an unexpected response shape (no choices/message in body).`);
+    }
+
     // Fall back to reasoning_content for models that use thinking tokens
     return msg?.content || msg?.reasoning_content || '';
 }
@@ -2380,7 +2397,7 @@ async function generateOpenAICompatibleResponse(baseUrl, apiKey, model, messages
  * @param {object} preset Provider preset.
  * @returns {Promise<string>} The assistant's response content.
  */
-async function generateAnthropicResponse(baseUrl, apiKey, model, messages, maxTokens, preset) {
+async function generateAnthropicResponse(baseUrl, apiKey, model, messages, maxTokens, preset, abortSignal) {
     const headers = buildProviderHeaders(preset, apiKey);
 
     // Extract system message and convert to Anthropic format
@@ -2412,6 +2429,7 @@ async function generateAnthropicResponse(baseUrl, apiKey, model, messages, maxTo
         method: 'POST',
         headers,
         body: JSON.stringify(body),
+        signal: abortSignal,
     });
 
     if (!response.ok) {
@@ -2432,7 +2450,14 @@ async function generateAnthropicResponse(baseUrl, apiKey, model, messages, maxTo
         logActivity(`Generate (Anthropic) HTTP ${response.status}, model=${data.model || model}, stop=${data.stop_reason || '?'}, ${tokens}`);
     }
 
-    return (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('') || '';
+    // A 200 with no content array at all is an unexpected shape, not a legitimate
+    // empty completion. Surface it instead of silently returning '' (which reads
+    // upstream as "no new memories" and hides a real API problem).
+    if (!Array.isArray(data.content)) {
+        throw new Error('Anthropic returned an unexpected response shape (no content array in body).');
+    }
+
+    return data.content.filter(b => b.type === 'text').map(b => b.text).join('') || '';
 }
 
 /**
@@ -2441,7 +2466,7 @@ async function generateAnthropicResponse(baseUrl, apiKey, model, messages, maxTo
  * @param {number} maxTokens Max tokens for response.
  * @returns {Promise<string>} The assistant's response content.
  */
-async function generateProviderResponse(messages, maxTokens) {
+async function generateProviderResponse(messages, maxTokens, abortSignal) {
     const providerKey = extension_settings[MODULE_NAME].selectedProvider;
     const preset = PROVIDER_PRESETS[providerKey];
     if (!preset) throw new Error(`Unknown provider: ${providerKey}`);
@@ -2462,9 +2487,9 @@ async function generateProviderResponse(messages, maxTokens) {
     }
 
     if (preset.isAnthropic) {
-        return generateAnthropicResponse(baseUrl, apiKey, model, messages, maxTokens, preset);
+        return generateAnthropicResponse(baseUrl, apiKey, model, messages, maxTokens, preset, abortSignal);
     }
-    return generateOpenAICompatibleResponse(baseUrl, apiKey, model, messages, maxTokens, preset);
+    return generateOpenAICompatibleResponse(baseUrl, apiKey, model, messages, maxTokens, preset, abortSignal);
 }
 
 /**
@@ -2548,7 +2573,7 @@ async function generateProfileResponse(userPrompt, maxTokens, defaultSystemPromp
  * @param {string} [defaultSystemPrompt='You are a memory extraction assistant.'] Fallback system prompt.
  * @returns {Promise<string>} The LLM response.
  */
-async function callLLM(userPrompt, maxTokens, defaultSystemPrompt = 'You are a memory extraction assistant.') {
+async function callLLM(userPrompt, maxTokens, defaultSystemPrompt = 'You are a memory extraction assistant.', abortSignal) {
     const source = extension_settings[MODULE_NAME].source;
     if (source === EXTRACTION_SOURCE.PROVIDER) {
         const providerSettings = getProviderSettings(extension_settings[MODULE_NAME].selectedProvider);
@@ -2556,6 +2581,7 @@ async function callLLM(userPrompt, maxTokens, defaultSystemPrompt = 'You are a m
         return generateProviderResponse(
             [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
             maxTokens,
+            abortSignal,
         );
     }
     if (source === EXTRACTION_SOURCE.PROFILE) {
@@ -3095,8 +3121,15 @@ async function extractMemories({
                 const llmStartTime = Date.now();
                 let result;
                 try {
-                    result = await callLLM(prompt, extension_settings[MODULE_NAME].responseLength, 'You are a memory extraction assistant.');
+                    result = await callLLM(prompt, extension_settings[MODULE_NAME].responseLength, 'You are a memory extraction assistant.', abortSignal);
                 } catch (llmErr) {
+                    if (llmErr.name === 'AbortError' || abortSignal?.aborted) {
+                        // Extraction was stopped mid-request — treat like the abort checks
+                        // elsewhere in this loop (a clean stop), not an LLM failure.
+                        logActivity(`${logLabel} LLM call aborted (extraction stopped)`, 'warning');
+                        chunkAborted = true;
+                        break;
+                    }
                     if (isMultiTarget) {
                         logActivity(`${logLabel} LLM error: ${llmErr.message} — aborting chunk to preserve extraction pointer`, 'error');
                         toastr.error(t`Extraction failed for ${target.name}: ${llmErr.message}`, 'CharMemory');
@@ -3170,15 +3203,25 @@ async function extractMemories({
                         .map(l => l.slice(2).trim())
                         .filter(Boolean);
 
+                    if (bullets.length === 0) {
+                        // No "- " bulleted lines in this entry — the extraction prompt
+                        // requires bullet format, so unbulleted prose here is most likely
+                        // a refusal, meta-commentary, or malformed output rather than a
+                        // real memory. Previously this raw text was saved verbatim as a
+                        // single bullet, which could persist something like "I can't help
+                        // with that" as if it were an extracted fact. Skip it instead.
+                        logActivity(`${logLabel} Skipped un-bulleted LLM output (likely a refusal or malformed response): "${truncateText(entry, 200)}"`, 'warning');
+                        continue;
+                    }
+
                     // Split blocks with multiple topic tags into separate blocks
                     const bulletGroups = splitMultiTagBullets(bullets);
                     if (bulletGroups.length > 1) {
                         console.log(LOG_PREFIX, `Split multi-tag block into ${bulletGroups.length} separate blocks`);
                     }
                     for (const group of bulletGroups) {
-                        const finalBullets = group.length > 0 ? group : [entry];
-                        existing.push({ chat: effectiveChatId, date: timestamp, bullets: finalBullets });
-                        newBulletCount += finalBullets.length;
+                        existing.push({ chat: effectiveChatId, date: timestamp, bullets: group });
+                        newBulletCount += group.length;
                     }
                 }
 
@@ -4598,9 +4641,12 @@ async function showSettingsModal() {
         renderModalModelList($('#cm_modal_modelSearch').val(), cachedNanoGptModels || []);
     });
 
-    $('#cm_modal_refreshModels').off('click').on('click', function () {
+    $('#cm_modal_refreshModels').off('click').on('click', async function () {
         const pk = extension_settings[MODULE_NAME].selectedProvider;
-        populateProviderModels(pk, true).then(async () => {
+        const $btn = $(this);
+        $btn.prop('disabled', true);
+        try {
+            await populateProviderModels(pk, true);
             const ps = getProviderSettings(pk);
             const match = currentModelList.find(m => m.id === ps.model);
             $('#cm_modal_providerModel').val(ps.model || '');
@@ -4608,7 +4654,16 @@ async function showSettingsModal() {
             const rawModels = pk === 'nanogpt' ? (cachedNanoGptModels || []) : [];
             $('#cm_modal_modelList').show();
             renderModalModelList('', rawModels);
-        });
+        } catch (err) {
+            // populateProviderModels/fetchProviderModels can reject on a network-level
+            // failure (not just a non-2xx status) - this handler previously had no
+            // .catch() at all, so that rejection became a silently-swallowed unhandled
+            // promise rejection with zero user-facing feedback. The sibling Connect
+            // button already handles this identically.
+            toastr.error(t`Failed to refresh models: ${err.message || 'Unknown error'}`, 'CharMemory');
+        } finally {
+            $btn.prop('disabled', false);
+        }
     });
 
     $('#cm_modal_modelInput').off('input').on('input', function () {
@@ -7397,7 +7452,7 @@ Output ONLY <memory> blocks. No headers, no commentary, no extra text.`;
     return prompt;
 }
 
-async function runConsolidationLLM(memories, charName) {
+async function runConsolidationLLM(memories, charName, { rethrow = false } = {}) {
     let memoriesText = memories.map((b, i) =>
         `[Block ${i + 1}]\n${b.bullets.map(bullet => `- ${bullet}`).join('\n')}`,
     ).join('\n\n');
@@ -7454,17 +7509,27 @@ async function runConsolidationLLM(memories, charName) {
         // Parse into memory format, then serialize back to plain text for the editor
         const timestamp = getTimestamp();
 
-        const consolidationRegex = /<memory(?:\s+chat="([^"]*)")?>([\s\S]*?)<\/memory>/gi;
+        // Tolerant tag matching (chat attribute pulled out separately, same approach
+        // parseMemories in lib.js already uses) instead of requiring an opening tag that's
+        // exactly <memory> or <memory chat="..."> with double quotes and nothing else —
+        // that strict form failed to match single-quoted or extra-attribute variants an
+        // LLM might invent, silently flattening every distinct theme into one block.
+        const extractTheme = (attrs) => {
+            const m = (attrs || '').match(/chat=["']([^"']*)["']/);
+            return m ? m[1] : 'Consolidated';
+        };
+
+        const consolidationRegex = /<memory\b([^>]*)>([\s\S]*?)<\/memory>/gi;
         const consolidationMatches = [...cleanResult.matchAll(consolidationRegex)];
         let rawEntries = consolidationMatches.length > 0
-            ? consolidationMatches.map(m => ({ theme: m[1] || 'Consolidated', content: m[2].trim() })).filter(e => e.content)
+            ? consolidationMatches.map(m => ({ theme: extractTheme(m[1]), content: m[2].trim() })).filter(e => e.content)
             : [];
 
         // Handle LLMs that produce self-closing <memory></memory> with bullets after the tag
         if (rawEntries.length === 0 && consolidationMatches.length > 0) {
-            const altRegex = /<memory(?:\s+chat="([^"]*)")?\s*>\s*<\/memory>([\s\S]*?)(?=<memory|$)/gi;
+            const altRegex = /<memory\b([^>]*)>\s*<\/memory>([\s\S]*?)(?=<memory|$)/gi;
             const altMatches = [...cleanResult.matchAll(altRegex)];
-            rawEntries = altMatches.map(m => ({ theme: m[1] || 'Consolidated', content: m[2].trim() })).filter(e => e.content);
+            rawEntries = altMatches.map(m => ({ theme: extractTheme(m[1]), content: m[2].trim() })).filter(e => e.content);
         }
 
         // Final fallback: treat entire response as one block
@@ -7472,19 +7537,53 @@ async function runConsolidationLLM(memories, charName) {
             rawEntries = [{ theme: 'Consolidated', content: cleanResult.trim() }].filter(e => e.content);
         }
 
-        const consolidated = rawEntries.map(entry => {
+        const consolidated = [];
+        for (const entry of rawEntries) {
             const bullets = entry.content.split('\n')
                 .map(l => l.trim())
                 .filter(l => l.startsWith('- '))
                 .map(l => l.slice(2).trim())
                 .filter(Boolean);
-            return { chat: entry.theme, date: timestamp, bullets: bullets.length > 0 ? bullets : [entry.content] };
-        });
+
+            if (bullets.length === 0) {
+                // No bulleted lines in this entry — the consolidation prompt requires
+                // bullet format, so unbulleted prose here is most likely a refusal,
+                // meta-commentary, or malformed output rather than real consolidated
+                // content. This is the consolidation-path instance of the same
+                // "unbulleted output saved verbatim" bug already fixed in extraction's
+                // equivalent fallback — that fix only touched extractMemoriesInner's loop.
+                // Stuffing the raw text into one bullet here would flatten every real
+                // eligible block being consolidated down into one junk entry.
+                logActivity(`Skipped un-bulleted consolidation output for theme "${entry.theme}": "${truncateText(entry.content, 200)}"`, 'warning');
+                continue;
+            }
+
+            consolidated.push({ chat: entry.theme, date: timestamp, bullets });
+        }
+
+        if (consolidated.length === 0) {
+            // Every parsed entry was un-bulleted and got skipped above — surface this
+            // here (rather than only relying on the caller's falsy-result check) so
+            // there's feedback regardless of whether this call came from the direct or
+            // the per-chunk chunked-consolidation path.
+            logActivity('Consolidation produced no usable blocks after filtering un-bulleted output', 'warning');
+            toastr.warning(t`Consolidation returned no usable memories.`, 'CharMemory');
+        }
 
         return serializeMemories(consolidated);
     } catch (err) {
         console.error(LOG_PREFIX, 'Consolidation failed:', err);
         logActivity(`Consolidation failed: ${err.message}`, 'error');
+        if (rethrow) {
+            // Chunked consolidation's retry orchestrator (runChunkedConsolidation) only
+            // retries on a thrown error — a returned null/empty is treated as a "soft"
+            // no-content result and skipped without retrying. Swallowing every failure
+            // here meant a transient network blip during chunked consolidation just
+            // dropped that chunk's memories instead of ever getting retried. Let it
+            // propagate so the orchestrator can actually retry; skip the toast here so
+            // a retry that then succeeds doesn't show an alarming error in between.
+            throw err;
+        }
         toastr.error(t`Memory consolidation failed. Check console for details.`, 'CharMemory');
         return null;
     } finally {
@@ -7684,11 +7783,11 @@ async function consolidateMemories() {
             // Re-enable so the user can click Cancel (Task 5 wires the click handler).
             $btn.val(t`Cancel`).prop('disabled', false);
             initialResult = await runChunkedConsolidation(eligible, {
-                // runConsolidationLLM catches LLM errors and returns null, so the
-                // orchestrator's retry-on-throw path will not fire for transient
-                // failures. Failed chunks are skipped. Follow-up to propagate
-                // retriable errors is tracked separately.
-                runLLM: (chunk) => runConsolidationLLM(chunk, target.name),
+                // { rethrow: true } makes runConsolidationLLM propagate LLM errors
+                // instead of swallowing them, so the orchestrator's retry-on-throw path
+                // actually fires for transient failures instead of silently skipping
+                // that chunk's memories.
+                runLLM: (chunk) => runConsolidationLLM(chunk, target.name, { rethrow: true }),
                 logProgress: (msg) => logActivity(msg),
                 isCancelled: () => consolidationCancelRequested,
                 packChunks: (mems) => packBlocksIntoChunks(mems, chunkBudget),
@@ -7700,7 +7799,17 @@ async function consolidateMemories() {
     } finally {
         $btn.val(t`Consolidate`).prop('disabled', false);
     }
-    if (!initialResult) return;
+    if (!initialResult) {
+        // The non-chunked path (runConsolidationLLM called directly, rethrow: false)
+        // already shows its own error toast from inside its catch block. The chunked
+        // path suppresses that per-chunk toast so a retry-then-succeed doesn't look
+        // alarming, so surface a single toast here once retries are exhausted —
+        // otherwise a fully-failed chunked consolidation ends in total silence.
+        if (useChunked) {
+            toastr.error(t`Consolidation failed. Check the activity log for details.`, 'CharMemory');
+        }
+        return;
+    }
 
     // Assemble finalBlocks = protected + newly consolidated. Protected blocks retain
     // their original order; newly consolidated output is appended. Indices 0..N-1
@@ -9499,6 +9608,14 @@ async function runBatchExtraction() {
 
     logActivity(`Batch extraction started: ${selected.length} chat(s) selected`);
 
+    // The loop below has real, unguarded network calls (fetchChatMessages has no internal
+    // try/catch of its own) across potentially many chats. Without a try/catch here, a
+    // single transient failure partway through left the popup permanently stuck: frozen
+    // progress bar, Stop button stuck visible, Extract/Refresh stuck disabled, since the
+    // "Done" cleanup below never ran. Wrap the loop and move cleanup into finally so the UI
+    // always recovers.
+    let batchError = null;
+    try {
     for (let i = 0; i < selected.length; i++) {
         if (batchAbortController.signal.aborted) break;
 
@@ -9566,21 +9683,33 @@ async function runBatchExtraction() {
 
         totalMemories += result.totalMemories;
     }
+    } catch (err) {
+        console.error(LOG_PREFIX, 'Batch extraction failed:', err);
+        logActivity(`Batch extraction failed: ${err.message}`, 'error');
+        toastr.error(t`Batch extraction failed: ${err.message || 'Unknown error'}`, 'CharMemory');
+        batchError = err;
+    } finally {
+        // Done (always runs, including on a thrown error, so the popup can't get stuck)
+        $progressFill.css('width', '100%');
+        const aborted = !!batchAbortController?.signal.aborted;
+        if (batchError) {
+            $progressText.text(t`Failed: ${totalMemories} memories extracted before the error.`);
+        } else {
+            $progressText.text(aborted
+                ? t`Stopped. ${totalMemories} memories extracted before cancellation.`
+                : t`Done! ${totalMemories} memories extracted from ${selected.length} chat(s).`
+            );
+        }
+        $('#charMemory_batchStop').hide();
+        $('#charMemory_batchExtract').prop('disabled', false);
+        $('#charMemory_batchRefresh').prop('disabled', false);
+        batchAbortController = null;
 
-    // Done
-    $progressFill.css('width', '100%');
-    const aborted = batchAbortController.signal.aborted;
-    $progressText.text(aborted
-        ? `Stopped. ${totalMemories} memories extracted before cancellation.`
-        : `Done! ${totalMemories} memories extracted from ${selected.length} chat(s).`
-    );
-    $('#charMemory_batchStop').hide();
-    $('#charMemory_batchExtract').prop('disabled', false);
-    $('#charMemory_batchRefresh').prop('disabled', false);
-    batchAbortController = null;
-
-    logActivity(`Batch extraction ${aborted ? 'stopped' : 'complete'}: ${totalMemories} memories from ${selected.length} chats`, aborted ? 'warning' : 'success');
-    updateStatusDisplay();
+        if (!batchError) {
+            logActivity(`Batch extraction ${aborted ? 'stopped' : 'complete'}: ${totalMemories} memories from ${selected.length} chats`, aborted ? 'warning' : 'success');
+        }
+        updateStatusDisplay();
+    }
 }
 
 // ============ Init ============
