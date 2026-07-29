@@ -131,7 +131,9 @@ Reasoning models (Qwen3, Gemma thinking variants) work, but need headroom: their
 Two caveats worth knowing:
 
 - **These tests do not exercise the provider layer.** They call the endpoint directly and drive `lib.js` / `consolidation.js`. Everything in `index.js` — `callLLM`, `generateOpenAICompatibleResponse`, `generateAnthropicResponse`, provider presets — has no automated coverage, because `index.js` imports SillyTavern modules and can't be imported from a test. Changes there need manual verification in ST.
-- **The chunked-consolidation test is inherently flaky** (~80% pass against a local reasoning model). It makes several sequential LLM calls and any one of them producing unparseable output aborts the run. On failure it prints the orchestrator's progress log, which identifies which of the null paths was taken. The tier runs with `--no-file-parallelism` so the suites don't contend over a single local model server.
+- **The chunked-consolidation test is inherently flaky.** It chains 6+ sequential LLM calls (5 map chunks + reduce), so any single transient failure aborts the whole run. Measured: passes reliably in isolation, but roughly half the time as part of the full tier, where ~10 calls land in quick succession. Captured failures have been provider-side — NanoGPT `503 all_fallbacks_failed`, and a reduce pass exceeding the timeout on a slow 70B model — not assertion failures. `maxRetries: 3` absorbs some of it. On failure it prints the orchestrator's progress log, which identifies which of the five null paths was taken, and dumps the result when tags parse to zero blocks. The tier runs with `--no-file-parallelism` so the suites don't contend over one model server.
+
+Model notes: reasoning models work but are slow (a local 26B takes ~220s for the tier). Hosted non-reasoning models are much faster (~30–90s) — `openai/gpt-4o-mini` and `mistral-small-31-24b-instruct` via NanoGPT both work well; `meta-llama/llama-3.3-70b-instruct` parses fine but needs a raised `TEST_LLM_TIMEOUT` for the reduce pass.
 
 ### `lib.js` as Single Source of Truth
 
