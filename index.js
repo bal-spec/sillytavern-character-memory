@@ -9001,16 +9001,18 @@ function addButtonsToExistingMessages() {
         if (!$extraBtns.length) return;
 
         // Skip if already injected
-        if ($extraBtns.find('.charMemory_extractHereBtn, .charMemory_pinMemoryBtn, .charMemory_viewInjectedBtn').length) return;
+        if ($extraBtns.find('.charMemory_extractHereBtn, .charMemory_pinMemoryBtn, .charMemory_viewInjectedBtn, .charMemory_setLastExtractedBtn').length) return;
 
         // Pin as memory — all non-system messages
-        $extraBtns.prepend(`<div class="mes_button charMemory_pinMemoryBtn" data-mesid="${mesId}" title="Pin as memory"><i class="fa-solid fa-bookmark"></i></div>`);
+        $extraBtns.prepend(`<div class="mes_button charMemory_pinMemoryBtn" data-mesid="${mesId}" title="Pin as memory" data-i18n="[title]Pin as memory"><i class="fa-solid fa-bookmark"></i></div>`);
 
         // Extract from here — character messages only
         if (!msg.is_user) {
-            $extraBtns.prepend(`<div class="mes_button charMemory_extractHereBtn" data-mesid="${mesId}" title="Extract memories up to here"><i class="fa-solid fa-brain"></i></div>`);
+            $extraBtns.prepend(`<div class="mes_button charMemory_extractHereBtn" data-mesid="${mesId}" title="Extract memories up to here" data-i18n="[title]Extract memories up to here"><i class="fa-solid fa-brain"></i></div>`);
+            // Set extraction pointer to here — moves lastExtractedIndex without re-running extraction
+            $extraBtns.prepend(`<div class="mes_button charMemory_setLastExtractedBtn" data-mesid="${mesId}" title="Set as last-extracted point (moves the pointer without extracting)" data-i18n="[title]Set as last-extracted point (moves the pointer without extracting)"><i class="fa-solid fa-map-pin"></i></div>`);
             // View injected context
-            $extraBtns.prepend(`<div class="mes_button charMemory_viewInjectedBtn" data-mesid="${mesId}" title="View injected context"><i class="fa-solid fa-syringe"></i></div>`);
+            $extraBtns.prepend(`<div class="mes_button charMemory_viewInjectedBtn" data-mesid="${mesId}" title="View injected context" data-i18n="[title]View injected context"><i class="fa-solid fa-syringe"></i></div>`);
             updateIndicatorForMessage(this, mesId);
         }
     });
@@ -9034,16 +9036,18 @@ function onMessageRenderedAddButtons(messageIndex) {
     if (!$extraBtns.length) return;
 
     // Remove existing extension buttons to prevent duplicates
-    $extraBtns.find('.charMemory_extractHereBtn, .charMemory_pinMemoryBtn, .charMemory_viewInjectedBtn').remove();
+    $extraBtns.find('.charMemory_extractHereBtn, .charMemory_pinMemoryBtn, .charMemory_viewInjectedBtn, .charMemory_setLastExtractedBtn').remove();
 
     // Pin as memory — available on all non-system messages (user + character)
-    $extraBtns.prepend(`<div class="mes_button charMemory_pinMemoryBtn" data-mesid="${messageIndex}" title="Pin as memory"><i class="fa-solid fa-bookmark"></i></div>`);
+    $extraBtns.prepend(`<div class="mes_button charMemory_pinMemoryBtn" data-mesid="${messageIndex}" title="Pin as memory" data-i18n="[title]Pin as memory"><i class="fa-solid fa-bookmark"></i></div>`);
 
     // Extract from here — character messages only
     if (!msg.is_user) {
-        $extraBtns.prepend(`<div class="mes_button charMemory_extractHereBtn" data-mesid="${messageIndex}" title="Extract memories up to here"><i class="fa-solid fa-brain"></i></div>`);
+        $extraBtns.prepend(`<div class="mes_button charMemory_extractHereBtn" data-mesid="${messageIndex}" title="Extract memories up to here" data-i18n="[title]Extract memories up to here"><i class="fa-solid fa-brain"></i></div>`);
+        // Set extraction pointer to here — moves lastExtractedIndex without re-running extraction
+        $extraBtns.prepend(`<div class="mes_button charMemory_setLastExtractedBtn" data-mesid="${messageIndex}" title="Set as last-extracted point (moves the pointer without extracting)" data-i18n="[title]Set as last-extracted point (moves the pointer without extracting)"><i class="fa-solid fa-map-pin"></i></div>`);
         // View injected context
-        $extraBtns.prepend(`<div class="mes_button charMemory_viewInjectedBtn" data-mesid="${messageIndex}" title="View injected context"><i class="fa-solid fa-syringe"></i></div>`);
+        $extraBtns.prepend(`<div class="mes_button charMemory_viewInjectedBtn" data-mesid="${messageIndex}" title="View injected context" data-i18n="[title]View injected context"><i class="fa-solid fa-syringe"></i></div>`);
         updateIndicatorForMessage($mes, messageIndex);
     }
 }
@@ -9055,6 +9059,40 @@ async function onExtractHereClick() {
     const messageIndex = Number($(this).data('mesid'));
     if (isNaN(messageIndex)) return;
     await extractMemories({ force: true, endIndex: messageIndex });
+}
+
+/**
+ * Click handler for "Set as last-extracted point" button. Moves lastExtractedIndex
+ * to the clicked message WITHOUT running extraction — the inverse of "Extract from
+ * here". Lets a user rewind the pointer after deleting a bad memory chunk (so it gets
+ * re-extracted), or fast-forward it after manually reconciling the Data Bank, without
+ * discarding tracking for the rest of the chat. See issue #20.
+ */
+async function onSetLastExtractedClick() {
+    const messageIndex = Number($(this).data('mesid'));
+    if (isNaN(messageIndex)) return;
+
+    ensureMetadata();
+    const meta = chat_metadata[MODULE_NAME];
+    const currentIdx = meta.lastExtractedIndex ?? -1;
+    if (messageIndex === currentIdx) return;
+
+    const scopeNote = isGroupChat()
+        ? `<br><small>${t`This is a group chat — all members share one extraction pointer.`}</small>`
+        : '';
+    const confirmed = await callGenericPopup(
+        t`Set the extraction pointer to message ${messageIndex} (currently ${currentIdx})? Messages after this point will be picked up by the next extraction; messages up to and including it will be treated as already processed.${scopeNote}`,
+        POPUP_TYPE.CONFIRM, t`Set Last-Extracted Point`,
+    );
+    if (!confirmed) return;
+
+    meta.lastExtractedIndex = messageIndex;
+    meta.messagesSinceExtraction = 0;
+    saveMetadataDebounced();
+    updateStatusDisplay();
+    updateAllIndicators();
+    toastr.success(t`Extraction pointer set to message ${messageIndex}.`, 'CharMemory');
+    logActivity(`Manually set lastExtractedIndex=${messageIndex} (was ${currentIdx})`);
 }
 
 /**
@@ -10137,6 +10175,7 @@ jQuery(async function () {
     eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, onMessageRenderedAddButtons);
     eventSource.on(event_types.USER_MESSAGE_RENDERED, onMessageRenderedAddButtons);
     $(document).on('click', '.charMemory_extractHereBtn', onExtractHereClick);
+    $(document).on('click', '.charMemory_setLastExtractedBtn', onSetLastExtractedClick);
     $(document).on('click', '.charMemory_pinMemoryBtn', onPinMemoryClick);
     $(document).on('click', '.charMemory_viewInjectedBtn', onViewInjectedClick);
     $(document).on('click', '.charMemory_injectionIndicator', onViewInjectedClick);
