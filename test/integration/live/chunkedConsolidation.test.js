@@ -1,32 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { runChunkedConsolidation } from '../../../consolidation.js';
 import { parseMemories, packBlocksIntoChunks } from '../../../lib.js';
+import { callTestLLM, TIMEOUT_MS } from '../llm-client.js';
 
-const LLM_URL   = process.env.TEST_LLM_URL   || 'http://127.0.0.1:1234/v1';
-const LLM_MODEL = process.env.TEST_LLM_MODEL || '';
-const LLM_KEY   = process.env.TEST_LLM_KEY   || '';
-
-async function callLocalLLM(prompt, maxTokens = 4000) {
-    const res = await fetch(`${LLM_URL}/chat/completions`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            ...(LLM_KEY ? { Authorization: `Bearer ${LLM_KEY}` } : {}),
-        },
-        body: JSON.stringify({
-            model: LLM_MODEL || undefined,
-            messages: [
-                { role: 'system', content: 'You are a memory consolidation assistant.' },
-                { role: 'user', content: prompt },
-            ],
-            max_tokens: maxTokens,
-            temperature: 0.3,
-        }),
-    });
-    if (!res.ok) throw new Error(`LLM HTTP ${res.status}`);
-    const data = await res.json();
-    return data.choices?.[0]?.message?.content || '';
-}
+const SYSTEM = 'You are a memory consolidation assistant.';
 
 function buildPrompt(blocks) {
     const memoriesText = blocks.map((b, i) =>
@@ -55,23 +32,42 @@ describe('runChunkedConsolidation (live LLM)', () => {
 
         const logs = [];
         const result = await runChunkedConsolidation(blocks, {
-            runLLM: async (chunk) => {
-                const prompt = buildPrompt(chunk);
-                return callLocalLLM(prompt, 4000);
-            },
+            runLLM: async (chunk) => callTestLLM(buildPrompt(chunk), { system: SYSTEM }),
             logProgress: (msg) => logs.push(msg),
             isCancelled: () => false,
             packChunks: (mems) => packBlocksIntoChunks(mems, 24000),
             parseOutput: (text) => parseMemories(text),
         });
 
+        // runChunkedConsolidation has several distinct null paths (chunk failed after
+        // retries, all chunks empty, no parseable blocks, reduce failed/empty). Its
+        // progress log is the only thing that distinguishes them, so surface it rather
+        // than leaving a bare "expected null not to be null".
+        if (result === null) {
+            console.log('[live test debug] orchestrator log:\n  ' + logs.join('\n  '));
+        }
+
         expect(result).not.toBeNull();
         expect(result).toContain('<memory');
-        expect(result).toMatch(/<\/memory>\s*$/);                // no truncation
+
+        // Truncation check: every opening tag has a matching close, and the text does
+        // not end mid-tag. Deliberately NOT `/<\/memory>\s*$/` — that also fails when a
+        // model appends chatter after the last block ("Wait, I should check whether...",
+        // which reasoning models leak into content routinely). Trailing prose is not
+        // truncation, and parseMemories ignores anything outside the tags anyway, so
+        // asserting on it makes the test fail on benign verbosity rather than the
+        // budget-exhaustion cut-off it exists to catch.
+        const opens = (result.match(/<memory\b/gi) || []).length;
+        const closes = (result.match(/<\/memory>/gi) || []).length;
+        expect(closes).toBe(opens);
+        expect(result).not.toMatch(/<memory\b[^>]*$/i);
+
         const parsed = parseMemories(result);
         expect(parsed.length).toBeGreaterThan(0);
         expect(parsed.length).toBeLessThan(blocks.length);        // actual consolidation
         expect(logs.some(l => /chunked mode/.test(l))).toBe(true);
         expect(logs.some(l => /reduce/.test(l))).toBe(true);
-    }, 180_000); // 3 min — multi-call flow on slow providers
+        // Map-reduce over ~90 blocks issues several sequential calls, so the suite
+        // budget is a multiple of the per-request one rather than equal to it.
+    }, TIMEOUT_MS * 4);
 });

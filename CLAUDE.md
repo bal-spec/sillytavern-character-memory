@@ -107,22 +107,31 @@ All settings live under `extension_settings.charMemory`. Key fields:
 Vitest is the test framework. Three tiers:
 
 ```bash
-npm test                # Unit tests (97 tests, ~200ms) — pure functions in lib.js
+npm test                # Unit tests (193 tests, ~300ms) — pure functions in lib.js
 npm run test:snapshot   # Snapshot tests (6 tests) — extraction pipeline against 1000-message fixture
-npm run test:live       # Live LLM tests (3 tests) — requires a running OpenAI-compatible server
+npm run test:live       # Live LLM tests (4 tests) — requires a running OpenAI-compatible server
 ```
 
 **Unit tests** cover parsing, serialization, escaping, format detection, and the three extracted pipeline functions (`stripNonDiegetic`, `formatChatMessages`, `substitutePromptTemplate`).
 
 **Snapshot tests** process real chat data from `test/fixtures/flux-chat.jsonl` through the pipeline and snapshot the output. Update snapshots with `npm run test:snapshot -- --update` after intentional changes.
 
-**Live LLM tests** send extraction prompts to a real LLM and validate the response structure. Configured via env vars:
+**Live LLM tests** send extraction prompts to a real LLM and validate the response structure. All HTTP goes through `test/integration/llm-client.js` — add new live tests there rather than hand-rolling another `fetch`. Configured via env vars:
 
 - `TEST_LLM_URL` — endpoint (default: `http://127.0.0.1:1234/v1`)
 - `TEST_LLM_MODEL` — model name (default: auto-discover first available)
 - `TEST_LLM_KEY` — API key for authenticated endpoints like OpenRouter (default: none)
+- `TEST_LLM_MAX_TOKENS` — generation budget (default: 6000)
+- `TEST_LLM_TIMEOUT` — per-request timeout in ms (default: 180000)
+- `TEST_LLM_TEMPERATURE` — sampling temperature (default: 0.3; set to 0 when chasing a flaky failure)
+- `TEST_LLM_NO_THINK` — set to `1` to ask reasoning models to skip thinking
 
-Recommended local model: Gemma 2 9B or Qwen 2.5 7B. Avoid thinking models (Qwen3) — their `<think>` tags waste token budget.
+Reasoning models (Qwen3, Gemma thinking variants) work, but need headroom: their chain of thought counts against `max_tokens`, and at a low budget they emit *nothing* visible. The client detects that case and says so explicitly rather than failing as a zero-block parse. It also falls back to `reasoning_content` when a provider returns the answer only there — mirroring `generateOpenAICompatibleResponse` in `index.js`.
+
+Two caveats worth knowing:
+
+- **These tests do not exercise the provider layer.** They call the endpoint directly and drive `lib.js` / `consolidation.js`. Everything in `index.js` — `callLLM`, `generateOpenAICompatibleResponse`, `generateAnthropicResponse`, provider presets — has no automated coverage, because `index.js` imports SillyTavern modules and can't be imported from a test. Changes there need manual verification in ST.
+- **The chunked-consolidation test is inherently flaky** (~80% pass against a local reasoning model). It makes several sequential LLM calls and any one of them producing unparseable output aborts the run. On failure it prints the orchestrator's progress log, which identifies which of the null paths was taken. The tier runs with `--no-file-parallelism` so the suites don't contend over a single local model server.
 
 ### `lib.js` as Single Source of Truth
 

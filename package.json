@@ -5,7 +5,7 @@
     "test": "vitest run test/unit/",
     "test:watch": "vitest watch test/unit/",
     "test:snapshot": "vitest run test/integration/snapshot",
-    "test:live": "vitest run test/integration/live"
+    "test:live": "vitest run test/integration/live --no-file-parallelism"
   },
   "devDependencies": {
     "vitest": "^4.0.18"

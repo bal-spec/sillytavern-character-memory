@@ -8,13 +8,10 @@ import {
     parseMemories,
     countMemories,
 } from '../../lib.js';
+import { callTestLLM, TIMEOUT_MS } from './llm-client.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const fixturesDir = join(__dirname, '..', 'fixtures');
-
-const LLM_URL = process.env.TEST_LLM_URL || 'http://127.0.0.1:1234/v1';
-const LLM_MODEL = process.env.TEST_LLM_MODEL || '';
-const LLM_KEY = process.env.TEST_LLM_KEY || '';
 
 function loadChat() {
     const raw = readFileSync(join(fixturesDir, 'flux-chat.jsonl'), 'utf-8');
@@ -44,62 +41,20 @@ If nothing new, respond with: NO_NEW_MEMORIES`;
 
 const CHARACTER_CARD = `Flux the Cat is a clever, sassy black-and-white cat. He rides a custom Gundam-styled Roomba as his personal transport. He's food-motivated, loves watching birds from the window, and has a dramatic personality.`;
 
-/** Strip thinking model tags (e.g. Qwen3 <think>...</think>) from LLM response. */
-function stripThinkingTags(text) {
-    return text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
-}
-
-function authHeaders() {
-    const headers = { 'Content-Type': 'application/json' };
-    if (LLM_KEY) headers['Authorization'] = `Bearer ${LLM_KEY}`;
-    return headers;
-}
-
-async function callTestLLM(prompt) {
-    let model = LLM_MODEL;
-    if (!model) {
-        const modelsRes = await fetch(`${LLM_URL}/models`, { headers: authHeaders() });
-        const modelsData = await modelsRes.json();
-        model = modelsData.data?.[0]?.id;
-        if (!model) throw new Error('No models available at ' + LLM_URL);
-    }
-
-    const response = await fetch(`${LLM_URL}/chat/completions`, {
-        method: 'POST',
-        headers: authHeaders(),
-        body: JSON.stringify({
-            model,
-            messages: [
-                { role: 'system', content: 'You are a memory extraction assistant.' },
-                { role: 'user', content: prompt },
-            ],
-            max_tokens: 2000,
-            temperature: 0.3,
-        }),
+/** Build the extraction prompt for a slice of the fixture chat. */
+function buildExtractionPrompt(from, to) {
+    const formatted = formatChatMessages(loadChat(), from, to);
+    return substitutePromptTemplate(EXTRACTION_PROMPT, {
+        charName: 'Flux the Cat',
+        charCard: CHARACTER_CARD,
+        existingMemories: '',
+        recentMessages: formatted.text,
     });
-
-    if (!response.ok) {
-        throw new Error(`LLM error: ${response.status} ${await response.text()}`);
-    }
-
-    const data = await response.json();
-    const raw = data.choices?.[0]?.message?.content || '';
-    return stripThinkingTags(raw);
 }
 
 describe('Live LLM: extraction from test chat', () => {
     it('extracts memories from the first 20 messages', async () => {
-        const chat = loadChat();
-        const formatted = formatChatMessages(chat, 0, 20);
-
-        const prompt = substitutePromptTemplate(EXTRACTION_PROMPT, {
-            charName: 'Flux the Cat',
-            charCard: CHARACTER_CARD,
-            existingMemories: '',
-            recentMessages: formatted.text,
-        });
-
-        const response = await callTestLLM(prompt);
+        const response = await callTestLLM(buildExtractionPrompt(0, 20));
         const blocks = parseMemories(response);
 
         // Log raw response when parsing fails for debugging
@@ -120,20 +75,10 @@ describe('Live LLM: extraction from test chat', () => {
                 expect(bullet.length).toBeGreaterThan(5);
             }
         }
-    }, 60000);
+    }, TIMEOUT_MS);
 
     it('does not parrot character card traits', async () => {
-        const chat = loadChat();
-        const formatted = formatChatMessages(chat, 0, 20);
-
-        const prompt = substitutePromptTemplate(EXTRACTION_PROMPT, {
-            charName: 'Flux the Cat',
-            charCard: CHARACTER_CARD,
-            existingMemories: '',
-            recentMessages: formatted.text,
-        });
-
-        const response = await callTestLLM(prompt);
+        const response = await callTestLLM(buildExtractionPrompt(0, 20));
         const blocks = parseMemories(response);
         const allBullets = blocks.flatMap(b => b.bullets).join('\n').toLowerCase();
 
@@ -147,22 +92,12 @@ describe('Live LLM: extraction from test chat', () => {
         for (const trait of cardTraits) {
             expect(allBullets).not.toContain(trait);
         }
-    }, 60000);
+    }, TIMEOUT_MS);
 
     it('handles a larger chunk (messages 0-50)', async (ctx) => {
-        const chat = loadChat();
-        const formatted = formatChatMessages(chat, 0, 50);
-
-        const prompt = substitutePromptTemplate(EXTRACTION_PROMPT, {
-            charName: 'Flux the Cat',
-            charCard: CHARACTER_CARD,
-            existingMemories: '',
-            recentMessages: formatted.text,
-        });
-
         let response;
         try {
-            response = await callTestLLM(prompt);
+            response = await callTestLLM(buildExtractionPrompt(0, 50));
         } catch (e) {
             // Skip if the model's context window is too small for 50 messages
             if (e.message.includes('context') || e.message.includes('truncate')) {
@@ -176,6 +111,9 @@ describe('Live LLM: extraction from test chat', () => {
         if (response.trim() === 'NO_NEW_MEMORIES') return;
 
         const blocks = parseMemories(response);
+        if (blocks.length === 0) {
+            console.log('[live test debug] Raw LLM response (first 500 chars):', response.slice(0, 500));
+        }
         expect(blocks.length).toBeGreaterThanOrEqual(1);
-    }, 120000);
+    }, TIMEOUT_MS);
 });
