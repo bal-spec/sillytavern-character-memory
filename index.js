@@ -5582,12 +5582,31 @@ function updateModalProviderUI() {
 
 // ============ Setup Wizard ============
 
+// Reentrancy guard for showSetupWizard — it has no equivalent of extraction/consolidation/
+// reformat's inApiCall-style locks, but it's reachable from three independent triggers
+// (first-launch auto-open, the dashboard "Open Wizard" button, the Settings modal's "Run
+// Setup Wizard" link) plus two setTimeout-deferred re-opens. Internal step navigation
+// (Next/Back) doesn't recurse back into showSetupWizard - it's handled by show/hide within
+// one popup instance - so a simple claim-at-entry/release-at-exit guard is safe here and
+// doesn't interfere with a wizard already in progress moving between its own steps.
+let wizardOpen = false;
+
 /**
  * Build and display the 3-step Setup Wizard modal.
  * Steps: 1) LLM Connection  2) Vector Storage  3) Ready
  * @param {number} [startStep=1] Step to start on (1, 2, or 3)
  */
 async function showSetupWizard(startStep = 1) {
+    if (wizardOpen) return;
+    wizardOpen = true;
+    try {
+        return await showSetupWizardInner(startStep);
+    } finally {
+        wizardOpen = false;
+    }
+}
+
+async function showSetupWizardInner(startStep = 1) {
     const s = extension_settings[MODULE_NAME];
     const providerKey = s.selectedProvider || '';
     const providerSettings = providerKey ? getProviderSettings(providerKey) : {};
@@ -9288,6 +9307,12 @@ function toggleLogDrawer(forceState) {
     if (shouldOpen) {
         $('#charMemory_injectionDrawer').removeClass('open');
         $('#charMemory_drawerToggle').removeClass('open');
+        // Mirror toggleInjectionDrawer(false)'s persistence — closing it here via raw DOM
+        // manipulation without also clearing injectionDrawerOpen left the flag stale, so
+        // the injection drawer would incorrectly auto-reopen on the next page load even
+        // though the user's last visible action was opening the log drawer instead.
+        extension_settings[MODULE_NAME].injectionDrawerOpen = false;
+        saveSettingsDebounced();
     }
 
     // Position drawer below ST's top bar so header isn't clipped by browser chrome
@@ -10156,10 +10181,19 @@ jQuery(async function () {
     const logDrawerEl = document.getElementById('charMemory_logDrawer');
     if (logDrawerEl) {
         let logTouchStartX = 0;
+        let logTouchFromHandle = false;
         logDrawerEl.addEventListener('touchstart', (e) => {
+            // The drag-to-resize handle is a child of this same drawer element and has
+            // its own pointerdown/pointermove/pointerup handlers (setupDrawerResize) —
+            // those don't suppress this touchstart/touchend pair, since pointer capture
+            // doesn't stop native touch events from also bubbling up from the handle.
+            // Without this check, resizing the drawer via touch could simultaneously
+            // satisfy the swipe-to-close distance and close the drawer being resized.
+            logTouchFromHandle = !!e.target.closest('.charMemory_drawerResizeHandle');
             logTouchStartX = e.touches[0].clientX;
         }, { passive: true });
         logDrawerEl.addEventListener('touchend', (e) => {
+            if (logTouchFromHandle) return;
             const deltaX = e.changedTouches[0].clientX - logTouchStartX;
             if (deltaX > 60) toggleLogDrawer(false);
         }, { passive: true });
@@ -10239,12 +10273,17 @@ jQuery(async function () {
 
     // Swipe right to close drawer (touch devices)
     let touchStartX = 0;
+    let touchFromHandle = false;
     const drawer = document.getElementById('charMemory_injectionDrawer');
     if (drawer) {
         drawer.addEventListener('touchstart', (e) => {
+            // See the identical comment on the log drawer's touchstart handler — the
+            // resize handle's touch events bubble up to this drawer-level listener too.
+            touchFromHandle = !!e.target.closest('.charMemory_drawerResizeHandle');
             touchStartX = e.touches[0].clientX;
         }, { passive: true });
         drawer.addEventListener('touchend', (e) => {
+            if (touchFromHandle) return;
             const deltaX = e.changedTouches[0].clientX - touchStartX;
             if (deltaX > 60) toggleInjectionDrawer(false);
         }, { passive: true });
