@@ -2164,6 +2164,17 @@ async function fetchCharacterChats() {
     const avatar = characters[this_chid]?.avatar;
     if (!avatar) return [];
 
+    return fetchChatsForAvatar(avatar);
+}
+
+/**
+ * Fetch all chats for an arbitrary character by avatar, not just the active one.
+ * @param {string} avatar Character avatar filename.
+ * @returns {Promise<Array>} Array of chat objects with file_name, chat_items, last_mes, etc.
+ */
+async function fetchChatsForAvatar(avatar) {
+    if (!avatar) return [];
+
     const response = await fetch('/api/characters/chats', {
         method: 'POST',
         headers: getRequestHeaders(),
@@ -3467,7 +3478,7 @@ function onCharacterMessageRendered(_messageIndex, type) {
 async function onChatChanged() {
     // Self-heal batch keys as soon as the character roster is available, rather than
     // waiting for the user to open a batch tool. No-ops once migrated.
-    migrateBatchStateKeys();
+    await migrateBatchStateKeys();
 
     const context = getContext();
     const chatId = context.chatId || '(none)';
@@ -5020,7 +5031,7 @@ async function showSettingsModal() {
             POPUP_TYPE.CONFIRM, t`Reset Batch Progress`,
         );
         if (!confirmed) return;
-        resetBatchProgress();
+        await resetBatchProgress();
     });
 
     $('#cm_modal_resetExtraction').off('click').on('click', async function () {
@@ -7071,7 +7082,7 @@ async function showTroubleshooter(initialSection = 'health') {
             POPUP_TYPE.CONFIRM, t`Reset Batch Progress`,
         );
         if (!confirmed) return;
-        resetBatchProgress();
+        await resetBatchProgress();
     });
     $('#cm_ts_unhideExtracted').off('click').on('click', async function () {
         const context = getContext();
@@ -8801,7 +8812,7 @@ function markChatAsFullyExtracted() {
  * Idempotent, and safe to call before the character list has loaded — it defers instead
  * of migrating against an empty roster.
  */
-function migrateBatchStateKeys() {
+async function migrateBatchStateKeys() {
     const settings = extension_settings[MODULE_NAME];
     if (!settings || settings.batchStateKeyedByAvatar) return;
 
@@ -8816,7 +8827,33 @@ function migrateBatchStateKeys() {
     // leave real records unattributed. Defer; every call site fires repeatedly.
     if (!Array.isArray(characters) || characters.length === 0) return;
 
-    const { batchState, moved, ambiguous, unmatched } = remapBatchStateKeys(state, characters);
+    let result = remapBatchStateKeys(state, characters);
+
+    // Anything still ambiguous belongs to one of several same-named cards. Names can't
+    // separate them, but chat files live per character, so ask the server which card
+    // actually owns each contested chat. Only fetches for the contested cards, and only
+    // when there's something to resolve — the common case does no extra I/O at all.
+    if (result.ambiguousKeys.length > 0) {
+        const nameCounts = new Map();
+        for (const char of characters) {
+            if (char?.name) nameCounts.set(char.name, (nameCounts.get(char.name) || 0) + 1);
+        }
+        const contested = characters.filter(c => c?.avatar && c?.name && nameCounts.get(c.name) > 1);
+
+        const chatOwners = {};
+        for (const char of contested) {
+            try {
+                const chats = await fetchChatsForAvatar(char.avatar);
+                chatOwners[char.avatar] = chats.map(c => String(c.file_name || '').replace(/\.jsonl$/, ''));
+            } catch (err) {
+                console.warn(LOG_PREFIX, `Could not list chats for ${char.avatar} while disambiguating batch state:`, err);
+            }
+        }
+
+        result = remapBatchStateKeys(state, characters, chatOwners);
+    }
+
+    const { batchState, moved, ambiguous, unmatched, disambiguated } = result;
 
     settings.batchState = batchState;
     settings.batchStateKeyedByAvatar = true;
@@ -8828,6 +8865,7 @@ function migrateBatchStateKeys() {
         if (unmatched) notes.push(`${unmatched} unmatched (character no longer present)`);
         logActivity(
             `Migrated ${moved} batch-progress record(s) to avatar keys` +
+            (disambiguated ? ` (${disambiguated} resolved by chat ownership)` : '') +
             (notes.length ? ` — left ${notes.join(', ')} untouched` : ''),
             moved ? 'success' : 'info',
         );
@@ -8840,8 +8878,8 @@ function migrateBatchStateKeys() {
  * For non-active chats, only batch records can be cleared from here — their regular
  * extraction pointers live in each chat's metadata and can only be reset when that chat is open.
  */
-function resetBatchProgress() {
-    migrateBatchStateKeys();
+async function resetBatchProgress() {
+    await migrateBatchStateKeys();
     // Keyed by avatar to match runBatchExtraction's batchStateKey — see the comment there
     // for why display name (getCharacterName()) would collide across duplicate-named cards.
     const avatar = characters[this_chid]?.avatar;
@@ -8877,7 +8915,7 @@ async function clearAllMemories() {
 
     // Also clear batch state for all chats of this character (keyed by avatar — see
     // resetBatchProgress/runBatchExtraction for why display name would collide)
-    migrateBatchStateKeys();
+    await migrateBatchStateKeys();
     const avatar = characters[this_chid]?.avatar;
     if (avatar && extension_settings[MODULE_NAME].batchState) {
         const prefix = `${avatar}:`;
@@ -9933,7 +9971,7 @@ function updateBatchButtons() {
 async function runBatchExtraction() {
     // Must run before any batchState read below — an unmigrated name-keyed record would
     // miss the avatar-keyed lookup and silently re-extract the chat from message 0.
-    migrateBatchStateKeys();
+    await migrateBatchStateKeys();
 
     const selected = [];
     $('.charMemory_batchChatCheck:checked').each(function () {

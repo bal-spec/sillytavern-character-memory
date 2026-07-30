@@ -692,12 +692,20 @@ export function shouldSkipStaleMetadataReset({ isGroup, unresolvedCount, totalAc
  * guessing an owner would reintroduce the cross-character boundary corruption that
  * keying by avatar exists to prevent.
  *
+ * When several cards share a display name, a record can't be attributed by name alone.
+ * SillyTavern stores chats per character, so ownership is still recoverable: pass
+ * `chatOwners` mapping avatar -> the chat names that avatar actually owns, and a record
+ * claimed by exactly one candidate is resolved to it. Records that remain contested (no
+ * claimant, or more than one) are still passed through untouched.
+ *
  * @param {Record<string, any>} batchState Existing batch state, keyed by name or avatar.
  * @param {{name?: string, avatar?: string}[]} characters The loaded character roster.
- * @returns {{batchState: Record<string, any>, moved: number, ambiguous: number, unmatched: number}}
+ * @param {Record<string, string[]>} [chatOwners] avatar -> chat names owned by it.
+ * @returns {{batchState: Record<string, any>, moved: number, ambiguous: number,
+ *   unmatched: number, disambiguated: number, ambiguousKeys: string[]}}
  */
-export function remapBatchStateKeys(batchState, characters) {
-    const result = { batchState: {}, moved: 0, ambiguous: 0, unmatched: 0 };
+export function remapBatchStateKeys(batchState, characters, chatOwners = null) {
+    const result = { batchState: {}, moved: 0, ambiguous: 0, unmatched: 0, disambiguated: 0, ambiguousKeys: [] };
     if (!batchState || typeof batchState !== 'object') return result;
     if (!Array.isArray(characters)) characters = [];
 
@@ -734,15 +742,28 @@ export function remapBatchStateKeys(batchState, characters) {
         }
 
         const owners = avatarsByName.get(bestName);
+        const chatName = key.slice(bestName.length + 1);
+
         if (owners.length > 1) {
-            // The exact collision the re-key fixes: this boundary can't be attributed
-            // to either card, so keep it inert rather than assign it to one of them.
+            // Several cards share this display name, so the name alone can't say which
+            // one owns this record. Chat files live per character though, so if exactly
+            // one candidate actually has a chat by this name, that settles it.
+            const claimants = owners.filter(a => (chatOwners?.[a] || []).includes(chatName));
+            if (claimants.length === 1) {
+                result.batchState[`${claimants[0]}:${chatName}`] = value;
+                result.moved++;
+                result.disambiguated++;
+                continue;
+            }
+            // Still contested — no claimant, or several. Keep it inert rather than
+            // assign a boundary to the wrong card, which would silently skip messages.
             result.batchState[key] = value;
             result.ambiguous++;
+            result.ambiguousKeys.push(key);
             continue;
         }
 
-        result.batchState[`${owners[0]}:${key.slice(bestName.length + 1)}`] = value;
+        result.batchState[`${owners[0]}:${chatName}`] = value;
         result.moved++;
     }
 

@@ -32,12 +32,92 @@ describe('remapBatchStateKeys', () => {
             { name: 'Alice', avatar: 'alice-v1.png' },
             { name: 'Alice', avatar: 'alice-v2.png' },
         ];
-        const { batchState, moved, ambiguous } = remapBatchStateKeys(
+        const { batchState, moved, ambiguous, ambiguousKeys } = remapBatchStateKeys(
             { 'Alice:chat-1': { lastExtractedIndex: 5 } }, dupes);
         // Assigning this to either card is exactly the corruption the re-key prevents.
         expect(batchState).toEqual({ 'Alice:chat-1': { lastExtractedIndex: 5 } });
         expect(moved).toBe(0);
         expect(ambiguous).toBe(1);
+        expect(ambiguousKeys).toEqual(['Alice:chat-1']);
+    });
+});
+
+describe('remapBatchStateKeys — disambiguation by chat ownership', () => {
+    const DUPES = [
+        { name: 'Alice', avatar: 'alice-v1.png' },
+        { name: 'Alice', avatar: 'alice-v2.png' },
+    ];
+
+    it('resolves an ambiguous record to the card that actually owns the chat', () => {
+        const { batchState, moved, ambiguous, disambiguated } = remapBatchStateKeys(
+            { 'Alice:chat-1': { lastExtractedIndex: 5 } }, DUPES,
+            { 'alice-v1.png': ['chat-1'], 'alice-v2.png': ['chat-9'] });
+        expect(batchState).toEqual({ 'alice-v1.png:chat-1': { lastExtractedIndex: 5 } });
+        expect(moved).toBe(1);
+        expect(disambiguated).toBe(1);
+        expect(ambiguous).toBe(0);
+    });
+
+    it('stays ambiguous when both candidates own a chat by that name', () => {
+        const { batchState, ambiguous, disambiguated } = remapBatchStateKeys(
+            { 'Alice:chat-1': { lastExtractedIndex: 5 } }, DUPES,
+            { 'alice-v1.png': ['chat-1'], 'alice-v2.png': ['chat-1'] });
+        expect(batchState).toEqual({ 'Alice:chat-1': { lastExtractedIndex: 5 } });
+        expect(ambiguous).toBe(1);
+        expect(disambiguated).toBe(0);
+    });
+
+    it('stays ambiguous when neither candidate claims the chat', () => {
+        const { batchState, ambiguous } = remapBatchStateKeys(
+            { 'Alice:chat-1': { lastExtractedIndex: 5 } }, DUPES,
+            { 'alice-v1.png': ['other'], 'alice-v2.png': ['another'] });
+        expect(batchState).toEqual({ 'Alice:chat-1': { lastExtractedIndex: 5 } });
+        expect(ambiguous).toBe(1);
+    });
+
+    it('ignores a claim from a card that does not share the contested name', () => {
+        const roster = [...DUPES, { name: 'Bob', avatar: 'bob.png' }];
+        const { batchState, ambiguous } = remapBatchStateKeys(
+            { 'Alice:chat-1': { lastExtractedIndex: 5 } }, roster,
+            { 'bob.png': ['chat-1'] });
+        expect(batchState).toEqual({ 'Alice:chat-1': { lastExtractedIndex: 5 } });
+        expect(ambiguous).toBe(1);
+    });
+
+    it('handles a real-world roster: two Susans, plus already-avatar-keyed records', () => {
+        // Reduced from an actual user profile that hit this. Two cards named "Susan",
+        // Laura's records already avatar-keyed, and chat names containing " - " and "@".
+        const roster = [
+            { name: 'Laura', avatar: 'Laura.png' },
+            { name: 'Susan', avatar: 'Susan.png' },
+            { name: 'Susan', avatar: 'Susan1.png' },
+        ];
+        const state = {
+            'Susan:Susan - 2026-01-03@10h30m04s': { lastExtractedIndex: 10 },
+            'Susan:Susan - 2026-02-04@08h11m44s715ms': { lastExtractedIndex: 20 },
+            'Laura.png:Laura - 2025-11-27@22h40m24s': { lastExtractedIndex: 30 },
+        };
+        const chatOwners = {
+            'Susan.png': ['Susan - 2026-01-03@10h30m04s'],
+            'Susan1.png': ['Susan - 2026-02-04@08h11m44s715ms'],
+            'Laura.png': ['Laura - 2025-11-27@22h40m24s'],
+        };
+        const { batchState, moved, ambiguous, disambiguated } = remapBatchStateKeys(state, roster, chatOwners);
+        expect(batchState).toEqual({
+            'Susan.png:Susan - 2026-01-03@10h30m04s': { lastExtractedIndex: 10 },
+            'Susan1.png:Susan - 2026-02-04@08h11m44s715ms': { lastExtractedIndex: 20 },
+            'Laura.png:Laura - 2025-11-27@22h40m24s': { lastExtractedIndex: 30 },
+        });
+        expect(moved).toBe(2);
+        expect(disambiguated).toBe(2);
+        expect(ambiguous).toBe(0);
+    });
+
+    it('is backward compatible — omitting chatOwners behaves as before', () => {
+        const { ambiguous, disambiguated } = remapBatchStateKeys(
+            { 'Alice:chat-1': { lastExtractedIndex: 5 } }, DUPES);
+        expect(ambiguous).toBe(1);
+        expect(disambiguated).toBe(0);
     });
 
     it('leaves records for characters that are no longer present untouched', () => {
