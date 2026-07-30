@@ -693,10 +693,16 @@ export function shouldSkipStaleMetadataReset({ isGroup, unresolvedCount, totalAc
  * keying by avatar exists to prevent.
  *
  * When several cards share a display name, a record can't be attributed by name alone.
- * SillyTavern stores chats per character, so ownership is still recoverable: pass
- * `chatOwners` mapping avatar -> the chat names that avatar actually owns, and a record
- * claimed by exactly one candidate is resolved to it. Records that remain contested (no
- * claimant, or more than one) are still passed through untouched.
+ * Pass `chatOwners` mapping avatar -> the chat names that avatar actually owns, and a
+ * record claimed by exactly one candidate is resolved to it. Records that remain
+ * contested (no claimant, or more than one) are still passed through untouched.
+ *
+ * Note that chat ownership does not always separate same-named cards. Observed on a real
+ * profile with two cards both named "Susan": SillyTavern reported overlapping chat lists
+ * for both avatars, with every contested chat appearing under each. Where that happens
+ * the records are genuinely unattributable and stay put — which is the correct outcome,
+ * not a gap to close. `chatOwners` helps when cards own distinct chats; it can't invent
+ * a distinction the server doesn't make.
  *
  * @param {Record<string, any>} batchState Existing batch state, keyed by name or avatar.
  * @param {{name?: string, avatar?: string}[]} characters The loaded character roster.
