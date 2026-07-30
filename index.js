@@ -8811,15 +8811,42 @@ function markChatAsFullyExtracted() {
  *
  * Idempotent, and safe to call before the character list has loaded — it defers instead
  * of migrating against an empty roster.
+ *
+ * Versioned rather than a one-shot boolean. The first build shipped a plain
+ * `batchStateKeyedByAvatar = true`, which meant a profile got exactly one attempt ever:
+ * a run that legitimately left records unresolved still marked the migration complete,
+ * so the later build that could resolve them never got the chance. Recording a version
+ * lets an improved pass re-examine what an earlier one had to leave behind. Re-running
+ * is safe — already-avatar-keyed records are passed through untouched.
  */
+const BATCH_STATE_MIGRATION_VERSION = 2;
+
+/**
+ * @param {object} settings The charMemory settings object.
+ * @returns {number} Highest migration version already applied to this profile.
+ */
+function getBatchStateMigrationVersion(settings) {
+    if (typeof settings.batchStateMigration === 'number') return settings.batchStateMigration;
+    // Pre-versioning builds recorded a boolean. Treat it as version 1 so profiles that
+    // ran the original pass still get the chat-ownership disambiguation added in v2.
+    return settings.batchStateKeyedByAvatar ? 1 : 0;
+}
+
+/** Record the migration as applied, superseding the pre-versioning boolean. */
+function markBatchStateMigrated(settings) {
+    settings.batchStateMigration = BATCH_STATE_MIGRATION_VERSION;
+    delete settings.batchStateKeyedByAvatar;
+    saveSettingsDebounced();
+}
+
 async function migrateBatchStateKeys() {
     const settings = extension_settings[MODULE_NAME];
-    if (!settings || settings.batchStateKeyedByAvatar) return;
+    if (!settings) return;
+    if (getBatchStateMigrationVersion(settings) >= BATCH_STATE_MIGRATION_VERSION) return;
 
     const state = settings.batchState;
     if (!state || Object.keys(state).length === 0) {
-        settings.batchStateKeyedByAvatar = true;
-        saveSettingsDebounced();
+        markBatchStateMigrated(settings);
         return;
     }
 
@@ -8856,8 +8883,7 @@ async function migrateBatchStateKeys() {
     const { batchState, moved, ambiguous, unmatched, disambiguated } = result;
 
     settings.batchState = batchState;
-    settings.batchStateKeyedByAvatar = true;
-    saveSettingsDebounced();
+    markBatchStateMigrated(settings);
 
     if (moved || ambiguous || unmatched) {
         const notes = [];
