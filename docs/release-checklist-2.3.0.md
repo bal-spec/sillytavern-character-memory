@@ -105,3 +105,53 @@ git push origin beta:master          # clean fast-forward, no merge commit
   places despite its own commit 1 arguing against that.
 - **Provider layer is untestable** — extracting the adapters out of `index.js` is the only
   way that code ever gets automated coverage.
+
+---
+
+# Results — verified 2026-07-30
+
+All eight sections completed against a live SillyTavern instance.
+
+| Section | Result |
+|---|---|
+| 1. batchState migration | PASS — one real bug found and fixed (see below) |
+| 2. Provider layer (#25) | PASS — all six checks |
+| 3. Reentrancy locks (#22, #29) | PASS — including no stuck lock afterwards |
+| 4. Lost-update guard (#23) | PASS — 4a; 4b (two-tab concurrent write) not staged |
+| 5. Group chat (#24) | PASS — buttons render, member resolution works, no "No character selected" |
+| 6. Stored HTML injection (#26) | PASS — verified deterministically against the real render path |
+| 7. Set-last-extracted (#27) | PASS |
+| 8. Drawers (#29) | PASS |
+
+## Found and fixed during testing
+
+- **One-shot migration flag** (`73000c9`). The migration recorded completion as a
+  boolean, so a run that legitimately left records unresolved still marked itself done
+  and locked out the improved version. Hit on the first real profile. Now versioned.
+- **Ambiguous records left stranded** (`1366a22`). Added chat-ownership disambiguation.
+  Verified against a profile with two cards named "Susan" — where it correctly does
+  *not* resolve them, because SillyTavern reports overlapping chat lists for same-named
+  cards. See `9047ab1`.
+
+## Notable during testing
+
+- Dedicated API measured ~6x faster than the Connection Profile path for the same model
+  (3.1s vs 18.7s on a trivial prompt).
+- A failed extraction correctly does not advance the extraction pointer.
+- Abort cancels the in-flight request immediately rather than waiting for it to finish.
+
+## Known gaps at promotion
+
+- **`generateOpenAICompatibleResponse`'s unexpected-response-shape check is unexercised.**
+  It fires on HTTP 200 with no `choices`/`message`, which a real provider won't produce
+  on demand. Ships unverified; needs a mock server or the provider-layer refactor.
+- **Abort is unavailable for normal Extract Now.** The `AbortController` is only created
+  by batch extraction, so a single-chunk extraction cannot be cancelled. Pre-existing.
+- **Part of #24 is on a dead path.** `previewConvert()` and the `charMemory_formatSource`
+  radios are never called or rendered, so `populateConvertSourceDropdown()`'s group-chat
+  fix is unreachable. The live route to conversion is Troubleshooter -> file row.
+- **"Convert file format" on an already-CharMemory file** shows a transient toast and no
+  dialog, which reads as a broken button.
+- **#27 silently no-ops** when the pin is clicked on the message the pointer is already
+  on — no dialog, no feedback.
+- **`Chat changed: "(none)"`** in group chats instead of naming the group.
