@@ -98,8 +98,15 @@ git push origin beta:master          # clean fast-forward, no merge commit
 
 ## Known deferred
 
-- **#28** (inherit extraction pointer on checkpoint/branch) — held; author flagged it
-  UNVERIFIED LIVE. Conflict with #22 already resolved on local branch `pr-28-resolved`.
+- **#28** (inherit extraction pointer on checkpoint/branch) — premise disproved live,
+  recommended for closure. A checkpoint made from a chat at `lastExtractedIndex = 61`
+  arrived carrying `charMemory.lastExtractedIndex = 61`: SillyTavern *does* copy
+  `chat_metadata`, so the pointer already survives checkpoint creation. The PR gates on
+  `lastIdx === -1`, so its block can never run. `main_chat` is populated as the author
+  determined, but the reset it compensates for doesn't happen. Inert rather than
+  harmful. Worth re-checking "Create Branch" separately — it may not route through
+  `createNewBookmark`. Conflict with #22 stays resolved on local `pr-28-resolved` if it
+  ever comes back.
 - **Follow-up nits** — `extractTheme()` doesn't `unescapeAttr()`; `previewConversion()`
   releases its lock by hand rather than `try/finally`; #26 reads `this_chid` in three new
   places despite its own commit 1 arguing against that.
@@ -140,11 +147,27 @@ All eight sections completed against a live SillyTavern instance.
 - A failed extraction correctly does not advance the extraction pointer.
 - Abort cancels the in-flight request immediately rather than waiting for it to finish.
 
+## Provider layer — verified via mock (#25)
+
+The one branch a real provider won't produce on demand — HTTP 200 with no
+`choices`/`message` — was exercised with a local mock served to the Custom
+(OpenAI-compatible) provider (`scratchpad/mock-provider.mjs`, shapes: `no-choices`,
+`empty-choices`, `no-message`, `empty-content`, `valid`). Result:
+
+```
+Generate (direct) HTTP 200, model=mock-model, finish=?, no usage data
+[Tina] LLM error: Custom (OpenAI-compatible) returned an unexpected response shape
+       — aborting chunk to preserve extraction pointer
+Chunk 1 aborted mid-extraction — not advancing index
+```
+
+Pre-#25 the same response returned `''`, read upstream as "no new memories found", and
+advanced the pointer anyway — silently skipping those messages permanently. Also
+confirmed not over-eager: a valid response carrying `content: ""` still passes through
+as a legitimate empty completion rather than raising.
+
 ## Known gaps at promotion
 
-- **`generateOpenAICompatibleResponse`'s unexpected-response-shape check is unexercised.**
-  It fires on HTTP 200 with no `choices`/`message`, which a real provider won't produce
-  on demand. Ships unverified; needs a mock server or the provider-layer refactor.
 - **Abort is unavailable for normal Extract Now.** The `AbortController` is only created
   by batch extraction, so a single-chunk extraction cannot be cancelled. Pre-existing.
 - **Part of #24 is on a dead path.** `previewConvert()` and the `charMemory_formatSource`
