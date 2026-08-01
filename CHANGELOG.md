@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.3.1
+
+### Bug Fixes
+
+- **Fix branches and checkpoints wiping the extraction pointer under per-chat storage**: Creating a branch or checkpoint reset `lastExtractedIndex` to -1, marking every copied message unextracted and forcing a full re-extraction — expensive, and duplicate-producing on long chats. SillyTavern copies `chat_metadata` into a new branch (`saveChat` merges `{ ...chat_metadata, ...withMetadata }`), so the pointer arrives intact. But per-chat memory filenames embed the chat ID, and a branch gets a *new* chat ID, so it never has a memory file of its own. The stale-metadata check read that as "no memories anywhere", concluded the metadata was stale, and reset the pointer. It now recognises a branch under per-chat storage as a case where an absent memory file is expected rather than evidence of staleness, and preserves the pointer. Reproduced against SillyTavern 1.18.0: branching a 1000-message chat at message 500 reset the pointer 500 → -1 and marked all 501 messages unextracted; with shared (default) storage the pointer survived, which is why this looked unreproducible at first. Reported in [#16](https://github.com/bal-spec/sillytavern-character-memory/issues/16).
+
+### Known Limitations
+
+- **Branches don't inherit memories under per-chat storage**: The fix above stops the destructive re-extraction, but a branch still starts with an empty memory file — and because the pointer is now preserved, the pre-fork messages are never revisited, so the parent's memories aren't retrievable in the branch. Memories extracted after the fork are stored normally. Use the default (shared) storage mode if you branch often and want memories to carry across. See [Managing Memories → Per-chat memories](docs/managing-memories.md#per-chat-memories).
+
 ## 2.3.0
 
 ### New Features

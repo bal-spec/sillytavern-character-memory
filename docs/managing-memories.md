@@ -191,6 +191,18 @@ Per-chat mode also works in group chats — each member gets a separate per-chat
 
 > **Known limitation**: Batch extraction with per-chat mode active has a bug — extracted memories from non-active chats may go to the wrong file. Use batch extraction with the default (shared) mode.
 
+### Branches and checkpoints
+
+SillyTavern gives a branch or checkpoint a **new chat ID**, and per-chat filenames embed that ID — so a newly created branch has no memory file of its own.
+
+Since 2.3.1, CharMemory keeps the branch's extraction pointer intact, so the branch won't re-extract every copied message (which previously wasted a full extraction run and produced duplicates). Memories extracted *after* the fork are stored normally in the branch's own file.
+
+What it does **not** yet do is carry the parent's existing memories into the branch. Because the pointer is preserved, those earlier messages are never revisited, so the parent's memories stay with the parent and aren't retrievable in the branch.
+
+If you branch often and want memories to carry across, use the default (shared) mode — all chats for a character share one file, so branches inherit everything automatically. Per-chat mode is the better fit when branches are *meant* to be isolated timelines.
+
+This only affects per-chat mode. With shared storage, branches and checkpoints inherit memories with no special handling.
+
 ---
 
 ## Reset and Clear
