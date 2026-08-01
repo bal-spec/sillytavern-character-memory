@@ -3526,12 +3526,20 @@ async function onChatChanged() {
             const detail = isGroupChat()
                 ? getGroupMembersDetailed()
                 : { resolved: null, unresolvedAvatars: [], totalActive: 0 };
+            // A branch/checkpoint under per-chat storage has a new chat ID and therefore
+            // no memory file of its own — "no memories" is expected, not stale metadata.
+            const isBranchChat = !!chat_metadata.main_chat;
+            const perChatMode = !!extension_settings[MODULE_NAME]?.perChat;
             const skipReset = shouldSkipStaleMetadataReset({
                 isGroup: isGroupChat(),
                 unresolvedCount: detail.unresolvedAvatars.length,
                 totalActive: detail.totalActive,
+                isBranch: isBranchChat,
+                perChat: perChatMode,
             });
-            if (skipReset) {
+            if (skipReset && isBranchChat && perChatMode) {
+                logActivity(`Skipped stale-metadata reset: this chat is a branch/checkpoint of "${chat_metadata.main_chat}" and per-chat storage gives it no memory file of its own yet. Pointer preserved at ${lastIdx}.`, 'warning');
+            } else if (skipReset) {
                 logActivity(`Skipped stale-metadata reset: ${detail.unresolvedAvatars.length} of ${detail.totalActive} group members could not be loaded (likely a load-order race). Pointer preserved at ${lastIdx}.`, 'warning');
             } else {
                 let hasAnyMemories = false;

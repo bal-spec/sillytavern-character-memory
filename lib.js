@@ -670,13 +670,24 @@ export function classifyBlocksForConsolidation(memories) {
 }
 
 /**
- * Decide whether to skip the stale-metadata auto-reset in group chats.
- * Returns true when member resolution is incomplete and we can't trust
- * the "no memories anywhere" conclusion.
- * @param {{isGroup:boolean, unresolvedCount:number, totalActive:number}} state
+ * Decide whether to skip the stale-metadata auto-reset.
+ *
+ * Two independent conditions make the "no memories anywhere" conclusion untrustworthy:
+ *
+ * 1. Group chats where member resolution is incomplete — the members we CAN see might
+ *    legitimately lack memories while the ones we CAN'T see have them (#17 / #18).
+ * 2. Branches/checkpoints under per-chat storage. SillyTavern copies `chat_metadata`
+ *    into a new branch (`saveChat` merges `{...chat_metadata, ...withMetadata}`), so the
+ *    pointer arrives intact and `lastIdx >= 0` holds. But per-chat memory filenames embed
+ *    the chat ID, and a freshly created branch has a NEW chat ID — so it never has a file
+ *    of its own. "No memories" is the expected state here, not stale metadata. Resetting
+ *    discards a valid pointer and forces a full re-extraction of every copied message.
+ *
+ * @param {{isGroup:boolean, unresolvedCount:number, totalActive:number, isBranch?:boolean, perChat?:boolean}} state
  * @returns {boolean}
  */
-export function shouldSkipStaleMetadataReset({ isGroup, unresolvedCount, totalActive }) {
+export function shouldSkipStaleMetadataReset({ isGroup, unresolvedCount, totalActive, isBranch = false, perChat = false }) {
+    if (isBranch && perChat) return true; // new chat ID => no per-chat file yet, by design
     if (!isGroup) return false;          // 1:1 chats are always complete
     if (totalActive === 0) return true;  // can't conclude anything from zero members
     return unresolvedCount > 0;          // any unresolved member invalidates the conclusion
