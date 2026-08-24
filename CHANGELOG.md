@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### New Features
+
+- **Copy memories between Data Bank files**: New copy action (file-import icon) on every non-active file row in Troubleshooter → Data Bank. Copies that file's memories into the file the current chat writes to. If the destination already has memories, a dialog offers **Merge** (append, skipping blocks already present, so re-copying to top up a file is safe) or **Replace**. This closes the branch/checkpoint gap left by 2.3.1: under per-chat storage a branch gets a new chat ID and therefore an empty memory file, and since the extraction pointer is now correctly preserved, those pre-fork messages are never revisited — so the parent's memories had no way to reach the branch. The parent's file sits in the same Data Bank, so it's now one click. Deliberately manual rather than automatic on branch creation: memory blocks record chat and date but no message index, so when a branch is taken from mid-chat there is no way to trim the parent's memories back to the branch point, and only the user knows whether the later ones still apply. Requested in [#16](https://github.com/bal-spec/sillytavern-character-memory/issues/16).
+
 ## 2.3.1
 
 ### Bug Fixes
@@ -8,7 +14,7 @@
 
 ### Known Limitations
 
-- **Branches don't inherit memories under per-chat storage**: The fix above stops the destructive re-extraction, but a branch still starts with an empty memory file — and because the pointer is now preserved, the pre-fork messages are never revisited, so the parent's memories aren't retrievable in the branch. Memories extracted after the fork are stored normally. Use the default (shared) storage mode if you branch often and want memories to carry across. See [Managing Memories → Per-chat memories](docs/managing-memories.md#per-chat-memories).
+- **Branches don't inherit memories under per-chat storage**: The fix above stops the destructive re-extraction, but a branch still starts with an empty memory file — and because the pointer is now preserved, the pre-fork messages are never revisited, so the parent's memories aren't retrievable in the branch. Memories extracted after the fork are stored normally. Use the default (shared) storage mode if you branch often and want memories to carry across. See [Managing Memories → Per-chat memories](docs/managing-memories.md#per-chat-memories). *(Addressed in Unreleased by the Data Bank copy action — a branch can now be seeded from its parent in one click.)*
 
 ## 2.3.0
 

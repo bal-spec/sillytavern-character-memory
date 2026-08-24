@@ -197,9 +197,17 @@ SillyTavern gives a branch or checkpoint a **new chat ID**, and per-chat filenam
 
 Since 2.3.1, CharMemory keeps the branch's extraction pointer intact, so the branch won't re-extract every copied message (which previously wasted a full extraction run and produced duplicates). Memories extracted *after* the fork are stored normally in the branch's own file.
 
-What it does **not** yet do is carry the parent's existing memories into the branch. Because the pointer is preserved, those earlier messages are never revisited, so the parent's memories stay with the parent and aren't retrievable in the branch.
+What it does **not** do is carry the parent's memories across *automatically*. Because the pointer is preserved, those earlier messages are never revisited, so a new branch starts with an empty memory file until you copy the parent's across yourself.
 
-If you branch often and want memories to carry across, use the default (shared) mode — all chats for a character share one file, so branches inherit everything automatically. Per-chat mode is the better fit when branches are *meant* to be isolated timelines.
+#### Copying the parent's memories into a branch
+
+Open the **Troubleshooter → Data Bank**. The parent chat's memory file is listed there alongside the branch's own. Click the **copy** button (file-import icon) on the parent's row to copy its memories into the file this chat writes to. If the branch already has memories, you're asked whether to **Merge** (append, skipping blocks already present) or **Replace**.
+
+Copying is manual on purpose. Memory blocks record which chat and date they came from, but not which *message* — so if you branched from the middle of a chat, CharMemory has no way to tell which of the parent's memories describe events that happen after your branch point. Copying everything would import memories from a timeline your branch abandoned. Only you know whether that matters, so the decision is left to you.
+
+Re-copying later is safe: **Merge** skips anything already present, so you can top a branch up after the parent has grown without accumulating duplicates.
+
+If you branch often and want memories to carry across with no manual step, use the default (shared) mode — all chats for a character share one file, so branches inherit everything automatically. Per-chat mode is the better fit when branches are *meant* to be isolated timelines.
 
 This only affects per-chat mode. With shared storage, branches and checkpoints inherit memories with no special handling.
 

@@ -185,6 +185,47 @@ export function mergeMemoryBlocks(blocks) {
     return merged;
 }
 
+/**
+ * Append source memory blocks onto a destination set, skipping exact duplicates.
+ *
+ * Used by the Data Bank "copy into this chat" action, where the same source can be
+ * copied more than once — re-syncing a branch from its parent after the parent has
+ * grown is a normal thing to do — and should top up the destination rather than
+ * accumulate a second copy of everything already there.
+ *
+ * Identity is chat + date + the full bullet list. Two blocks that share a chat and
+ * date but differ in any bullet are kept separately: they came from different
+ * extractions (or one was hand-edited), and dropping either would lose content.
+ *
+ * Neither input is mutated; bullet arrays are copied.
+ *
+ * @param {{chat: string, date: string, bullets: string[]}[]} destBlocks Existing blocks, kept in order and kept first.
+ * @param {{chat: string, date: string, bullets: string[]}[]} srcBlocks Blocks to append.
+ * @returns {{blocks: {chat: string, date: string, bullets: string[]}[], added: number, skipped: number}}
+ */
+export function appendUniqueBlocks(destBlocks, srcBlocks) {
+    const identity = b => JSON.stringify([b.chat, b.date, b.bullets]);
+    const copy = b => ({ chat: b.chat, date: b.date, bullets: [...b.bullets] });
+
+    const blocks = (destBlocks || []).map(copy);
+    const seen = new Set(blocks.map(identity));
+    let added = 0;
+    let skipped = 0;
+
+    for (const block of srcBlocks || []) {
+        const key = identity(block);
+        if (seen.has(key)) {
+            skipped++;
+            continue;
+        }
+        seen.add(key);
+        blocks.push(copy(block));
+        added++;
+    }
+
+    return { blocks, added, skipped };
+}
+
 // ─── Format detection & migration ──────────────────────────────────────
 
 /**

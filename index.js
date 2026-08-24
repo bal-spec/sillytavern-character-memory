@@ -42,6 +42,7 @@ import {
     splitMultiTagBullets,
     countMemories,
     mergeMemoryBlocks,
+    appendUniqueBlocks,
     migrateMemoriesIfNeeded,
     convertHeuristic,
     formatChatMessages,
@@ -6547,6 +6548,54 @@ function updateNudgeBanner(healthResult) {
  * Sections: Health Checks, Data Bank Browser, Diagnostic Report, Reset/Clear.
  * @param {string} [initialSection='health'] Section to show first: 'health', 'databank', 'report', or 'reset'
  */
+/**
+ * Re-point the Data Bank browser's destination row after a copy.
+ *
+ * writeMemoriesForCharacter() uploads a fresh file and swaps the attachment record, so
+ * the destination row's cached `data-url` is stale the moment the copy lands — leaving
+ * View/Export/Delete on that row pointing at a file that no longer exists. Update it in
+ * place, or add the row if this chat had no memory file yet (the branch case, which is
+ * the whole point of the copy button).
+ *
+ * @param {JQuery<HTMLElement>} $sourceRow The row that was copied FROM — used to locate the list.
+ * @param {string} avatar Character avatar filename.
+ * @param {string} destFileName The memory file that was written.
+ * @param {string} content The content just written, for the size label.
+ */
+function syncDataBankRowAfterCopy($sourceRow, avatar, destFileName, content) {
+    const attachment = findMemoryAttachmentForCharacter(avatar, destFileName);
+    if (!attachment) return;
+
+    const sizeHtml = `<span class="charMemory_tsFileSize">${(content.length / 1024).toFixed(1)} KB</span>`;
+    const $list = $sourceRow.closest('.charMemory_tsFileList');
+    const $dest = $list.children('.charMemory_tsFileRow').filter(function () {
+        return $(this).data('name') === destFileName && $(this).data('avatar') === avatar;
+    });
+
+    if ($dest.length) {
+        $dest.attr('data-url', attachment.url).data('url', attachment.url);
+        $dest.find('.charMemory_tsFileSize').replaceWith(sizeHtml);
+        return;
+    }
+
+    // No row yet — this chat's memory file was created by the copy itself. Mirror the
+    // destination markup from buildMemberFileList(): CharMemory badge, no copy button.
+    $list.append(`<div class="charMemory_tsFileRow" data-url="${escapeAttr(attachment.url)}" data-name="${escapeAttr(destFileName)}" data-avatar="${escapeAttr(avatar)}" data-destname="${escapeAttr(destFileName)}">
+            <div class="charMemory_tsFileName">
+                <i class="fa-solid fa-file-lines fa-sm"></i>
+                <span>${escapeHtml(destFileName)}</span>
+                ${sizeHtml}
+                <span class="charMemory_tsBadge">CharMemory</span>
+            </div>
+            <div class="charMemory_tsFileActions">
+                <button class="menu_button charMemory_tsViewBtn" title="View file contents"><i class="fa-solid fa-eye fa-sm"></i></button>
+                <button class="menu_button charMemory_tsExportBtn" title="Download file"><i class="fa-solid fa-download fa-sm"></i></button>
+                <button class="menu_button charMemory_tsDeleteBtn" title="Delete file"><i class="fa-solid fa-trash fa-sm"></i></button>
+                <button class="menu_button charMemory_tsConvertBtn" title="Convert file format"><i class="fa-solid fa-arrows-rotate fa-sm"></i></button>
+            </div>
+        </div>`);
+}
+
 async function showTroubleshooter(initialSection = 'health') {
     const charName = getCharacterName();
     const targets = getMemoryTargets();
@@ -6600,9 +6649,13 @@ async function showTroubleshooter(initialSection = 'health') {
         }
         let html = '<div class="charMemory_tsFileList">';
         for (const att of attachments) {
-            const badge = att.name === t.fileName ? '<span class="charMemory_tsBadge">CharMemory</span>' : '';
+            // The row for the file this chat already writes to is the copy DESTINATION,
+            // so it gets no copy button — every other row can be copied into it.
+            const isDestination = att.name === t.fileName;
+            const badge = isDestination ? '<span class="charMemory_tsBadge">CharMemory</span>' : '';
             const sizeText = att.size ? `<span class="charMemory_tsFileSize">${(att.size / 1024).toFixed(1)} KB</span>` : '';
-            html += `<div class="charMemory_tsFileRow" data-url="${escapeAttr(att.url)}" data-name="${escapeAttr(att.name || '')}" data-avatar="${escapeAttr(t.avatar)}">
+            const copyBtn = isDestination ? '' : `<button class="menu_button charMemory_tsCopyBtn" title="Copy memories into this chat's memory file" data-i18n="[title]Copy memories into this chat's memory file"><i class="fa-solid fa-file-import fa-sm"></i></button>`;
+            html += `<div class="charMemory_tsFileRow" data-url="${escapeAttr(att.url)}" data-name="${escapeAttr(att.name || '')}" data-avatar="${escapeAttr(t.avatar)}" data-destname="${escapeAttr(t.fileName || '')}">
                     <div class="charMemory_tsFileName">
                         <i class="fa-solid fa-file-lines fa-sm"></i>
                         <span>${escapeHtml(att.name || att.url)}</span>
@@ -6614,6 +6667,7 @@ async function showTroubleshooter(initialSection = 'health') {
                         <button class="menu_button charMemory_tsExportBtn" title="Download file" data-i18n="[title]Download file"><i class="fa-solid fa-download fa-sm"></i></button>
                         <button class="menu_button charMemory_tsDeleteBtn" title="Delete file" data-i18n="[title]Delete file"><i class="fa-solid fa-trash fa-sm"></i></button>
                         <button class="menu_button charMemory_tsConvertBtn" title="Convert file format" data-i18n="[title]Convert file format"><i class="fa-solid fa-arrows-rotate fa-sm"></i></button>
+                        ${copyBtn}
                     </div>
                 </div>`;
         }
@@ -6952,6 +7006,116 @@ async function showTroubleshooter(initialSection = 'health') {
         // instead of falling back to context.characterId, which is unreliable in
         // group chats.
         previewConversion(url, $row.data('avatar'));
+    });
+
+    // Data Bank: Copy another file's memories into this chat's memory file.
+    //
+    // The case this exists for (issue #16): with per-chat storage on, a branch or
+    // checkpoint gets a new chat ID and therefore an empty memory file of its own,
+    // while the parent chat's file sits right beside it in the same Data Bank. Since
+    // 2.3.1 the extraction pointer is correctly inherited, which stops the wasteful
+    // re-extraction but also means those earlier messages are never revisited — so
+    // without this the branch stays empty. Copying is deliberately manual: memory
+    // blocks carry no message index (only chat + date), so when a branch was taken
+    // from mid-chat there is no way to trim the parent's memories back to the branch
+    // point, and only the user knows whether the later ones still apply.
+    $modal.on('click', '.charMemory_tsCopyBtn', async function () {
+        const $row = $(this).closest('.charMemory_tsFileRow');
+        const url = $row.data('url');
+        const srcName = $row.data('name') || url;
+        const avatar = $row.data('avatar') || target?.avatar;
+        const destName = $row.data('destname');
+        if (!avatar || !destName) {
+            toastr.warning(t`No character selected.`, 'CharMemory');
+            return;
+        }
+        if (srcName === destName) return;
+
+        try {
+            const srcContent = await getFileAttachment(url);
+            const srcBlocks = parseMemories(srcContent || '');
+            if (!srcBlocks.length) {
+                toastr.warning(t`"${srcName}" has no memory blocks to copy. Use Convert to reformat it first.`, 'CharMemory');
+                return;
+            }
+
+            const destContent = await readMemoriesForCharacter(avatar, destName);
+            const destBlocks = parseMemories(destContent);
+            const srcCount = countMemories(srcBlocks);
+
+            let finalContent;
+            let doneMessage;
+
+            if (!destBlocks.length) {
+                // readMemoriesForCharacter() already auto-migrates recognized legacy
+                // formats, so real content that still parses to zero blocks is in a
+                // format this extension doesn't recognize (hand-edited, malformed tags).
+                // Copying over it would destroy that content — same guard, and the same
+                // wording, as the conversion flow's write to this destination.
+                const destUnparseable = !!(destContent && destContent.trim());
+                const confirmed = destUnparseable
+                    ? await callGenericPopup(
+                        t`"${destName}" already has content that couldn't be parsed as CharMemory blocks — saving would replace it instead of appending to it. Overwrite anyway?`,
+                        POPUP_TYPE.CONFIRM,
+                    )
+                    : await callGenericPopup(
+                        t`Copy ${srcCount} memories from "${srcName}" into "${destName}"?`,
+                        POPUP_TYPE.CONFIRM, t`Copy Memories`,
+                    );
+                if (!confirmed) return;
+                // Nothing to merge with, so copy the source verbatim. Re-serializing
+                // would re-render it under this install's current format settings,
+                // needlessly rewriting a file the user may have formatted deliberately.
+                finalContent = srcContent;
+                doneMessage = t`Copied ${srcCount} memories into ${destName}.`;
+            } else {
+                const choiceHtml = `<div style="text-align:left;">
+                    <p>${escapeHtml(t`"${destName}" already has ${countMemories(destBlocks)} memories in ${destBlocks.length} blocks.`)}</p>
+                    <p>${escapeHtml(t`What should happen to the ${srcCount} memories from "${srcName}"?`)}</p>
+                    <label class="checkbox_label" style="display:block;margin:6px 0;">
+                        <input type="radio" name="cm_ts_copyMode" value="merge" checked />
+                        <span>${escapeHtml(t`Merge — append them, skipping any that are already there`)}</span>
+                    </label>
+                    <label class="checkbox_label" style="display:block;margin:6px 0;">
+                        <input type="radio" name="cm_ts_copyMode" value="replace" />
+                        <span>${escapeHtml(t`Replace — discard the existing memories and use the copied ones`)}</span>
+                    </label>
+                </div>`;
+                const confirmed = await callGenericPopup(choiceHtml, POPUP_TYPE.CONFIRM, t`Copy Memories`, { okButton: t`Copy`, cancelButton: t`Cancel` });
+                if (!confirmed) return;
+
+                const mode = $('input[name="cm_ts_copyMode"]:checked').val() || 'merge';
+                if (mode === 'replace') {
+                    finalContent = srcContent;
+                    doneMessage = t`Replaced ${destName} with ${srcCount} memories from ${srcName}.`;
+                } else {
+                    const { blocks, added, skipped } = appendUniqueBlocks(destBlocks, srcBlocks);
+                    if (!added) {
+                        toastr.info(t`Nothing to copy — "${destName}" already has every block from "${srcName}".`, 'CharMemory');
+                        return;
+                    }
+                    finalContent = serializeMemories(blocks);
+                    doneMessage = skipped
+                        ? t`Merged ${added} blocks into ${destName} (${skipped} already present).`
+                        : t`Merged ${added} blocks into ${destName}.`;
+                }
+            }
+
+            // The confirm popups above can sit open indefinitely, and auto-extraction
+            // only checks the inApiCall lock — so the destination may have gained new
+            // memories since destContent was read. Same lost-update guard the editor
+            // save flows use.
+            if (!await confirmOverwriteIfChangedSinceSnapshot(avatar, destName, destContent)) return;
+
+            await writeMemoriesForCharacter(finalContent, avatar, destName);
+            logActivity(`Copied memories from "${srcName}" into "${destName}"`);
+            toastr.success(doneMessage, 'CharMemory');
+            syncDataBankRowAfterCopy($row, avatar, destName, finalContent);
+            updateStatusDisplay();
+        } catch (err) {
+            console.error(LOG_PREFIX, 'Failed to copy memories:', err);
+            toastr.error(t`Could not copy memories.`, 'CharMemory');
+        }
     });
 
     // Data Bank: Import file
