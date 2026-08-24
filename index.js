@@ -63,7 +63,7 @@ import { createMemoryEditor } from './editor.js';
 import { runChunkedConsolidation } from './consolidation.js';
 
 const MODULE_NAME = 'charMemory';
-const MODULE_VERSION = '2.3.0';
+const MODULE_VERSION = '2.4.0';
 const DEFAULT_FILE_NAME = 'char-memories.md';
 const LOG_PREFIX = '[CharMemory]';
 

@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.4.0
 
 ### New Features
 
@@ -14,7 +14,7 @@
 
 ### Known Limitations
 
-- **Branches don't inherit memories under per-chat storage**: The fix above stops the destructive re-extraction, but a branch still starts with an empty memory file — and because the pointer is now preserved, the pre-fork messages are never revisited, so the parent's memories aren't retrievable in the branch. Memories extracted after the fork are stored normally. Use the default (shared) storage mode if you branch often and want memories to carry across. See [Managing Memories → Per-chat memories](docs/managing-memories.md#per-chat-memories). *(Addressed in Unreleased by the Data Bank copy action — a branch can now be seeded from its parent in one click.)*
+- **Branches don't inherit memories under per-chat storage**: The fix above stops the destructive re-extraction, but a branch still starts with an empty memory file — and because the pointer is now preserved, the pre-fork messages are never revisited, so the parent's memories aren't retrievable in the branch. Memories extracted after the fork are stored normally. Use the default (shared) storage mode if you branch often and want memories to carry across. See [Managing Memories → Per-chat memories](docs/managing-memories.md#per-chat-memories). *(Addressed in 2.4.0 by the Data Bank copy action — a branch can now be seeded from its parent in one click.)*
 
 ## 2.3.0
 
