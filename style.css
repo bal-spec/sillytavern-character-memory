@@ -886,20 +886,34 @@ body.charMemory-phone-mode .charMemory_drawerResizeHandle {
 
 /* ── Split-pane mode: push ST's chat panel left so the drawer doesn't overlay it.
    `--cm-drawer-width` is updated live by syncChatPushFromDrawers() during open
-   and during drag-to-resize. Works because #sheld and #top-bar use the
-   `left:0; right:0; margin:0 auto` auto-margin centering trick — flipping `right`
-   to the drawer width re-centers them in the leftover space. The `max-width`
-   clamp handles users with a large `--sheldWidth` setting that would otherwise
-   overflow into the drawer. ───────────────────────────────────────────────── */
+   and during drag-to-resize. #sheld and #top-bar are `position: absolute;
+   left:0; right:0; margin:0 auto` with a fixed width — an over-constrained
+   auto-margin trick where flipping `right` to X redistributes the freed space
+   evenly across both auto margins, shifting the box left by X/2.
+   #top-settings-holder (the icon row) LOOKS like it lines up with #top-bar,
+   but it's `position: relative` with no `left`/`right` in its base rule —
+   it's centered by ordinary in-flow `margin: 0 auto` instead. For a relative
+   box, `right` is a raw positioning offset (not a margin redistribution), so
+   giving it the same X shifts it left by the full X, overshooting #top-bar's
+   X/2 and breaking the icons away from the bar in the *other* direction. It
+   needs half the drawer width to land in the same place. The `max-width`
+   clamp handles users with a large `--sheldWidth` setting that would
+   otherwise overflow into the drawer. ───────────────────────────────────── */
 body.charMemory_drawerPushing #sheld,
 body.charMemory_drawerPushing #top-bar {
     right: var(--cm-drawer-width, 0) !important;
     max-width: calc(100vw - var(--cm-drawer-width, 0px)) !important;
     transition: right 0.2s ease, max-width 0.2s ease;
 }
+body.charMemory_drawerPushing #top-settings-holder {
+    right: calc(var(--cm-drawer-width, 0px) / 2) !important;
+    max-width: calc(100vw - var(--cm-drawer-width, 0px)) !important;
+    transition: right 0.2s ease, max-width 0.2s ease;
+}
 /* Disable the transition during an active drag so chat tracks the pointer. */
 body.charMemory_drawerResizingActive #sheld,
-body.charMemory_drawerResizingActive #top-bar {
+body.charMemory_drawerResizingActive #top-bar,
+body.charMemory_drawerResizingActive #top-settings-holder {
     transition: none !important;
 }
 
