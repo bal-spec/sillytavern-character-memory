@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Prompt Changes
+
+- **Extraction prompts 2.1.0 (1:1 and group)**: bullets follow the order things happened; two moments whose order matters are not fused into one bullet; who learned what (saw, was shown, sent or told) is recorded as a fact rather than dropped as meta-narration; and a known story date or time goes in the first bullet after the topic tag. The 5-bullet limit is unchanged. Users with customized prompts get the update notification. See [Prompt Design](docs/prompt-design.md#prompt-version-210-order-who-knows-what-story-dates), which also gives an example variant for roleplay that retells long encounters in detail.
+
 ## 2.4.0
 
 ### New Features

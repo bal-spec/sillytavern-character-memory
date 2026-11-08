@@ -169,11 +169,11 @@ INSTRUCTIONS:
 2. Write in past tense, third person. Always refer to {{charName}} by name, not "she/he/they". Do NOT quote dialogue verbatim.
 3. Do NOT use emojis.
 4. Wrap output in <memory></memory> tags with a markdown bulleted list (lines starting with "- ").
-5. Use ONE <memory> block per encounter or event. Everything in the same scene = one block. If events happen in the same evening or outing, that is ONE block — do not split by location or sub-event.
+5. Use ONE <memory> block per encounter or event. Everything in the same scene = one block. If events happen in the same evening or outing, that is ONE block — do not split by location or sub-event. Within a block, bullets follow the order things happened.
 6. Start each block with a topic tag as the first bullet: "- [{{charName}}, OtherNames — short description]". ALWAYS include {{charName}} first, then other key participants. This aids later retrieval.
-7. HARD LIMIT: No more than 5 bullet points per block (not counting the topic tag). If you have more, you are being too granular — keep only the most significant outcomes.
+7. HARD LIMIT: No more than 5 bullet points per block (not counting the topic tag). If you have more, you are being too granular — keep only the most significant outcomes. But do not fuse two separate moments into one bullet when the order between them matters — "she sent him the photo, then went up to his room" is two bullets, or keep only the one that matters.
 8. If nothing genuinely new or significant, respond with exactly: NO_NEW_MEMORIES
-9. Write about WHAT HAPPENED, not about the conversation itself. Never write "she told him about X" or "she described her X" or "she admitted Y" — instead write the actual fact: "X happened" or "she did Y."
+9. Write about WHAT HAPPENED, not about the conversation itself. Never write "she told him about X" or "she described her X" or "she admitted Y" — instead write the actual fact: "X happened" or "she did Y." Exception: who learned what IS a fact. When someone saw, was shown, was sent or was told something that matters — a secret, a photo, a confession — record that they know it: "Alex now knows Mo lied about the money."
 
 WHAT TO EXTRACT — ask for each item: "Would {{char}} bring this up unprompted weeks or months later?"
 - Backstory reveals, personal history, goals, fears (only if NOT already in the character card)
@@ -181,13 +181,13 @@ WHAT TO EXTRACT — ask for each item: "Would {{char}} bring this up unprompted 
 - Significant events and their outcomes (not the step-by-step process)
 - Skills, possessions, or status changes
 - Emotional turning points
-- Dates and times when mentioned or clearly implied in the conversation
+- When it happened in the story: if the date or time is mentioned or clearly implied, put it in the first bullet after the topic tag (e.g. "Friday 14 March, late evening, at the harbour bar."). Use the story's date, never today's.
 - Always name specific people involved — use their name, not "a friend" or "someone"
 
 DO NOT EXTRACT:
 - Anything already described in the CHARACTER CARD above — traits, profession, appearance, personality, habits, preferences, or abilities that are baseline knowledge. This includes rephrasing card traits as discoveries (e.g. if the card says "competitive", do not write "she felt proud when she won again")
 - Routine behaviors that simply confirm what the card already says (e.g. if the card says "smoker", don't extract "she smoked a cigarette"; if the card says "meticulous", don't extract "she organized her bag again")
-- Meta-narration about the conversation itself — do not write "she told him about X", "she described her past", "she discussed her career". Write the actual facts revealed, not the act of revealing them
+- Meta-narration about the conversation itself — do not write "she told him about X", "she described her past", "she discussed her career". Write the actual facts revealed, not the act of revealing them (but who now knows something that matters is a fact — see the exception in rule 9)
 - Preferences, opinions, or values that are already expressed or clearly implied by the character card
 - Step-by-step accounts of what happened (this is the most common mistake — summarize outcomes, not processes)
 - Individual actions, movements, or position changes during a scene
@@ -251,13 +251,13 @@ INSTRUCTIONS:
 2. Write in past tense, third person. Always refer to {{charName}} by name, not "she/he/they". Do NOT quote dialogue verbatim.
 3. Do NOT use emojis.
 4. Wrap output in <memory></memory> tags with a markdown bulleted list (lines starting with "- ").
-5. Use ONE <memory> block per encounter or event. Everything in the same scene = one block. If events happen in the same evening or outing, that is ONE block — do not split by location or sub-event.
+5. Use ONE <memory> block per encounter or event. Everything in the same scene = one block. If events happen in the same evening or outing, that is ONE block — do not split by location or sub-event. Within a block, bullets follow the order things happened.
 6. Start each block with a topic tag as the first bullet: "- [{{charName}}, OtherNames — short description]". ALWAYS include {{charName}} first, then other key participants. This aids later retrieval.
-7. HARD LIMIT: No more than 5 bullet points per block (not counting the topic tag). If you have more, you are being too granular — keep only the most significant outcomes.
+7. HARD LIMIT: No more than 5 bullet points per block (not counting the topic tag). If you have more, you are being too granular — keep only the most significant outcomes. But do not fuse two separate moments into one bullet when the order between them matters — "she sent him the photo, then went up to his room" is two bullets, or keep only the one that matters.
 8. If nothing genuinely new or significant about {{charName}}, respond with exactly: NO_NEW_MEMORIES
-9. Write about WHAT HAPPENED, not about the conversation itself. Never write "she told him about X" — instead write the actual fact: "X happened" or "she did Y."
+9. Write about WHAT HAPPENED, not about the conversation itself. Never write "she told him about X" — instead write the actual fact: "X happened" or "she did Y." Exception: who learned what IS a fact. When someone saw, was shown, was sent or was told something that matters — a secret, a photo, a confession — record that they know it: "Alex now knows Mo lied about the money."
 10. IMPORTANT: Reference other participants by name. Include who was involved in events, who said what to whom, who was present. Names matter for group memory.
-11. When possible, note approximate timeframes or sequencing of events mentioned in conversation.
+11. When possible, note approximate timeframes or sequencing of events mentioned in conversation. If the story's date or time is known, put it in the first bullet after the topic tag (e.g. "Friday 14 March, late evening, at the harbour bar."). Use the story's date, never today's.
 
 WHAT TO EXTRACT — ask for each item: "Would {{charName}} remember this weeks or months later?"
 - Backstory reveals, personal history, goals, fears (only if NOT already in the character card)
@@ -271,7 +271,7 @@ WHAT TO EXTRACT — ask for each item: "Would {{charName}} remember this weeks o
 DO NOT EXTRACT:
 - Anything already described in the CHARACTER CARD above — traits, profession, appearance, personality, habits, preferences, or abilities that are baseline knowledge. This includes rephrasing card traits as discoveries (e.g. if the card says "competitive", do not write "she felt proud when she won again")
 - Routine behaviors that simply confirm what the card already says (e.g. if the card says "smoker", don't extract "she smoked a cigarette"; if the card says "workaholic", don't extract "she stayed late at the office again")
-- Meta-narration about the conversation itself — do not write "she told him about X", "she described her past", "she discussed her career". Write the actual facts revealed, not the act of revealing them
+- Meta-narration about the conversation itself — do not write "she told him about X", "she described her past", "she discussed her career". Write the actual facts revealed, not the act of revealing them (but who now knows something that matters is a fact — see the exception in rule 9)
 - Preferences, opinions, or values that are already expressed or clearly implied by the character card
 - Step-by-step accounts of what happened (this is the most common mistake — summarize outcomes, not processes)
 - Individual actions, movements, or position changes during a scene
@@ -516,14 +516,14 @@ const PROMPT_CONFIG = {
         navLabel: 'Extract (1:1)',
         settingsKey: 'extractionPrompt',
         defaultValue: defaultExtractionPrompt,
-        version: '2.0.1',
+        version: '2.1.0',
     },
     groupExtraction: {
         title: 'Extraction Prompt (Group)',
         navLabel: 'Extract (Group)',
         settingsKey: 'groupExtractionPrompt',
         defaultValue: defaultGroupExtractionPrompt,
-        version: '2.0.1',
+        version: '2.1.0',
     },
     consolidation: {
         title: 'Consolidation Prompt',
