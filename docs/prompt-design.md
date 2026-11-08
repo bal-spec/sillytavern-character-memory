@@ -148,3 +148,36 @@ Group memories are even harder for vector search because multiple characters pro
 2. **Test with the Injection Viewer, not the output.** The extraction output looked fine before v1.7.0. The problem only became visible when we looked at *what was being retrieved* for each generation.
 3. **Unique tokens matter more than structure.** Markdown formatting, clean grammar, and consistent structure don't help vector search. Unique names, specific descriptions, and distinctive vocabulary do.
 4. **Tighter is better for chunking.** A 5-bullet block creates a more focused embedding than an 8-bullet block. The lost detail matters less than the gained precision.
+
+## Prompt Version 2.1.0: Order, Who Knows What, Story Dates
+
+Three failures showed up when a character later *retold* an evening to someone who had been part of it:
+
+1. **Shuffled order.** The bullets did not say they were in sequence, so retelling a night came out in any order.
+2. **Two moments fused in one bullet.** "She sent him the photo, then went up to his room" was later read as one moment, and the photo was described as being from the wrong part of the night.
+3. **No record of who knew what.** Instruction 9 bans meta-narration ("she told him about X"), and that ban also removed facts that matter: who saw something, was shown a photo, or was told a secret. The character then told a person, as news, what that person had watched happen.
+
+The 2.1.0 extraction prompts (1:1 and group) add:
+
+- Instruction 5: *Within a block, bullets follow the order things happened.*
+- Instruction 7: *Do not fuse two separate moments into one bullet when the order between them matters.* The 5-bullet limit stays.
+- Instruction 9: *Exception: who learned what IS a fact* — "Alex now knows Mo lied about the money."
+- When the story's date or time is known, it goes in the first bullet after the topic tag, and it is the story's date, never today's.
+
+Users with customized prompts get the usual update notification and can merge the changes by hand.
+
+## Example Variant: Roleplay That Retells Nights in Detail
+
+The default keeps blocks short because short blocks retrieve better (Lesson 4). Some roleplay leans on a character retelling one long encounter in detail later, and there five outcome bullets lose the night. For that style, replace instruction 7 in your own prompt (Settings → Prompts) with:
+
+```
+7. Bullet limit: a short encounter gets up to 5 bullets (not counting the topic tag). A long encounter with several distinct events — a whole night out, a long booking — gets up to 10, one event per bullet, in order: the concrete things that happened, which a character could retell step by step. Still no scene-setting, clothing or filler.
+```
+
+and add after instruction 9:
+
+```
+10. End each block with one bullet starting "Known to others:" — what each other person present saw, was shown, was sent or was told, and anything one of them pointedly does not know (e.g. "Known to others: Mo watched her leave with Alex and got the photo; Alex knows nothing of Mo.").
+```
+
+Trade-off: a 10-bullet block embeds less sharply than a 5-bullet one, so check what is retrieved with the Injection Viewer, and keep Vector Storage's chunk boundary on `</memory>` so a block is never split.
